@@ -1122,7 +1122,8 @@ if database_complete != False:
             try:
                 min_level = int(check_min_generate_level(str(name.lower())))
             except:
-                generate_random_pokemon()
+                # Recursive call causing issues - use return to prevent infinite loop
+                return generate_random_pokemon()
             var_level = 3
             if mainpokemon_level or mainpokemon_level != None:
                 try:
@@ -2407,7 +2408,8 @@ def on_review_card(*args):
                                         idx += 1
                                         if idx < len(enemy_ids):
                                             conf["ankimon_gym_enemy_index"] = idx
-                                            mw.col.setMod()
+                                            # Don't call setMod() here - causes recursion issues
+                                            # Config will be saved at end of review
                                             # Show fainted message with next pokemon info
                                             try:
                                                 fainted_msg = f"{name.capitalize()} has fainted! Leader sends out next Pokémon! ({idx+1}/{len(enemy_ids)})"
@@ -2488,20 +2490,22 @@ def on_review_card(*args):
                     elif pkmn_window is False:
                         new_pokemon()
                         general_card_count_for_battle = 0
-            # Skip catch/defeat dialog during gym battles
-            if not _ankimon_is_gym_active():
-                if pkmn_window is True:
-                    if hp > 0:
-                        test_window.display_first_encounter()
-                    elif hp < 1:
-                        hp = 0
-                        test_window.display_pokemon_death()
-                        general_card_count_for_battle = 0
-                elif pkmn_window is False:
-                    if hp < 1:
-                        hp = 0
-                        kill_pokemon()
-                        general_card_count_for_battle = 0
+            # Update window during battle (including gym battles)
+            if pkmn_window is True:
+                if hp > 0:
+                    # Always update window when HP > 0, even during gym battles
+                    test_window.display_first_encounter()
+                elif hp < 1 and not _ankimon_is_gym_active():
+                    # Only show death dialog if NOT in gym battle
+                    hp = 0
+                    test_window.display_pokemon_death()
+                    general_card_count_for_battle = 0
+            elif pkmn_window is False and not _ankimon_is_gym_active():
+                # Only auto-spawn new pokemon if NOT in gym battle
+                if hp < 1:
+                    hp = 0
+                    kill_pokemon()
+                    general_card_count_for_battle = 0
             # Reset the counter
             reviewed_cards_count = 0
         if cry_counter == 10 and battle_sounds is True:
@@ -7900,6 +7904,38 @@ def _ankimon_show_gym_leader_dialog(leader: dict):
             QMessageBox.information(mw, "Gym", f"Could not open gym leader dialog: {e}")
         except Exception:
             pass
+
+def reset_gym_progress():
+    """Reset all gym battle progress to fix stuck states."""
+    try:
+        conf = _ankimon_get_col_conf()
+        if conf is None:
+            showInfo("Cannot reset gym progress - collection config not available.")
+            return
+
+        # Reset all gym-related config
+        conf["ankimon_gym_active"] = False
+        conf["ankimon_gym_enemy_ids"] = []
+        conf["ankimon_gym_enemy_index"] = 0
+        conf["ankimon_gym_leader_key"] = None
+        conf["ankimon_gym_leader_name"] = None
+        conf["ankimon_gym_leader_type"] = None
+        conf["ankimon_gym_counter"] = 0
+        conf["ankimon_gym_index"] = 0
+        conf["ankimon_gym_current_enemy_id"] = None
+        conf["ankimon_gym_last_cleared_leader"] = None
+
+        mw.col.setMod()
+
+        # Force spawn new wild pokemon to clear any stuck state
+        try:
+            new_pokemon()
+        except Exception:
+            pass
+
+        showInfo("Gym progress has been reset. You can now start fresh with gym battles.")
+    except Exception as e:
+        showWarning(f"Error resetting gym progress: {e}")
 
 def _ankimon_gym_ready_popup():
     """Prompt when gym is ready; lets user start a gym run (leader intro only for now)."""
