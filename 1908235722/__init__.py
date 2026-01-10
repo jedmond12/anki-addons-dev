@@ -7911,8 +7911,16 @@ def _ankimon_gym_ready_popup():
             conf["ankimon_gym_leader_name"] = leader["name"]
             conf["ankimon_gym_leader_type"] = leader["type"]
             conf["ankimon_gym_index"] = idx
+            # Set gym enemy team and reset index to start from first pokemon
+            conf["ankimon_gym_enemy_ids"] = leader.get("team", [])
+            conf["ankimon_gym_enemy_index"] = 0
             mw.col.setMod()
             dlg.accept()
+            # End current wild pokemon battle and spawn first gym pokemon
+            try:
+                new_pokemon()
+            except Exception:
+                pass
 
         def _later():
             dlg.reject()
