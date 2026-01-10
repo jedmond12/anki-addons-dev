@@ -2410,14 +2410,22 @@ def on_review_card(*args):
                                                 pass
                                             return
                                         else:
+                                            # Gym battle complete! Increment gym index for next gym leader
+                                            current_gym_idx = int(conf.get("ankimon_gym_index", 0))
+                                            conf["ankimon_gym_index"] = current_gym_idx + 1
                                             conf["ankimon_gym_active"] = False
                                             conf["ankimon_gym_enemy_ids"] = []
                                             conf["ankimon_gym_enemy_index"] = 0
                                             conf["ankimon_gym_current_enemy_id"] = int(enemy_ids[0]) if enemy_ids else None
                                             conf["ankimon_gym_last_cleared_leader"] = conf.get("ankimon_gym_leader_key")
                                             conf["ankimon_gym_leader_key"] = None
+                                            # Reset card counter for next gym
+                                            conf["ankimon_gym_counter"] = 0
+                                            mw.col.setMod()
                                             try:
-                                                showInfo("Gym battle complete! (Badge tracking coming next.)")
+                                                # Show which gym was completed (1-8)
+                                                gym_number = (current_gym_idx % 8) + 1
+                                                showInfo(f"Gym {gym_number} battle complete! Collect 100 more cards for the next gym.")
                                             except Exception:
                                                 pass
                                             try:
@@ -7727,12 +7735,18 @@ import json
 ANKIMON_GYM_TARGET = 100
 
 def _ankimon_gym_state():
-    if not hasattr(mw, "_ankimon_gym_counter"):
-        mw._ankimon_gym_counter = 0
-    return mw._ankimon_gym_counter
+    """Get the current gym card counter from persistent storage."""
+    conf = _ankimon_get_col_conf()
+    if conf is None:
+        return 0
+    return int(conf.get("ankimon_gym_counter", 0))
 
 def _ankimon_set_gym_state(val: int):
-    mw._ankimon_gym_counter = int(val)
+    """Set the gym card counter in persistent storage."""
+    conf = _ankimon_get_col_conf()
+    if conf is not None:
+        conf["ankimon_gym_counter"] = int(val)
+        mw.col.setMod()
 
 def _ankimon_gym_overlay_html(count: int) -> str:
     pct = int((count / ANKIMON_GYM_TARGET) * 100)
@@ -7831,7 +7845,7 @@ def _ankimon_show_gym_leader_dialog(leader: dict):
             conf["ankimon_gym_enemy_ids"] = leader.get("team", [])
             conf["ankimon_gym_enemy_index"] = 0
             conf["ankimon_gym_leader_key"] = leader.get("key")
-            conf["ankimon_gym_counter"] = 0
+            # Note: counter already reset when reaching 100, no need to reset again
             dlg.accept()
             try:
                 open_test_window()
