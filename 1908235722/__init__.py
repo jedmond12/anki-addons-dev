@@ -1088,13 +1088,37 @@ if database_complete != False:
     def generate_random_pokemon(_recursion_depth=0):
         # Prevent infinite recursion - max 5 retries
         if _recursion_depth >= 5:
-            # Too many retries, force a basic fallback pokemon
-            try:
-                tooltipWithColour("⚠️ Pokemon generation failed, using fallback", "#FF0000")
-            except:
-                pass
-            # Return a basic Pikachu as fallback
-            return "pikachu", 25, 5, "static", ["Electric"], {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}, [], 112, "medium-fast", 35, 35, {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}, {"hp": 20, "atk": 20, "def": 20, "spa": 20, "spd": 20, "spe": 20}, "unknown", "fighting", {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}
+            # Too many retries - check if this is a gym battle
+            is_gym = _ankimon_is_gym_active()
+
+            if is_gym:
+                # CRITICAL: Never use fallback pokemon in gym battles!
+                # Reset gym state and show error
+                try:
+                    conf = _ankimon_get_col_conf()
+                    if conf:
+                        leader_name = conf.get("ankimon_gym_leader_name", "Gym Leader")
+                        conf["ankimon_gym_active"] = False
+                        conf["ankimon_gym_pending"] = False
+                        conf["ankimon_gym_enemy_ids"] = []
+                        conf["ankimon_gym_enemy_index"] = 0
+                        mw.col.setMod()
+
+                        error_msg = f"Failed to generate gym pokemon for {leader_name}.\nGym battle has been reset.\nPlease try again or use Reset Battle from menu."
+                        showWarning(error_msg)
+                except:
+                    pass
+
+                # Return a basic fallback to prevent crash, but gym is now reset
+                tooltipWithColour("⚠️ Gym battle reset due to pokemon generation error", "#FF0000")
+                return "pikachu", 25, 5, "static", ["Electric"], {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}, [], 112, "medium-fast", 35, 35, {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}, {"hp": 20, "atk": 20, "def": 20, "spa": 20, "spd": 20, "spe": 20}, "unknown", "fighting", {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}
+            else:
+                # Wild pokemon - fallback to Pikachu is OK
+                try:
+                    tooltipWithColour("⚠️ Pokemon generation failed, using fallback", "#FF0000")
+                except:
+                    pass
+                return "pikachu", 25, 5, "static", ["Electric"], {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}, [], 112, "medium-fast", 35, 35, {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}, {"hp": 20, "atk": 20, "def": 20, "spa": 20, "spd": 20, "spe": 20}, "unknown", "fighting", {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}
 
         # Fetch random Pokémon data from Generation
         # Load the JSON file with Pokémon data
@@ -1239,9 +1263,10 @@ def kill_pokemon():
     if _ankimon_is_gym_active():
         return
     global level, hp, name, image_url, mainpokemon_xp, mainpokemon_base_experience, mainpokemon_name, mainpokemon_level, mainpokemon_path, mainpokemon_growth_rate, mainpokemon_hp, ev_yield
-    global pkmn_window
+    global pkmn_window, base_experience
     name = name.capitalize()
-    exp = int(calc_experience(mainpokemon_base_experience, level))
+    # CRITICAL FIX: Use defeated pokemon's base_experience, not main pokemon's
+    exp = int(calc_experience(base_experience, level))
     mainpokemon_level = save_main_pokemon_progress(mainpokemon_path, mainpokemon_level, mainpokemon_name, mainpokemon_base_experience, mainpokemon_growth_rate, exp)
 
     # Check if gym battle is pending and start it now
