@@ -1999,23 +1999,23 @@ def spawn_next_gym_pokemon():
             tooltipWithColour("Config not available", "#FF0000")
             return
 
-        # Increment gym pokemon index
+        # Get current gym state
         enemy_ids = conf.get("ankimon_gym_enemy_ids") or []
-        idx = int(conf.get("ankimon_gym_enemy_index") or 0)
-        idx += 1
+        current_idx = int(conf.get("ankimon_gym_enemy_index") or 0)
+        next_idx = current_idx + 1
 
-        if idx < len(enemy_ids):
-            # Set next pokemon index
-            conf["ankimon_gym_enemy_index"] = idx
-            mw.col.setMod()
-
-            # Show tooltip
+        if next_idx < len(enemy_ids):
+            # Show tooltip BEFORE incrementing index
             try:
-                tooltipWithColour(f"Leader sends out next Pokémon! ({idx+1}/{len(enemy_ids)})", "#00FF00")
+                tooltipWithColour(f"Leader sends out next Pokémon! ({next_idx+1}/{len(enemy_ids)})", "#00FF00")
             except:
                 pass
 
-            # Spawn next pokemon
+            # Increment index BEFORE spawning (needed for generate_random_pokemon to use correct ID)
+            conf["ankimon_gym_enemy_index"] = next_idx
+            mw.col.setMod()
+
+            # Try to spawn next pokemon
             try:
                 new_pokemon()
                 # Force window update with small delay to ensure refresh
@@ -2035,10 +2035,20 @@ def spawn_next_gym_pokemon():
                     _update_window()
                     QTimer.singleShot(100, _update_window)
             except Exception as e:
+                # CRITICAL: If spawning fails, rollback the index to prevent state corruption
+                conf["ankimon_gym_enemy_index"] = current_idx
+                mw.col.setMod()
+
                 error_msg = f"Error spawning next gym pokemon: {str(e)}"
                 tooltipWithColour(error_msg, "#FF0000")
                 import traceback
                 traceback.print_exc()
+
+                # Show user-friendly message
+                try:
+                    showWarning(f"Failed to spawn next gym pokemon.\nUse Reset Battle from Ankimon menu to fix.\n\nError: {str(e)[:100]}")
+                except:
+                    pass
         else:
             # All pokemon defeated - complete the gym
             complete_gym_battle()
