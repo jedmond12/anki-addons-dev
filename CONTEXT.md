@@ -344,3 +344,99 @@ def display_pokemon_death(self):
   - Lines 1216-1218 (kill_pokemon safeguard)
   - Lines 1837-1844 (catch_pokemon safeguard)
   - Lines 6081-6083 (display_pokemon_death safeguard)
+
+---
+
+## Update 5: Fix Ankimon Window Not Updating During Gym Battles
+
+**Problem**: During gym battles, the Ankimon window was not updating when gym pokemon were defeated. HP would decrease in the Anki reviewer, pokemon would faint, but the Ankimon window would not refresh to show the next gym pokemon until manually closed and reopened.
+
+### Root Cause Analysis
+
+The issue occurred because:
+1. When a gym pokemon was defeated, `new_pokemon()` was called to spawn the next one
+2. `new_pokemon()` called `test_window.display_first_encounter()` to update the window
+3. But the window was not being forced to refresh/repaint/show itself
+4. The window state was stale until user manually closed and reopened it
+
+### Changes Made
+
+#### 1. Force Ankimon window refresh during gym battles (Lines 1918-1925)
+Added code to force the window to show, raise to front, and activate after spawning next gym pokemon:
+
+```python
+if test_window is not None:
+    test_window.display_first_encounter()
+    # Force window to show and update during gym battles
+    if _ankimon_is_gym_active() and pkmn_window is True:
+        try:
+            test_window.show()
+            test_window.raise_()
+            test_window.activateWindow()
+        except Exception:
+            pass
+```
+
+**What this does:**
+- `show()` - Makes window visible
+- `raise_()` - Brings window to front
+- `activateWindow()` - Gives window focus
+
+#### 2. Better error reporting for gym pokemon spawning (Lines 2419-2423)
+Changed exception handling to show actual error messages:
+
+```python
+except Exception as e:
+    try:
+        showWarning(f"Error spawning next gym pokemon: {e}")
+    except:
+        pass
+```
+
+#### 3. Added visual feedback for gym pokemon transitions (Lines 2411-2416)
+Replaced generic `showInfo()` with colored tooltip showing pokemon fainted + next pokemon info:
+
+```python
+# Show fainted message with next pokemon info
+try:
+    fainted_msg = f"{name.capitalize()} has fainted! Leader sends out next Pokémon! ({idx+1}/{len(enemy_ids)})"
+    tooltipWithColour(fainted_msg, "#00FF00")
+except Exception:
+    pass
+```
+
+#### 4. Save config immediately when advancing to next gym pokemon (Line 2410)
+Added `mw.col.setMod()` right after incrementing gym index to ensure progress is saved:
+
+```python
+conf["ankimon_gym_enemy_index"] = idx
+mw.col.setMod()  # Save immediately
+```
+
+### How It Works Now
+
+**Gym Pokemon Transition Flow:**
+1. Player reviews card → Deals damage to gym pokemon
+2. Gym pokemon HP reaches 0 → Pokemon faints
+3. Gym index increments to next pokemon
+4. **NEW:** Config saved immediately
+5. **NEW:** Green tooltip shows: "Geodude has fainted! Leader sends out next Pokémon! (2/3)"
+6. `new_pokemon()` spawns next gym pokemon
+7. **NEW:** Ankimon window automatically refreshes and shows new pokemon
+8. **NEW:** Window brought to front and activated
+9. Battle continues with next gym pokemon
+
+**User Experience:**
+- ✅ Ankimon window auto-updates when gym pokemon defeated
+- ✅ See pokemon transition happen in real-time
+- ✅ No need to manually close/reopen window
+- ✅ Clear visual feedback with colored tooltips
+- ✅ Window stays visible and focused
+- ✅ Progress saved immediately
+
+**Files Modified:**
+- `/home/user/anki-addons-dev/1908235722/__init__.py`:
+  - Lines 1918-1925 (force window refresh during gym battles)
+  - Lines 2410 (save config immediately)
+  - Lines 2411-2416 (colored tooltip for transitions)
+  - Lines 2419-2423 (better error reporting)
