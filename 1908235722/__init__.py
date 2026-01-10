@@ -1097,21 +1097,32 @@ if database_complete != False:
         pokemon_encounter = 0
         pokemon_species = None
         #generation_file = ("pokeapi_db.json")
+        # Initialize id with a default value to prevent UnboundLocalError
+        id = None
         try:
             # If a gym battle is active, lock the opponent to the current gym team.
             if _ankimon_is_gym_active():
                 _ids = _ankimon_get_gym_enemy_ids()
                 _idx = _ankimon_get_gym_enemy_index()
-                if _ids:
+                if _ids and len(_ids) > 0:
                     if _idx < 0:
                         _idx = 0
                     if _idx >= len(_ids):
                         _idx = len(_ids) - 1
-                    id = int(_ids[_idx])
-                    pokemon_species = None
+                    try:
+                        id = int(_ids[_idx])
+                        pokemon_species = None
+                    except (ValueError, IndexError, TypeError):
+                        # If gym pokemon ID is invalid, fall back to random
+                        id, pokemon_species = choose_random_pkmn_from_tier()
                 else:
+                    # Gym is active but no IDs - this shouldn't happen, fall back to random
                     id, pokemon_species = choose_random_pkmn_from_tier()
             else:
+                id, pokemon_species = choose_random_pkmn_from_tier()
+
+            # Safety check: if id is still None, use fallback
+            if id is None:
                 id, pokemon_species = choose_random_pkmn_from_tier()
             #test_ids = [417]
             #id = random.choice(test_ids)
@@ -2405,11 +2416,29 @@ def on_review_card(*args):
                                     if conf:
                                         enemy_ids = conf.get("ankimon_gym_enemy_ids") or []
                                         idx = int(conf.get("ankimon_gym_enemy_index") or 0)
+
+                                        # Validate gym state before proceeding
+                                        if not enemy_ids or len(enemy_ids) == 0:
+                                            # Gym has no pokemon - this shouldn't happen, reset gym
+                                            try:
+                                                tooltipWithColour("Gym state corrupted - resetting", "#FF0000")
+                                            except:
+                                                pass
+                                            conf["ankimon_gym_active"] = False
+                                            conf["ankimon_gym_enemy_ids"] = []
+                                            conf["ankimon_gym_enemy_index"] = 0
+                                            mw.col.setMod()
+                                            try:
+                                                new_pokemon()
+                                            except:
+                                                pass
+                                            return
+
                                         idx += 1
                                         if idx < len(enemy_ids):
                                             conf["ankimon_gym_enemy_index"] = idx
-                                            # Don't call setMod() here - causes recursion issues
-                                            # Config will be saved at end of review
+                                            # Save config immediately to prevent state loss
+                                            mw.col.setMod()
                                             # Show fainted message with next pokemon info
                                             try:
                                                 fainted_msg = f"{name.capitalize()} has fainted! Leader sends out next Pokémon! ({idx+1}/{len(enemy_ids)})"
@@ -2420,22 +2449,33 @@ def on_review_card(*args):
                                                 new_pokemon()
                                             except Exception as e:
                                                 try:
-                                                    showWarning(f"Error spawning next gym pokemon: {e}")
+                                                    error_msg = f"Error spawning next gym pokemon (index {idx}/{len(enemy_ids)}): {str(e)}"
+                                                    tooltipWithColour(error_msg, "#FF0000", period=5000)
+                                                    import traceback
+                                                    traceback.print_exc()
                                                 except:
                                                     pass
                                             return
                                         else:
                                             # Gym battle complete! Increment gym index for next gym leader
                                             current_gym_idx = int(conf.get("ankimon_gym_index", 0))
-                                            conf["ankimon_gym_index"] = current_gym_idx + 1
+                                            gym_number = (current_gym_idx % 8) + 1
+
+                                            # Clear gym state FIRST before anything else
                                             conf["ankimon_gym_active"] = False
                                             conf["ankimon_gym_enemy_ids"] = []
                                             conf["ankimon_gym_enemy_index"] = 0
-                                            conf["ankimon_gym_current_enemy_id"] = int(enemy_ids[0]) if enemy_ids else None
+                                            conf["ankimon_gym_current_enemy_id"] = None
                                             conf["ankimon_gym_last_cleared_leader"] = conf.get("ankimon_gym_leader_key")
                                             conf["ankimon_gym_leader_key"] = None
+
+                                            # Increment gym index for next gym
+                                            conf["ankimon_gym_index"] = current_gym_idx + 1
+
                                             # Reset card counter for next gym
                                             conf["ankimon_gym_counter"] = 0
+
+                                            # Save config immediately
                                             mw.col.setMod()
 
                                             # Award gym badge (badges 25-32 for gyms 0-7)
@@ -2449,22 +2489,45 @@ def on_review_card(*args):
                                             except Exception:
                                                 pass
 
+                                            # Show completion message (use tooltip instead of showInfo to prevent freezing)
                                             try:
-                                                # Show which gym was completed (1-8)
-                                                gym_number = (current_gym_idx % 8) + 1
-                                                showInfo(f"Gym {gym_number} battle complete! Collect 100 more cards for the next gym.")
+                                                completion_msg = f"🏆 Gym {gym_number} battle complete! Collect 100 more cards for the next gym."
+                                                tooltipWithColour(completion_msg, "#FFD700", period=5000)
                                             except Exception:
                                                 pass
+
+                                            # Spawn new wild pokemon and force window update
                                             try:
                                                 new_pokemon()
-                                            except Exception:
-                                                pass
+                                                # Force window to update and clear fainted pokemon
+                                                if test_window is not None and pkmn_window is True:
+                                                    try:
+                                                        test_window.display_first_encounter()
+                                                        test_window.show()
+                                                        test_window.raise_()
+                                                        test_window.activateWindow()
+                                                    except Exception as win_err:
+                                                        try:
+                                                            tooltipWithColour(f"Window update error: {str(win_err)}", "#FF0000")
+                                                        except:
+                                                            pass
+                                            except Exception as e:
+                                                try:
+                                                    error_msg = f"Error spawning pokemon after gym completion: {str(e)}"
+                                                    tooltipWithColour(error_msg, "#FF0000", period=5000)
+                                                    import traceback
+                                                    traceback.print_exc()
+                                                except:
+                                                    pass
                                             return
                             except Exception as e:
                                 # If gym battle error occurs, still don't show catch/defeat dialog
                                 if _ankimon_is_gym_active():
                                     try:
-                                        showWarning(f"Gym battle error: {e}")
+                                        error_msg = f"Gym battle error: {str(e)}"
+                                        tooltipWithColour(error_msg, "#FF0000", period=5000)
+                                        import traceback
+                                        traceback.print_exc()
                                     except:
                                         pass
                                     return
