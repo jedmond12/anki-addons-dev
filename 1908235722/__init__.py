@@ -1233,6 +1233,26 @@ def kill_pokemon():
     name = name.capitalize()
     exp = int(calc_experience(mainpokemon_base_experience, level))
     mainpokemon_level = save_main_pokemon_progress(mainpokemon_path, mainpokemon_level, mainpokemon_name, mainpokemon_base_experience, mainpokemon_growth_rate, exp)
+
+    # Check if gym battle is pending and start it now
+    try:
+        conf = _ankimon_get_col_conf()
+        if conf and conf.get("ankimon_gym_pending"):
+            # Start the gym battle now that wild pokemon is defeated
+            conf["ankimon_gym_active"] = True
+            conf["ankimon_gym_pending"] = False
+            conf["ankimon_gym_enemy_index"] = 0
+            mw.col.setMod()
+            try:
+                tooltipWithColour("🏟 Gym Battle Starting!", "#FFD700", period=3000)
+            except:
+                pass
+            if pkmn_window is True:
+                new_pokemon()  # Spawn first gym pokemon
+            return
+    except Exception:
+        pass
+
     if pkmn_window is True:
         new_pokemon()  # Show a new random Pokémon
 
@@ -1874,6 +1894,25 @@ def catch_pokemon(nickname):
             tooltipWithColour(msg, color)
         except:
             pass
+
+        # Check if gym battle is pending and start it now
+        try:
+            conf = _ankimon_get_col_conf()
+            if conf and conf.get("ankimon_gym_pending"):
+                # Start the gym battle now that wild pokemon is caught
+                conf["ankimon_gym_active"] = True
+                conf["ankimon_gym_pending"] = False
+                conf["ankimon_gym_enemy_index"] = 0
+                mw.col.setMod()
+                try:
+                    tooltipWithColour("🏟 Gym Battle Starting!", "#FFD700", period=3000)
+                except:
+                    pass
+                new_pokemon()  # Spawn first gym pokemon
+                return
+        except Exception:
+            pass
+
         new_pokemon()  # Show a new random Pokémon
     else:
         if pop_up_dialog_message_on_defeat is True:
@@ -1969,12 +2008,22 @@ def spawn_next_gym_pokemon():
             # Spawn next pokemon
             try:
                 new_pokemon()
-                # Force window update
+                # Force window update with small delay to ensure refresh
                 if test_window is not None and pkmn_window is True:
-                    test_window.display_first_encounter()
-                    test_window.show()
-                    test_window.raise_()
-                    test_window.activateWindow()
+                    from aqt.qt import QTimer
+                    def _update_window():
+                        try:
+                            test_window.display_first_encounter()
+                            test_window.show()
+                            test_window.raise_()
+                            test_window.activateWindow()
+                            test_window.update()  # Force Qt to redraw
+                            test_window.repaint()  # Force immediate repaint
+                        except Exception as e:
+                            tooltipWithColour(f"Window update error: {str(e)}", "#FF0000")
+                    # Call immediately and again after short delay to ensure update
+                    _update_window()
+                    QTimer.singleShot(100, _update_window)
             except Exception as e:
                 error_msg = f"Error spawning next gym pokemon: {str(e)}"
                 tooltipWithColour(error_msg, "#FF0000", period=5000)
@@ -2041,12 +2090,22 @@ def complete_gym_battle():
         # Spawn new wild pokemon
         try:
             new_pokemon()
-            # Force window update
+            # Force window update with small delay to ensure refresh
             if test_window is not None and pkmn_window is True:
-                test_window.display_first_encounter()
-                test_window.show()
-                test_window.raise_()
-                test_window.activateWindow()
+                from aqt.qt import QTimer
+                def _update_window():
+                    try:
+                        test_window.display_first_encounter()
+                        test_window.show()
+                        test_window.raise_()
+                        test_window.activateWindow()
+                        test_window.update()  # Force Qt to redraw
+                        test_window.repaint()  # Force immediate repaint
+                    except Exception as e:
+                        tooltipWithColour(f"Window update error: {str(e)}", "#FF0000")
+                # Call immediately and again after short delay to ensure update
+                _update_window()
+                QTimer.singleShot(100, _update_window)
         except Exception as e:
             error_msg = f"Error spawning pokemon after gym: {str(e)}"
             tooltipWithColour(error_msg, "#FF0000", period=5000)
@@ -7901,6 +7960,13 @@ if database_complete != False:
     mw.pokemenu.addAction(test_action10)
     qconnect(test_action10.triggered, test_window.open_dynamic_window)
 
+    # Add Reset Battle option
+    reset_battle_action = QAction("🔄 Reset Battle", mw)
+    qconnect(reset_battle_action.triggered, reset_battle)
+    mw.pokemenu.addAction(reset_battle_action)
+
+    mw.pokemenu.addSeparator()
+
     test_action15 = QAction("Itembag", mw)
     test_action15.triggered.connect(item_window.show_window)
     mw.pokemenu.addAction(test_action15)
@@ -8130,6 +8196,7 @@ def reset_gym_progress():
 
         # Reset all gym-related config
         conf["ankimon_gym_active"] = False
+        conf["ankimon_gym_pending"] = False
         conf["ankimon_gym_enemy_ids"] = []
         conf["ankimon_gym_enemy_index"] = 0
         conf["ankimon_gym_leader_key"] = None
@@ -8151,6 +8218,65 @@ def reset_gym_progress():
         showInfo("Gym progress has been reset. You can now start fresh with gym battles.")
     except Exception as e:
         showWarning(f"Error resetting gym progress: {e}")
+
+def reset_battle():
+    """Reset current battle and spawn a new wild pokemon. Fixes fainted pokemon display issues."""
+    try:
+        global test_window, pkmn_window, hp
+
+        conf = _ankimon_get_col_conf()
+        if conf is None:
+            showInfo("Cannot reset battle - collection config not available.")
+            return
+
+        # Check if gym battle is active
+        is_gym_active = conf.get("ankimon_gym_active", False)
+        is_gym_pending = conf.get("ankimon_gym_pending", False)
+
+        if is_gym_active or is_gym_pending:
+            # Ask user if they want to reset gym battle
+            reply = QMessageBox.question(
+                mw,
+                "Reset Gym Battle?",
+                "You are currently in a gym battle. Resetting will end the gym battle.\n\nDo you want to continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+
+            if reply == QMessageBox.StandardButton.No:
+                return
+
+            # Reset gym state
+            conf["ankimon_gym_active"] = False
+            conf["ankimon_gym_pending"] = False
+            conf["ankimon_gym_enemy_ids"] = []
+            conf["ankimon_gym_enemy_index"] = 0
+            conf["ankimon_gym_current_enemy_id"] = None
+            mw.col.setMod()
+
+        # Reset HP to ensure we're not in fainted state
+        hp = 1
+
+        # Spawn new wild pokemon
+        try:
+            new_pokemon()
+            # Force window update
+            if test_window is not None and pkmn_window is True:
+                test_window.display_first_encounter()
+                test_window.show()
+                test_window.raise_()
+                test_window.activateWindow()
+        except Exception as e:
+            showWarning(f"Error spawning new pokemon: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+
+        showInfo("Battle has been reset. A new wild pokemon has appeared!")
+    except Exception as e:
+        showWarning(f"Error resetting battle: {e}")
+        import traceback
+        traceback.print_exc()
 
 def _ankimon_gym_ready_popup():
     """Prompt when gym is ready; lets user start a gym run (leader intro only for now)."""
@@ -8209,20 +8335,19 @@ def _ankimon_gym_ready_popup():
         outer.addLayout(btn_row)
 
         def _start():
-            # mark gym active + leader metadata (used by renderer overlay)
-            conf["ankimon_gym_active"] = True
+            # Set pending gym battle flag instead of starting immediately
+            conf["ankimon_gym_pending"] = True
             conf["ankimon_gym_leader_key"] = leader["key"]
             conf["ankimon_gym_leader_name"] = leader["name"]
             conf["ankimon_gym_leader_type"] = leader["type"]
             conf["ankimon_gym_index"] = idx
-            # Set gym enemy team and reset index to start from first pokemon
+            # Set gym enemy team for when battle actually starts
             conf["ankimon_gym_enemy_ids"] = leader.get("team", [])
-            conf["ankimon_gym_enemy_index"] = 0
             mw.col.setMod()
             dlg.accept()
-            # End current wild pokemon battle and spawn first gym pokemon
+            # Show message that gym will start after current match
             try:
-                new_pokemon()
+                tooltipWithColour("⏳ Gym battle will begin after current match", "#FFD700", period=4000)
             except Exception:
                 pass
 
@@ -8265,6 +8390,86 @@ def _ankimon_gym_on_answer(*args):
 def _ankimon_gym_on_question(*args):
     _ankimon_render_gym_overlay(mw.reviewer)
 
+def _ankimon_check_incomplete_gym():
+    """Check for incomplete gym battles on startup and prompt user to continue"""
+    try:
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            return
+
+        # Check if there's an active or pending gym battle
+        gym_active = conf.get("ankimon_gym_active", False)
+        gym_pending = conf.get("ankimon_gym_pending", False)
+
+        if gym_active or gym_pending:
+            leader_name = conf.get("ankimon_gym_leader_name", "Gym Leader")
+            enemy_ids = conf.get("ankimon_gym_enemy_ids") or []
+            current_idx = int(conf.get("ankimon_gym_enemy_index") or 0)
+
+            if not enemy_ids:
+                # Corrupted state, reset
+                conf["ankimon_gym_active"] = False
+                conf["ankimon_gym_pending"] = False
+                mw.col.setMod()
+                return
+
+            remaining = len(enemy_ids) - current_idx
+            if remaining <= 0:
+                # Gym was completed but state not cleared, reset
+                conf["ankimon_gym_active"] = False
+                conf["ankimon_gym_pending"] = False
+                mw.col.setMod()
+                return
+
+            # Ask user if they want to continue the gym battle
+            msg = f"You have an incomplete gym battle against {leader_name}.\n"
+            msg += f"{remaining} Pokémon remaining.\n\n"
+            msg += "Would you like to continue the gym battle?"
+
+            reply = QMessageBox.question(
+                mw,
+                "Continue Gym Battle?",
+                msg,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+            )
+
+            if reply == QMessageBox.StandardButton.Yes:
+                # Continue the gym battle
+                if gym_pending:
+                    # Was pending, activate it now
+                    conf["ankimon_gym_active"] = True
+                    conf["ankimon_gym_pending"] = False
+                    mw.col.setMod()
+                    try:
+                        tooltipWithColour("🏟 Continuing Gym Battle!", "#FFD700", period=3000)
+                    except:
+                        pass
+                else:
+                    # Already active, just show message
+                    try:
+                        tooltipWithColour(f"🏟 Gym Battle vs {leader_name} - {remaining} Pokémon left", "#FFD700", period=3000)
+                    except:
+                        pass
+            else:
+                # User chose not to continue, reset gym state
+                conf["ankimon_gym_active"] = False
+                conf["ankimon_gym_pending"] = False
+                conf["ankimon_gym_enemy_ids"] = []
+                conf["ankimon_gym_enemy_index"] = 0
+                conf["ankimon_gym_current_enemy_id"] = None
+                conf["ankimon_gym_leader_key"] = None
+                conf["ankimon_gym_leader_name"] = None
+                mw.col.setMod()
+                try:
+                    tooltipWithColour("Gym battle cancelled", "#FF0000", period=2000)
+                except:
+                    pass
+    except Exception as e:
+        # Silently fail if something goes wrong
+        import traceback
+        traceback.print_exc()
+
 def _ankimon_scrub_hook(hook):
     try:
         internal = getattr(hook, "_hooks", None)
@@ -8289,6 +8494,17 @@ except Exception:
 
 try:
     gui_hooks.reviewer_did_show_question.append(_ankimon_gym_on_question)
+except Exception:
+    pass
+
+# Check for incomplete gym battles on startup
+try:
+    from aqt import gui_hooks
+    def _delayed_gym_check():
+        # Use QTimer to delay check until UI is fully loaded
+        from aqt.qt import QTimer
+        QTimer.singleShot(1000, _ankimon_check_incomplete_gym)
+    gui_hooks.profile_did_open.append(_delayed_gym_check)
 except Exception:
     pass
 
