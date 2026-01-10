@@ -2422,6 +2422,18 @@ def on_review_card(*args):
                                             # Reset card counter for next gym
                                             conf["ankimon_gym_counter"] = 0
                                             mw.col.setMod()
+
+                                            # Award gym badge (badges 25-32 for gyms 0-7)
+                                            badge_num = 25 + (current_gym_idx % 8)
+                                            try:
+                                                check = check_for_badge(achievements, badge_num)
+                                                if not check:
+                                                    receive_badge(badge_num, achievements)
+                                                    if test_window is not None:
+                                                        test_window.display_badge(badge_num)
+                                            except Exception:
+                                                pass
+
                                             try:
                                                 # Show which gym was completed (1-8)
                                                 gym_number = (current_gym_idx % 8) + 1

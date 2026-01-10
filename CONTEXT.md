@@ -162,3 +162,71 @@ mw.col.setMod()
   - Lines 7729-7741 (persistent counter functions)
   - Lines 2413-2428 (gym completion with index increment)
   - Line 7848 (removed redundant counter reset)
+
+---
+
+## Update 3: Gym Badge Awarding System
+
+**Goal**: Award corresponding badge at the end of each gym battle and save under achievements. Badge images are located at `/1908235722/user_files/sprites/badges/` with files 25-32 representing gym badges in order.
+
+### Changes Made
+
+#### 1. Updated badge descriptions (addon_files/badges.json)
+Added proper descriptions for gym leader badges:
+- Badge 25: "Defeated Roark - Coal Badge"
+- Badge 26: "Defeated Gardenia - Forest Badge"
+- Badge 27: "Defeated Maylene - Cobble Badge"
+- Badge 28: "Defeated Crasher Wake - Fen Badge"
+- Badge 29: "Defeated Fantina - Relic Badge"
+- Badge 30: "Defeated Byron - Mine Badge"
+- Badge 31: "Defeated Candice - Icicle Badge"
+- Badge 32: "Defeated Volkner - Beacon Badge"
+
+#### 2. Implemented badge awarding on gym completion (Lines 2426-2435)
+**Logic flow:**
+1. After defeating all gym pokemon, calculate badge number: `badge_num = 25 + (current_gym_idx % 8)`
+2. Check if player already has this badge
+3. If not, award badge and save to `user_files/badges.json`
+4. Display badge award dialog with badge image and description
+5. Badge is then visible in achievements window
+
+```python
+# Award gym badge (badges 25-32 for gyms 0-7)
+badge_num = 25 + (current_gym_idx % 8)
+try:
+    check = check_for_badge(achievements, badge_num)
+    if not check:
+        receive_badge(badge_num, achievements)
+        if test_window is not None:
+            test_window.display_badge(badge_num)
+except Exception:
+    pass
+```
+
+### How It Works
+
+**Badge Award Sequence:**
+1. Player defeats final gym pokemon
+2. Gym completion logic executes
+3. **NEW:** Badge number calculated based on gym index
+4. **NEW:** Badge dialog displays with badge image (from badges/25-32.png)
+5. **NEW:** Badge saved to user's achievement collection
+6. Completion message shows: "Gym X battle complete! Collect 100 more cards for the next gym."
+7. Returns to wild pokemon encounters
+
+**Badge Persistence:**
+- Badges saved to `user_files/badges.json`
+- Viewable in achievements/badge window
+- Each gym badge only awarded once (checked before awarding)
+- Badge images displayed from `user_files/sprites/badges/25-32.png`
+
+**User Experience:**
+- Complete Gym 1 (Roark) → Receive Coal Badge (badge 25)
+- Complete Gym 2 (Gardenia) → Receive Forest Badge (badge 26)
+- ... and so on through all 8 gyms
+- Badges displayed with proper names and descriptions
+- Collection progress tracked across sessions
+
+**Files Modified:**
+- `/home/user/anki-addons-dev/1908235722/__init__.py` - Lines 2426-2435 (badge awarding logic)
+- `/home/user/anki-addons-dev/1908235722/addon_files/badges.json` - Updated badge descriptions for badges 25-32
