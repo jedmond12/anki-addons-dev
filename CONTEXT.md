@@ -230,3 +230,117 @@ except Exception:
 **Files Modified:**
 - `/home/user/anki-addons-dev/1908235722/__init__.py` - Lines 2426-2435 (badge awarding logic)
 - `/home/user/anki-addons-dev/1908235722/addon_files/badges.json` - Updated badge descriptions for badges 25-32
+
+---
+
+## Update 4: Fix Gym Battle Recursion Error and Freeze
+
+**Problem**: During gym battles, Anki was freezing and throwing "maximum recursion depth exceeded" errors. The catch/defeat pokemon dialog was appearing during gym battles, causing infinite loops when clicked.
+
+### Root Cause Analysis
+
+The issue occurred because:
+1. When a gym pokemon was defeated, the gym battle logic would advance to the next pokemon
+2. But if an exception occurred, the code would fall through to normal pokemon defeat handling
+3. The catch/defeat dialog would appear (which shouldn't happen in gym battles)
+4. Clicking "Defeat Pokemon" would call `kill_pokemon()` which calls `new_pokemon()`
+5. This spawned another gym pokemon, creating a loop
+6. The loop caused recursive JSON encoding/decoding, hitting Python's recursion limit
+
+### Changes Made
+
+#### 1. Prevented fallthrough to normal pokemon handling during gym battles (Lines 2448-2456)
+**Before**: If exception occurred in gym battle logic, code continued to show catch/defeat dialog
+**After**: If gym battle and exception occurs, return immediately to prevent fallthrough
+
+```python
+except Exception as e:
+    # If gym battle error occurs, still don't show catch/defeat dialog
+    if _ankimon_is_gym_active():
+        try:
+            showWarning(f"Gym battle error: {e}")
+        except:
+            pass
+        return
+    pass
+```
+
+#### 2. Disabled catch/defeat dialog during gym battles (Lines 2471-2491)
+Added guards to prevent catch/defeat UI from showing during gym battles:
+```python
+# Skip catch/defeat dialog during gym battles
+if not _ankimon_is_gym_active():
+    if pkmn_window is True:
+        test_window.display_pokemon_death()
+    # ... rest of normal pokemon death handling
+```
+
+#### 3. Added safeguard to kill_pokemon() (Lines 1216-1218)
+Prevents function from executing during gym battles:
+```python
+def kill_pokemon():
+    # Prevent this function from running during gym battles
+    if _ankimon_is_gym_active():
+        return
+    # ... rest of function
+```
+
+#### 4. Updated catch_pokemon() safeguard (Lines 1837-1844)
+**Before**: Showed warning and called `kill_pokemon()` (which would now do nothing)
+**After**: Just shows warning and returns
+
+```python
+def catch_pokemon(nickname):
+    # --- Gym battles: you cannot catch leader Pokémon; prevent this action ---
+    try:
+        if _ankimon_is_gym_active():
+            try:
+                showInfo("Gym battle: you can't catch a leader's Pokémon. The battle will continue automatically.")
+            except:
+                pass
+            return
+    except Exception:
+        pass
+```
+
+#### 5. Added safeguard to display_pokemon_death() (Lines 6081-6083)
+Prevents catch/defeat UI from showing during gym battles:
+```python
+def display_pokemon_death(self):
+    # Prevent this from showing during gym battles
+    if _ankimon_is_gym_active():
+        return
+    # ... rest of function
+```
+
+### How It Works Now
+
+**Gym Battle Flow (Fixed):**
+1. Player defeats gym pokemon → HP drops to 0
+2. Gym battle logic executes (lines 2393-2447)
+3. **FIXED:** If gym battle active, skip all catch/defeat dialog code
+4. Show message: "Leader sends out next Pokémon! (X/Y)"
+5. Automatically spawn next gym pokemon via `new_pokemon()`
+6. Battle continues seamlessly
+7. After all gym pokemon defeated → Badge awarded → Return to wild encounters
+
+**Error Prevention:**
+- ✅ No catch/defeat dialog during gym battles
+- ✅ No recursion from `kill_pokemon()` → `new_pokemon()` loops
+- ✅ Automatic progression through gym pokemon
+- ✅ Proper error handling if gym logic fails
+- ✅ Clear messages about gym battle state
+
+**User Experience:**
+- Gym battles progress automatically without manual "Defeat Pokemon" clicks
+- Can't accidentally catch gym leader's pokemon
+- No more freezing or recursion errors
+- Smooth transition between gym pokemon
+
+**Files Modified:**
+- `/home/user/anki-addons-dev/1908235722/__init__.py`:
+  - Lines 2448-2456 (exception handling with gym check)
+  - Lines 2471-2491 (skip catch/defeat dialog during gyms)
+  - Lines 1216-1218 (kill_pokemon safeguard)
+  - Lines 1837-1844 (catch_pokemon safeguard)
+  - Lines 6081-6083 (display_pokemon_death safeguard)

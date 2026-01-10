@@ -1213,6 +1213,9 @@ if database_complete != False:
             # Set the layout for the dialog
 
 def kill_pokemon():
+    # Prevent this function from running during gym battles
+    if _ankimon_is_gym_active():
+        return
     global level, hp, name, image_url, mainpokemon_xp, mainpokemon_base_experience, mainpokemon_name, mainpokemon_level, mainpokemon_path, mainpokemon_growth_rate, mainpokemon_hp, ev_yield
     global pkmn_window
     name = name.capitalize()
@@ -1831,15 +1834,11 @@ def calc_experience(base_experience, enemy_level):
     return exp
 
 def catch_pokemon(nickname):
-    # --- Gym battles: you cannot catch leader Pokémon; treat as a defeat ---
+    # --- Gym battles: you cannot catch leader Pokémon; prevent this action ---
     try:
         if _ankimon_is_gym_active():
             try:
-                showInfo("Gym battle: you can't catch a leader's Pokémon. Defeat it to continue.")
-            except Exception:
-                pass
-            try:
-                kill_pokemon()
+                showInfo("Gym battle: you can't catch a leader's Pokémon. The battle will continue automatically.")
             except Exception:
                 pass
             return
@@ -2445,7 +2444,14 @@ def on_review_card(*args):
                                             except Exception:
                                                 pass
                                             return
-                            except Exception:
+                            except Exception as e:
+                                # If gym battle error occurs, still don't show catch/defeat dialog
+                                if _ankimon_is_gym_active():
+                                    try:
+                                        showWarning(f"Gym battle error: {e}")
+                                    except:
+                                        pass
+                                    return
                                 pass
 
                             msg += f" {name.capitalize()} has fainted"
@@ -2461,23 +2467,27 @@ def on_review_card(*args):
                     else:
                         seconds = 0
             else:
+                # Skip catch/defeat dialog during gym battles
+                if not _ankimon_is_gym_active():
+                    if pkmn_window is True:
+                        test_window.display_pokemon_death()
+                    elif pkmn_window is False:
+                        new_pokemon()
+                        general_card_count_for_battle = 0
+            # Skip catch/defeat dialog during gym battles
+            if not _ankimon_is_gym_active():
                 if pkmn_window is True:
-                    test_window.display_pokemon_death()
+                    if hp > 0:
+                        test_window.display_first_encounter()
+                    elif hp < 1:
+                        hp = 0
+                        test_window.display_pokemon_death()
+                        general_card_count_for_battle = 0
                 elif pkmn_window is False:
-                    new_pokemon()
-                    general_card_count_for_battle = 0
-            if pkmn_window is True:
-                if hp > 0:
-                    test_window.display_first_encounter()
-                elif hp < 1:
-                    hp = 0
-                    test_window.display_pokemon_death()
-                    general_card_count_for_battle = 0
-            elif pkmn_window is False:
-                if hp < 1:
-                    hp = 0
-                    kill_pokemon()
-                    general_card_count_for_battle = 0
+                    if hp < 1:
+                        hp = 0
+                        kill_pokemon()
+                        general_card_count_for_battle = 0
             # Reset the counter
             reviewed_cards_count = 0
         if cry_counter == 10 and battle_sounds is True:
@@ -6068,6 +6078,9 @@ class TestWindow(QWidget):
         Receive_Window.show()
 
     def display_pokemon_death(self):
+        # Prevent this from showing during gym battles
+        if _ankimon_is_gym_active():
+            return
         # pokemon encounter image
         self.clear_layout(self.layout())
         layout = self.layout()
