@@ -1941,6 +1941,123 @@ def new_pokemon():
     reviewer.web = mw.reviewer.web
     update_life_bar(reviewer, 0, 0)
 
+def spawn_next_gym_pokemon():
+    """Handler for Next Pokemon button - spawns the next gym pokemon"""
+    global test_window, pkmn_window
+    try:
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            tooltipWithColour("Config not available", "#FF0000")
+            return
+
+        # Increment gym pokemon index
+        enemy_ids = conf.get("ankimon_gym_enemy_ids") or []
+        idx = int(conf.get("ankimon_gym_enemy_index") or 0)
+        idx += 1
+
+        if idx < len(enemy_ids):
+            # Set next pokemon index
+            conf["ankimon_gym_enemy_index"] = idx
+            mw.col.setMod()
+
+            # Show tooltip
+            try:
+                tooltipWithColour(f"Leader sends out next Pokémon! ({idx+1}/{len(enemy_ids)})", "#00FF00")
+            except:
+                pass
+
+            # Spawn next pokemon
+            try:
+                new_pokemon()
+                # Force window update
+                if test_window is not None and pkmn_window is True:
+                    test_window.display_first_encounter()
+                    test_window.show()
+                    test_window.raise_()
+                    test_window.activateWindow()
+            except Exception as e:
+                error_msg = f"Error spawning next gym pokemon: {str(e)}"
+                tooltipWithColour(error_msg, "#FF0000", period=5000)
+                import traceback
+                traceback.print_exc()
+        else:
+            # All pokemon defeated - complete the gym
+            complete_gym_battle()
+    except Exception as e:
+        error_msg = f"Error in spawn_next_gym_pokemon: {str(e)}"
+        tooltipWithColour(error_msg, "#FF0000", period=5000)
+        import traceback
+        traceback.print_exc()
+
+def complete_gym_battle():
+    """Handler for completing gym battle - awards badge and spawns wild pokemon"""
+    global test_window, pkmn_window, achievements
+    try:
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            tooltipWithColour("Config not available", "#FF0000")
+            return
+
+        # Get current gym index before clearing
+        current_gym_idx = int(conf.get("ankimon_gym_index", 0))
+        gym_number = (current_gym_idx % 8) + 1
+
+        # Clear gym state FIRST
+        conf["ankimon_gym_active"] = False
+        conf["ankimon_gym_enemy_ids"] = []
+        conf["ankimon_gym_enemy_index"] = 0
+        conf["ankimon_gym_current_enemy_id"] = None
+        conf["ankimon_gym_last_cleared_leader"] = conf.get("ankimon_gym_leader_key")
+        conf["ankimon_gym_leader_key"] = None
+        conf["ankimon_gym_leader_name"] = None
+
+        # Increment gym index for next gym
+        conf["ankimon_gym_index"] = current_gym_idx + 1
+
+        # Reset card counter for next gym
+        conf["ankimon_gym_counter"] = 0
+
+        # Save config immediately
+        mw.col.setMod()
+
+        # Award gym badge (badges 25-32 for gyms 0-7)
+        badge_num = 25 + (current_gym_idx % 8)
+        try:
+            check = check_for_badge(achievements, badge_num)
+            if not check:
+                receive_badge(badge_num, achievements)
+                if test_window is not None:
+                    test_window.display_badge(badge_num)
+        except Exception:
+            pass
+
+        # Show completion message
+        try:
+            completion_msg = f"🏆 Gym {gym_number} battle complete! Collect 100 more cards for the next gym."
+            tooltipWithColour(completion_msg, "#FFD700", period=5000)
+        except:
+            pass
+
+        # Spawn new wild pokemon
+        try:
+            new_pokemon()
+            # Force window update
+            if test_window is not None and pkmn_window is True:
+                test_window.display_first_encounter()
+                test_window.show()
+                test_window.raise_()
+                test_window.activateWindow()
+        except Exception as e:
+            error_msg = f"Error spawning pokemon after gym: {str(e)}"
+            tooltipWithColour(error_msg, "#FF0000", period=5000)
+            import traceback
+            traceback.print_exc()
+    except Exception as e:
+        error_msg = f"Error in complete_gym_battle: {str(e)}"
+        tooltipWithColour(error_msg, "#FF0000", period=5000)
+        import traceback
+        traceback.print_exc()
+
 def calc_atk_dmg(level, critical, power, stat_atk, wild_stat_def, main_type, move_type, wild_type, critRatio):
         if power is None:
             # You can choose a default power or handle it according to your requirements
@@ -2409,13 +2526,12 @@ def on_review_card(*args):
                         if hp < 0:
                             hp = 0
 
-                            # --- Gym battles: advance to next leader Pokémon instead of spawning a wild encounter ---
+                            # --- Gym battles: show fainted display with Next Pokemon button ---
                             try:
                                 if _ankimon_is_gym_active():
                                     conf = _ankimon_get_col_conf()
                                     if conf:
                                         enemy_ids = conf.get("ankimon_gym_enemy_ids") or []
-                                        idx = int(conf.get("ankimon_gym_enemy_index") or 0)
 
                                         # Validate gym state before proceeding
                                         if not enemy_ids or len(enemy_ids) == 0:
@@ -2434,92 +2550,22 @@ def on_review_card(*args):
                                                 pass
                                             return
 
-                                        idx += 1
-                                        if idx < len(enemy_ids):
-                                            conf["ankimon_gym_enemy_index"] = idx
-                                            # Save config immediately to prevent state loss
-                                            mw.col.setMod()
-                                            # Show fainted message with next pokemon info
+                                        # Show fainted display with button instead of auto-spawning
+                                        try:
+                                            if test_window is not None and pkmn_window is True:
+                                                test_window.display_gym_pokemon_fainted()
+                                                test_window.show()
+                                                test_window.raise_()
+                                                test_window.activateWindow()
+                                        except Exception as e:
                                             try:
-                                                fainted_msg = f"{name.capitalize()} has fainted! Leader sends out next Pokémon! ({idx+1}/{len(enemy_ids)})"
-                                                tooltipWithColour(fainted_msg, "#00FF00")
-                                            except Exception:
+                                                error_msg = f"Error displaying fainted gym pokemon: {str(e)}"
+                                                tooltipWithColour(error_msg, "#FF0000", period=5000)
+                                                import traceback
+                                                traceback.print_exc()
+                                            except:
                                                 pass
-                                            try:
-                                                new_pokemon()
-                                            except Exception as e:
-                                                try:
-                                                    error_msg = f"Error spawning next gym pokemon (index {idx}/{len(enemy_ids)}): {str(e)}"
-                                                    tooltipWithColour(error_msg, "#FF0000", period=5000)
-                                                    import traceback
-                                                    traceback.print_exc()
-                                                except:
-                                                    pass
-                                            return
-                                        else:
-                                            # Gym battle complete! Increment gym index for next gym leader
-                                            current_gym_idx = int(conf.get("ankimon_gym_index", 0))
-                                            gym_number = (current_gym_idx % 8) + 1
-
-                                            # Clear gym state FIRST before anything else
-                                            conf["ankimon_gym_active"] = False
-                                            conf["ankimon_gym_enemy_ids"] = []
-                                            conf["ankimon_gym_enemy_index"] = 0
-                                            conf["ankimon_gym_current_enemy_id"] = None
-                                            conf["ankimon_gym_last_cleared_leader"] = conf.get("ankimon_gym_leader_key")
-                                            conf["ankimon_gym_leader_key"] = None
-
-                                            # Increment gym index for next gym
-                                            conf["ankimon_gym_index"] = current_gym_idx + 1
-
-                                            # Reset card counter for next gym
-                                            conf["ankimon_gym_counter"] = 0
-
-                                            # Save config immediately
-                                            mw.col.setMod()
-
-                                            # Award gym badge (badges 25-32 for gyms 0-7)
-                                            badge_num = 25 + (current_gym_idx % 8)
-                                            try:
-                                                check = check_for_badge(achievements, badge_num)
-                                                if not check:
-                                                    receive_badge(badge_num, achievements)
-                                                    if test_window is not None:
-                                                        test_window.display_badge(badge_num)
-                                            except Exception:
-                                                pass
-
-                                            # Show completion message (use tooltip instead of showInfo to prevent freezing)
-                                            try:
-                                                completion_msg = f"🏆 Gym {gym_number} battle complete! Collect 100 more cards for the next gym."
-                                                tooltipWithColour(completion_msg, "#FFD700", period=5000)
-                                            except Exception:
-                                                pass
-
-                                            # Spawn new wild pokemon and force window update
-                                            try:
-                                                new_pokemon()
-                                                # Force window to update and clear fainted pokemon
-                                                if test_window is not None and pkmn_window is True:
-                                                    try:
-                                                        test_window.display_first_encounter()
-                                                        test_window.show()
-                                                        test_window.raise_()
-                                                        test_window.activateWindow()
-                                                    except Exception as win_err:
-                                                        try:
-                                                            tooltipWithColour(f"Window update error: {str(win_err)}", "#FF0000")
-                                                        except:
-                                                            pass
-                                            except Exception as e:
-                                                try:
-                                                    error_msg = f"Error spawning pokemon after gym completion: {str(e)}"
-                                                    tooltipWithColour(error_msg, "#FF0000", period=5000)
-                                                    import traceback
-                                                    traceback.print_exc()
-                                                except:
-                                                    pass
-                                            return
+                                        return
                             except Exception as e:
                                 # If gym battle error occurs, still don't show catch/defeat dialog
                                 if _ankimon_is_gym_active():
@@ -6178,6 +6224,112 @@ class TestWindow(QWidget):
         self.setLayout(layout)
         self.setMaximumWidth(500)
         self.setMaximumHeight(300)
+
+    def display_gym_pokemon_fainted(self):
+        """Display fainted gym pokemon with Next Pokemon button"""
+        # Clear the layout and show fainted pokemon with next button
+        self.clear_layout(self.layout())
+        layout = self.layout()
+
+        # Get gym battle info
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            return
+
+        enemy_ids = conf.get("ankimon_gym_enemy_ids") or []
+        current_idx = int(conf.get("ankimon_gym_enemy_index") or 0)
+        gym_leader_name = conf.get("ankimon_gym_leader_name") or "Gym Leader"
+
+        # Calculate how many pokemon are left
+        remaining = len(enemy_ids) - (current_idx + 1)
+
+        # Create display widget
+        global name, id, frontdefault, pokedex_image_path
+
+        # Display the fainted Pokémon image
+        pkmnimage_file = f"{id}.png"
+        pkmnimage_path = frontdefault / pkmnimage_file
+        pkmnimage_label = QLabel()
+        pkmnpixmap = QPixmap()
+        pkmnpixmap.load(str(pkmnimage_path))
+        pkmnpixmap_bckg = QPixmap()
+        pkmnpixmap_bckg.load(str(pokedex_image_path))
+        pkmnpixmap = pkmnpixmap.scaled(230, 230)
+
+        # Create a painter to add text on top of the image
+        painter = QPainter(pkmnpixmap_bckg)
+        painter.drawPixmap(15, 15, pkmnpixmap)
+
+        # Draw fainted text
+        font = QFont()
+        font.setPointSize(24)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(QColor(255, 0, 0))  # Red color for "FAINTED"
+        painter.drawText(270, 100, "FAINTED!")
+
+        # Draw remaining pokemon count
+        font.setPointSize(16)
+        font.setBold(False)
+        painter.setFont(font)
+        painter.setPen(QColor(0, 0, 0))  # Black color
+        if remaining > 0:
+            painter.drawText(270, 150, f"{gym_leader_name}")
+            painter.drawText(270, 180, f"{remaining} Pokémon left")
+        else:
+            painter.drawText(270, 150, "Gym Complete!")
+
+        painter.end()
+        pkmnimage_label.setPixmap(pkmnpixmap_bckg)
+        pkmnimage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(pkmnimage_label)
+
+        # Create button widget
+        button_widget = QWidget()
+        button_layout = QHBoxLayout()
+
+        if remaining > 0:
+            # Next Pokemon button
+            next_button = QPushButton("▶ Next Pokémon")
+            next_button.setFixedSize(200, 40)
+            next_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+            next_button.setStyleSheet("""
+                QPushButton {
+                    background-color: rgb(76, 175, 80);
+                    color: white;
+                    border-radius: 5px;
+                }
+                QPushButton:hover {
+                    background-color: rgb(56, 142, 60);
+                }
+            """)
+            qconnect(next_button.clicked, lambda: spawn_next_gym_pokemon())
+            button_layout.addWidget(next_button)
+        else:
+            # Gym Complete button
+            complete_button = QPushButton("🏆 Gym Complete!")
+            complete_button.setFixedSize(200, 40)
+            complete_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+            complete_button.setStyleSheet("""
+                QPushButton {
+                    background-color: rgb(255, 215, 0);
+                    color: black;
+                    border-radius: 5px;
+                }
+                QPushButton:hover {
+                    background-color: rgb(218, 165, 32);
+                }
+            """)
+            qconnect(complete_button.clicked, lambda: complete_gym_battle())
+            button_layout.addWidget(complete_button)
+
+        button_widget.setLayout(button_layout)
+        layout.addWidget(button_widget)
+
+        self.setStyleSheet("background-color: rgb(177,147,209);")
+        self.setLayout(layout)
+        self.setMaximumWidth(500)
+        self.setMaximumHeight(350)
 
     def keyPressEvent(self, event):
         global test, pokemon_encounter, pokedex_image_path, system, ankimon_key
