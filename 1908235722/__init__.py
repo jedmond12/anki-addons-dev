@@ -1915,6 +1915,14 @@ def new_pokemon():
     #reset mainpokemon hp
     if test_window is not None:
         test_window.display_first_encounter()
+        # Force window to show and update during gym battles
+        if _ankimon_is_gym_active() and pkmn_window is True:
+            try:
+                test_window.show()
+                test_window.raise_()
+                test_window.activateWindow()
+            except Exception:
+                pass
     class Container(object):
         pass
     reviewer = Container()
@@ -2399,14 +2407,20 @@ def on_review_card(*args):
                                         idx += 1
                                         if idx < len(enemy_ids):
                                             conf["ankimon_gym_enemy_index"] = idx
+                                            mw.col.setMod()
+                                            # Show fainted message with next pokemon info
                                             try:
-                                                showInfo(f"Leader sends out next Pokémon! ({idx+1}/{len(enemy_ids)})")
+                                                fainted_msg = f"{name.capitalize()} has fainted! Leader sends out next Pokémon! ({idx+1}/{len(enemy_ids)})"
+                                                tooltipWithColour(fainted_msg, "#00FF00")
                                             except Exception:
                                                 pass
                                             try:
                                                 new_pokemon()
-                                            except Exception:
-                                                pass
+                                            except Exception as e:
+                                                try:
+                                                    showWarning(f"Error spawning next gym pokemon: {e}")
+                                                except:
+                                                    pass
                                             return
                                         else:
                                             # Gym battle complete! Increment gym index for next gym leader
