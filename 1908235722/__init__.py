@@ -1085,7 +1085,17 @@ def tooltipWithColour(msg, color, x=0, y=20, xref=1, parent=None, width=0, heigh
 pokemon_species = None
 # Your random Pokémon generation function using the PokeAPI
 if database_complete != False:
-    def generate_random_pokemon():
+    def generate_random_pokemon(_recursion_depth=0):
+        # Prevent infinite recursion - max 5 retries
+        if _recursion_depth >= 5:
+            # Too many retries, force a basic fallback pokemon
+            try:
+                tooltipWithColour("⚠️ Pokemon generation failed, using fallback", "#FF0000")
+            except:
+                pass
+            # Return a basic Pikachu as fallback
+            return "pikachu", 25, 5, "static", ["Electric"], {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}, [], 112, "medium-fast", 35, 35, {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}, {"hp": 20, "atk": 20, "def": 20, "spa": 20, "spd": 20, "spe": 20}, "unknown", "fighting", {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}
+
         # Fetch random Pokémon data from Generation
         # Load the JSON file with Pokémon data
         global addon_dir
@@ -1133,8 +1143,8 @@ if database_complete != False:
             try:
                 min_level = int(check_min_generate_level(str(name.lower())))
             except:
-                # Recursive call causing issues - use return to prevent infinite loop
-                return generate_random_pokemon()
+                # Recursive call with depth tracking
+                return generate_random_pokemon(_recursion_depth + 1)
             var_level = 3
             if mainpokemon_level or mainpokemon_level != None:
                 try:
@@ -1158,7 +1168,7 @@ if database_complete != False:
                 if id_check:
                     pass
                 else:
-                    return generate_random_pokemon()
+                    return generate_random_pokemon(_recursion_depth + 1)
                 abilities = search_pokedex(name, "abilities")
                 # Filter abilities to include only those with numeric keys
                 # numeric_abilities = {k: v for k, v in abilities.items() if k.isdigit()}
@@ -1219,7 +1229,7 @@ if database_complete != False:
                 ev_yield = search_pokeapi_db_by_id(id, "effort_values")
                 return name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, hp, max_hp, ev, iv, gender, battle_status, battle_stats
             else:
-                return generate_random_pokemon()  # Return the result of the recursive call
+                return generate_random_pokemon(_recursion_depth + 1)  # Return the result of the recursive call with depth tracking
         except FileNotFoundError:
             showInfo("Error", "Can't open the JSON File.")
             # Set the layout for the dialog
@@ -1244,7 +1254,7 @@ def kill_pokemon():
             conf["ankimon_gym_enemy_index"] = 0
             mw.col.setMod()
             try:
-                tooltipWithColour("🏟 Gym Battle Starting!", "#FFD700", period=3000)
+                tooltipWithColour("🏟 Gym Battle Starting!", "#FFD700")
             except:
                 pass
             if pkmn_window is True:
@@ -1905,7 +1915,7 @@ def catch_pokemon(nickname):
                 conf["ankimon_gym_enemy_index"] = 0
                 mw.col.setMod()
                 try:
-                    tooltipWithColour("🏟 Gym Battle Starting!", "#FFD700", period=3000)
+                    tooltipWithColour("🏟 Gym Battle Starting!", "#FFD700")
                 except:
                     pass
                 new_pokemon()  # Spawn first gym pokemon
@@ -2026,7 +2036,7 @@ def spawn_next_gym_pokemon():
                     QTimer.singleShot(100, _update_window)
             except Exception as e:
                 error_msg = f"Error spawning next gym pokemon: {str(e)}"
-                tooltipWithColour(error_msg, "#FF0000", period=5000)
+                tooltipWithColour(error_msg, "#FF0000")
                 import traceback
                 traceback.print_exc()
         else:
@@ -2034,7 +2044,7 @@ def spawn_next_gym_pokemon():
             complete_gym_battle()
     except Exception as e:
         error_msg = f"Error in spawn_next_gym_pokemon: {str(e)}"
-        tooltipWithColour(error_msg, "#FF0000", period=5000)
+        tooltipWithColour(error_msg, "#FF0000")
         import traceback
         traceback.print_exc()
 
@@ -2083,7 +2093,7 @@ def complete_gym_battle():
         # Show completion message
         try:
             completion_msg = f"🏆 Gym {gym_number} battle complete! Collect 100 more cards for the next gym."
-            tooltipWithColour(completion_msg, "#FFD700", period=5000)
+            tooltipWithColour(completion_msg, "#FFD700")
         except:
             pass
 
@@ -2108,12 +2118,12 @@ def complete_gym_battle():
                 QTimer.singleShot(100, _update_window)
         except Exception as e:
             error_msg = f"Error spawning pokemon after gym: {str(e)}"
-            tooltipWithColour(error_msg, "#FF0000", period=5000)
+            tooltipWithColour(error_msg, "#FF0000")
             import traceback
             traceback.print_exc()
     except Exception as e:
         error_msg = f"Error in complete_gym_battle: {str(e)}"
-        tooltipWithColour(error_msg, "#FF0000", period=5000)
+        tooltipWithColour(error_msg, "#FF0000")
         import traceback
         traceback.print_exc()
 
@@ -2678,7 +2688,7 @@ def on_review_card(*args):
                                         except Exception as e:
                                             try:
                                                 error_msg = f"Error displaying fainted gym pokemon: {str(e)}"
-                                                tooltipWithColour(error_msg, "#FF0000", period=5000)
+                                                tooltipWithColour(error_msg, "#FF0000")
                                                 import traceback
                                                 traceback.print_exc()
                                             except:
@@ -2689,7 +2699,7 @@ def on_review_card(*args):
                                 if _ankimon_is_gym_active():
                                     try:
                                         error_msg = f"Gym battle error: {str(e)}"
-                                        tooltipWithColour(error_msg, "#FF0000", period=5000)
+                                        tooltipWithColour(error_msg, "#FF0000")
                                         import traceback
                                         traceback.print_exc()
                                     except:
@@ -8347,7 +8357,7 @@ def _ankimon_gym_ready_popup():
             dlg.accept()
             # Show message that gym will start after current match
             try:
-                tooltipWithColour("⏳ Gym battle will begin after current match", "#FFD700", period=4000)
+                tooltipWithColour("⏳ Gym battle will begin after current match", "#FFD700")
             except Exception:
                 pass
 
@@ -8442,13 +8452,13 @@ def _ankimon_check_incomplete_gym():
                     conf["ankimon_gym_pending"] = False
                     mw.col.setMod()
                     try:
-                        tooltipWithColour("🏟 Continuing Gym Battle!", "#FFD700", period=3000)
+                        tooltipWithColour("🏟 Continuing Gym Battle!", "#FFD700")
                     except:
                         pass
                 else:
                     # Already active, just show message
                     try:
-                        tooltipWithColour(f"🏟 Gym Battle vs {leader_name} - {remaining} Pokémon left", "#FFD700", period=3000)
+                        tooltipWithColour(f"🏟 Gym Battle vs {leader_name} - {remaining} Pokémon left", "#FFD700")
                     except:
                         pass
             else:
@@ -8462,7 +8472,7 @@ def _ankimon_check_incomplete_gym():
                 conf["ankimon_gym_leader_name"] = None
                 mw.col.setMod()
                 try:
-                    tooltipWithColour("Gym battle cancelled", "#FF0000", period=2000)
+                    tooltipWithColour("Gym battle cancelled", "#FF0000")
                 except:
                     pass
     except Exception as e:
