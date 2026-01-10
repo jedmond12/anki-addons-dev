@@ -2117,6 +2117,65 @@ def complete_gym_battle():
         import traceback
         traceback.print_exc()
 
+def reset_battle():
+    """Reset current battle and spawn a new wild pokemon. Fixes fainted pokemon display issues."""
+    try:
+        global test_window, pkmn_window, hp
+
+        conf = _ankimon_get_col_conf()
+        if conf is None:
+            showInfo("Cannot reset battle - collection config not available.")
+            return
+
+        # Check if gym battle is active
+        is_gym_active = conf.get("ankimon_gym_active", False)
+        is_gym_pending = conf.get("ankimon_gym_pending", False)
+
+        if is_gym_active or is_gym_pending:
+            # Ask user if they want to reset gym battle
+            reply = QMessageBox.question(
+                mw,
+                "Reset Gym Battle?",
+                "You are currently in a gym battle. Resetting will end the gym battle.\n\nDo you want to continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+
+            if reply == QMessageBox.StandardButton.No:
+                return
+
+            # Reset gym state
+            conf["ankimon_gym_active"] = False
+            conf["ankimon_gym_pending"] = False
+            conf["ankimon_gym_enemy_ids"] = []
+            conf["ankimon_gym_enemy_index"] = 0
+            conf["ankimon_gym_current_enemy_id"] = None
+            mw.col.setMod()
+
+        # Reset HP to ensure we're not in fainted state
+        hp = 1
+
+        # Spawn new wild pokemon
+        try:
+            new_pokemon()
+            # Force window update
+            if test_window is not None and pkmn_window is True:
+                test_window.display_first_encounter()
+                test_window.show()
+                test_window.raise_()
+                test_window.activateWindow()
+        except Exception as e:
+            showWarning(f"Error spawning new pokemon: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+
+        showInfo("Battle has been reset. A new wild pokemon has appeared!")
+    except Exception as e:
+        showWarning(f"Error resetting battle: {e}")
+        import traceback
+        traceback.print_exc()
+
 def calc_atk_dmg(level, critical, power, stat_atk, wild_stat_def, main_type, move_type, wild_type, critRatio):
         if power is None:
             # You can choose a default power or handle it according to your requirements
@@ -8218,65 +8277,6 @@ def reset_gym_progress():
         showInfo("Gym progress has been reset. You can now start fresh with gym battles.")
     except Exception as e:
         showWarning(f"Error resetting gym progress: {e}")
-
-def reset_battle():
-    """Reset current battle and spawn a new wild pokemon. Fixes fainted pokemon display issues."""
-    try:
-        global test_window, pkmn_window, hp
-
-        conf = _ankimon_get_col_conf()
-        if conf is None:
-            showInfo("Cannot reset battle - collection config not available.")
-            return
-
-        # Check if gym battle is active
-        is_gym_active = conf.get("ankimon_gym_active", False)
-        is_gym_pending = conf.get("ankimon_gym_pending", False)
-
-        if is_gym_active or is_gym_pending:
-            # Ask user if they want to reset gym battle
-            reply = QMessageBox.question(
-                mw,
-                "Reset Gym Battle?",
-                "You are currently in a gym battle. Resetting will end the gym battle.\n\nDo you want to continue?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
-            )
-
-            if reply == QMessageBox.StandardButton.No:
-                return
-
-            # Reset gym state
-            conf["ankimon_gym_active"] = False
-            conf["ankimon_gym_pending"] = False
-            conf["ankimon_gym_enemy_ids"] = []
-            conf["ankimon_gym_enemy_index"] = 0
-            conf["ankimon_gym_current_enemy_id"] = None
-            mw.col.setMod()
-
-        # Reset HP to ensure we're not in fainted state
-        hp = 1
-
-        # Spawn new wild pokemon
-        try:
-            new_pokemon()
-            # Force window update
-            if test_window is not None and pkmn_window is True:
-                test_window.display_first_encounter()
-                test_window.show()
-                test_window.raise_()
-                test_window.activateWindow()
-        except Exception as e:
-            showWarning(f"Error spawning new pokemon: {e}")
-            import traceback
-            traceback.print_exc()
-            return
-
-        showInfo("Battle has been reset. A new wild pokemon has appeared!")
-    except Exception as e:
-        showWarning(f"Error resetting battle: {e}")
-        import traceback
-        traceback.print_exc()
 
 def _ankimon_gym_ready_popup():
     """Prompt when gym is ready; lets user start a gym run (leader intro only for now)."""
