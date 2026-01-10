@@ -91,3 +91,74 @@ Modified the `_start()` function in `__init__.py:7907-7923` to properly transiti
 
 **Files Modified:**
 - `/home/user/anki-addons-dev/1908235722/__init__.py` - Lines 7914-7923
+
+---
+
+## Update 2: Persistent Gym Progress Tracking
+
+**Goal**: Continue with remaining 7 gym battles (8 total) per every 100 cards, remembering progress when Anki is closed and reopened.
+
+### Changes Made
+
+#### 1. Made gym card counter persistent (Lines 7729-7741)
+**Before**: Counter stored in memory (`mw._ankimon_gym_counter`) - reset on program restart
+**After**: Counter stored in collection config - persists across sessions
+
+```python
+def _ankimon_gym_state():
+    """Get the current gym card counter from persistent storage."""
+    conf = _ankimon_get_col_conf()
+    if conf is None:
+        return 0
+    return int(conf.get("ankimon_gym_counter", 0))
+
+def _ankimon_set_gym_state(val: int):
+    """Set the gym card counter in persistent storage."""
+    conf = _ankimon_get_col_conf()
+    if conf is not None:
+        conf["ankimon_gym_counter"] = int(val)
+        mw.col.setMod()
+```
+
+#### 2. Increment gym index after gym completion (Lines 2413-2428)
+**Before**: Gym index stayed the same after completion - would repeat same gym leader
+**After**: Gym index increments to next leader (0→1→2...→7), cycles back to 0 after 8th gym
+
+```python
+# Gym battle complete! Increment gym index for next gym leader
+current_gym_idx = int(conf.get("ankimon_gym_index", 0))
+conf["ankimon_gym_index"] = current_gym_idx + 1
+# ... existing cleanup code ...
+# Reset card counter for next gym
+conf["ankimon_gym_counter"] = 0
+mw.col.setMod()
+```
+
+#### 3. Removed redundant counter reset (Line 7848)
+**Reason**: Counter already resets when reaching 100 cards (line 7967), no need to reset again when starting gym
+
+### How It Works Now
+
+**Gym Progression Flow:**
+1. User reviews 100 cards → Counter reaches 100
+2. Counter auto-resets to 0, gym popup shows for current gym leader (based on `ankimon_gym_index`)
+3. User clicks "Start Gym Battle" → Gym battle begins
+4. User defeats all gym pokemon → Gym index increments, counter stays at 0
+5. User continues reviewing cards → Counter increments (1, 2, 3... toward next 100)
+6. Process repeats for all 8 gym leaders
+
+**Persistence:**
+- `ankimon_gym_counter` - Stored in collection config, persists across Anki restarts
+- `ankimon_gym_index` - Stored in collection config, tracks which gym leader is next (0-7, then cycles)
+- Progress is saved automatically via `mw.col.setMod()`
+
+**User Experience:**
+- Close Anki at 50 cards → Reopen → Still at 50 cards toward next gym
+- Complete Gym 3 → Close Anki → Reopen → Next gym will be Gym 4
+- Complete all 8 gyms → Cycles back to Gym 1 for continued play
+
+**Files Modified:**
+- `/home/user/anki-addons-dev/1908235722/__init__.py`:
+  - Lines 7729-7741 (persistent counter functions)
+  - Lines 2413-2428 (gym completion with index increment)
+  - Line 7848 (removed redundant counter reset)
