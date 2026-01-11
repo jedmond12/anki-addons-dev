@@ -2726,7 +2726,7 @@ def on_review_card(*args):
                                 atk_stat = mainpokemon_stats["atk"]
                             dmg = int(calc_atk_dmg(mainpokemon_level, multiplier,random.randint(60, 100), atk_stat, def_stat, mainpokemon_type, "Normal",type, critRatio))
                             hp -= dmg
-                        if hp < 0:
+                        if hp <= 0:
                             hp = 0
 
                             # --- Gym battles: show fainted display with Next Pokemon button ---
