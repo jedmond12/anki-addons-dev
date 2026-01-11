@@ -7274,8 +7274,15 @@ class Pokedex_Widget(QWidget):
 
     def read_poke_coll(self):
         global mypokemon_path
-        with (open(mypokemon_path, "r") as json_file):
-            self.captured_pokemon_data = json.load(json_file)
+        try:
+            with (open(mypokemon_path, "r") as json_file):
+                self.captured_pokemon_data = json.load(json_file)
+        except FileNotFoundError:
+            # First-time setup or no pokemon captured yet
+            self.captured_pokemon_data = []
+        except Exception:
+            # Other errors - initialize as empty list
+            self.captured_pokemon_data = []
 
     def initUI(self):
         self.setWindowTitle("Pokédex")
@@ -7734,8 +7741,15 @@ class ItemWindow(QWidget):
 
     def read_item_file(self):
         # Read the list from the JSON file
-        with open(itembag_path, 'r') as json_file:
-            self.itembag_list = json.load(json_file)
+        try:
+            with open(itembag_path, 'r') as json_file:
+                self.itembag_list = json.load(json_file)
+        except FileNotFoundError:
+            # First-time setup - items.json doesn't exist yet
+            self.itembag_list = []
+        except Exception:
+            # Other errors - initialize as empty list
+            self.itembag_list = []
 
     def clear_layout(self, layout):
         while layout.count():
@@ -7931,8 +7945,15 @@ class AchievementWindow(QWidget):
 
     def read_item_file(self):
         # Read the list from the JSON file
-        with open(badgebag_path, 'r') as json_file:
-            self.badge_list = json.load(json_file)
+        try:
+            with open(badgebag_path, 'r') as json_file:
+                self.badge_list = json.load(json_file)
+        except FileNotFoundError:
+            # First-time setup - badges.json doesn't exist yet
+            self.badge_list = []
+        except Exception:
+            # Other errors - initialize as empty list
+            self.badge_list = []
 
     def clear_layout(self, layout):
         while layout.count():
