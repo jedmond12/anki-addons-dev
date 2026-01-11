@@ -6717,10 +6717,17 @@ with open(badges_list_path, 'r') as json_file:
 achievements = {str(i): False for i in range(1, 69)}
 
 def check_badges(achievements):
-        with open(badgebag_path, 'r') as json_file:
-            badge_list = json.load(json_file)
-            for badge_num in badge_list:
-                achievements[str(badge_num)] = True
+        try:
+            with open(badgebag_path, 'r') as json_file:
+                badge_list = json.load(json_file)
+                for badge_num in badge_list:
+                    achievements[str(badge_num)] = True
+        except FileNotFoundError:
+            # First-time setup - badges.json doesn't exist yet
+            pass
+        except Exception:
+            # Other errors - skip badge check
+            pass
         return achievements
 
 def check_for_badge(achievements, rec_badge_num):
