@@ -276,6 +276,9 @@ if mainpokemon_path.is_file():
             mainpokemon_empty = True
         else:
             mainpokemon_empty = False
+else:
+    # First-time setup - mainpokemon.json doesn't exist yet
+    mainpokemon_empty = True
 
 window = None
 gender = None
