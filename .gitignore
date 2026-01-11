@@ -21,3 +21,13 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Ankimon user data files (personal save data, should not be tracked)
+1908235722/user_files/badges.json
+1908235722/user_files/gym_progress.json
+1908235722/user_files/items.json
+1908235722/user_files/mainpokemon.json
+1908235722/user_files/mypokemon.json
+1908235722/user_files/party.json
+1908235722/user_files/rate_this.json
+1908235722/user_files/backup_*/
