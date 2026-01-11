@@ -1098,27 +1098,54 @@ if database_complete != False:
                     conf = _ankimon_get_col_conf()
                     if conf:
                         leader_name = conf.get("ankimon_gym_leader_name", "Gym Leader")
+                        gym_idx = int(conf.get("ankimon_gym_enemy_index", 0))
+                        enemy_ids = conf.get("ankimon_gym_enemy_ids", [])
+
+                        # Log the problematic pokemon ID for debugging
+                        problem_id = enemy_ids[gym_idx] if gym_idx < len(enemy_ids) else "unknown"
+
                         conf["ankimon_gym_active"] = False
                         conf["ankimon_gym_pending"] = False
                         conf["ankimon_gym_enemy_ids"] = []
                         conf["ankimon_gym_enemy_index"] = 0
                         mw.col.setMod()
 
-                        error_msg = f"Failed to generate gym pokemon for {leader_name}.\nGym battle has been reset.\nPlease try again or use Reset Battle from menu."
+                        error_msg = f"Failed to generate gym pokemon (ID {problem_id}) for {leader_name}.\n\n"
+                        error_msg += "This pokemon's data may be corrupted in the database.\n"
+                        error_msg += "Gym battle has been reset.\n\n"
+                        error_msg += "You can:\n"
+                        error_msg += "1. Try the gym battle again (may fail on same pokemon)\n"
+                        error_msg += "2. Use 'Reset Battle' from Ankimon menu\n"
+                        error_msg += "3. Report this bug with pokemon ID " + str(problem_id)
                         showWarning(error_msg)
-                except:
-                    pass
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
 
                 # Return a basic fallback to prevent crash, but gym is now reset
                 tooltipWithColour("⚠️ Gym battle reset due to pokemon generation error", "#FF0000")
-                return "pikachu", 25, 5, "static", ["Electric"], {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}, [], 112, "medium-fast", 35, 35, {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}, {"hp": 20, "atk": 20, "def": 20, "spa": 20, "spd": 20, "spe": 20}, "unknown", "fighting", {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}
+
+                # Calculate proper HP for fallback Pikachu (level 5)
+                pikachu_base_hp = 35
+                pikachu_iv = 20
+                pikachu_level = 5
+                pikachu_calculated_hp = int(((2 * pikachu_base_hp + pikachu_iv) * pikachu_level / 100) + pikachu_level + 10)
+
+                return "pikachu", 25, pikachu_level, "static", ["Electric"], {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}, [], 112, "medium-fast", pikachu_calculated_hp, pikachu_calculated_hp, {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}, {"hp": pikachu_iv, "atk": pikachu_iv, "def": pikachu_iv, "spa": pikachu_iv, "spd": pikachu_iv, "spe": pikachu_iv}, "unknown", "fighting", {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}
             else:
                 # Wild pokemon - fallback to Pikachu is OK
                 try:
                     tooltipWithColour("⚠️ Pokemon generation failed, using fallback", "#FF0000")
                 except:
                     pass
-                return "pikachu", 25, 5, "static", ["Electric"], {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}, [], 112, "medium-fast", 35, 35, {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}, {"hp": 20, "atk": 20, "def": 20, "spa": 20, "spd": 20, "spe": 20}, "unknown", "fighting", {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}
+
+                # Calculate proper HP for fallback Pikachu (level 5)
+                pikachu_base_hp = 35
+                pikachu_iv = 20
+                pikachu_level = 5
+                pikachu_calculated_hp = int(((2 * pikachu_base_hp + pikachu_iv) * pikachu_level / 100) + pikachu_level + 10)
+
+                return "pikachu", 25, pikachu_level, "static", ["Electric"], {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}, [], 112, "medium-fast", pikachu_calculated_hp, pikachu_calculated_hp, {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}, {"hp": pikachu_iv, "atk": pikachu_iv, "def": pikachu_iv, "spa": pikachu_iv, "spd": pikachu_iv, "spe": pikachu_iv}, "unknown", "fighting", {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}
 
         # Fetch random Pokémon data from Generation
         # Load the JSON file with Pokémon data
