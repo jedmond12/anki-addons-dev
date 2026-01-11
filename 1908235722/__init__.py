@@ -1191,11 +1191,24 @@ if database_complete != False:
 
             if name is list:
                 name = name[0]
-            try:
-                min_level = int(check_min_generate_level(str(name.lower())))
-            except:
-                # Recursive call with depth tracking
-                return generate_random_pokemon(_recursion_depth + 1)
+
+            # CRITICAL FIX: For gym pokemon, skip min_level check (it causes RecursionError for some pokemon like Steelix)
+            is_gym_pokemon = _ankimon_is_gym_active()
+            if is_gym_pokemon:
+                # Gym pokemon: skip min_level check, always generate at appropriate level
+                min_level = 0  # Bypass evolution level requirements for gym pokemon
+            else:
+                # Wild pokemon: do normal min_level check
+                try:
+                    min_level = int(check_min_generate_level(str(name.lower())))
+                except Exception as e:
+                    # Log the error for debugging
+                    try:
+                        tooltipWithColour(f"⚠️ Error checking min level for {name}: {str(e)[:50]}", "#FF0000")
+                    except:
+                        pass
+                    # Recursive call with depth tracking
+                    return generate_random_pokemon(_recursion_depth + 1)
             var_level = 3
             if mainpokemon_level or mainpokemon_level != None:
                 try:
