@@ -2756,10 +2756,18 @@ def on_review_card(*args):
                                         # Show fainted display with button instead of auto-spawning
                                         try:
                                             if test_window is not None and pkmn_window is True:
-                                                test_window.display_gym_pokemon_fainted()
-                                                test_window.show()
-                                                test_window.raise_()
-                                                test_window.activateWindow()
+                                                def _update_fainted_window():
+                                                    test_window.display_gym_pokemon_fainted()
+                                                    test_window.show()
+                                                    test_window.raise_()
+                                                    test_window.activateWindow()
+                                                    test_window.update()  # Force Qt to redraw
+                                                    test_window.repaint()  # Force immediate repaint
+                                                # Call immediately
+                                                _update_fainted_window()
+                                                # Call again after short delay to ensure update
+                                                from aqt.qt import QTimer
+                                                QTimer.singleShot(100, _update_fainted_window)
                                         except Exception as e:
                                             try:
                                                 error_msg = f"Error displaying fainted gym pokemon: {str(e)}"
