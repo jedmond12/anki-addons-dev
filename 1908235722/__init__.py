@@ -3277,7 +3277,7 @@ class PokemonCollectionDialog(QDialog):
                         slot_combo.addItem("Assign to Slot 3", 2)
                         slot_combo.addItem("Assign to Slot 4", 3)
                         slot_combo.setFixedWidth(180)
-                        def _on_party_choice(_idx, *, _poke_index=pokemon_idx, _combo=slot_combo):
+                        def _on_party_choice(_idx, *, _poke_index=pokemon_idx, _combo=slot_combo, _poke_name=pokemon_name, _poke_nickname=pokemon_nickname):
                             data = _combo.currentData()
                             if data is None:
                                 return
@@ -3296,11 +3296,24 @@ class PokemonCollectionDialog(QDialog):
                             if slot == 0:
                                 party["active_slot"] = 0
                             _save_party(party)
+
+                            # Update menu text to show new pokemon name
+                            try:
+                                _update_party_menu_text()
+                            except Exception:
+                                pass
+
+                            # Get display name (nickname if available, otherwise regular name)
+                            display_name = _poke_nickname.capitalize() if _poke_nickname else _poke_name.capitalize()
+
                             if slot == 0:
                                 try:
                                     _set_active_from_party_slot(0)
                                 except Exception:
                                     pass
+                            else:
+                                # Show confirmation popup for slots 2, 3, and 4
+                                showInfo(f"Party Slot {slot+1} set to: {display_name}")
                             _combo.setCurrentIndex(0)
                         slot_combo.currentIndexChanged.connect(_on_party_choice)
 
@@ -3470,7 +3483,7 @@ class PokemonCollectionDialog(QDialog):
                             slot_combo.addItem("Assign to Slot 3", 2)
                             slot_combo.addItem("Assign to Slot 4", 3)
                             slot_combo.setFixedWidth(180)
-                            def _on_party_choice(_idx, *, _poke_index=pokemon_idx, _combo=slot_combo):
+                            def _on_party_choice(_idx, *, _poke_index=pokemon_idx, _combo=slot_combo, _poke_name=pokemon_name, _poke_nickname=pokemon_nickname):
                                 data = _combo.currentData()
                                 if data is None:
                                     return
@@ -3489,11 +3502,24 @@ class PokemonCollectionDialog(QDialog):
                                 if slot == 0:
                                     party["active_slot"] = 0
                                 _save_party(party)
+
+                                # Update menu text to show new pokemon name
+                                try:
+                                    _update_party_menu_text()
+                                except Exception:
+                                    pass
+
+                                # Get display name (nickname if available, otherwise regular name)
+                                display_name = _poke_nickname.capitalize() if _poke_nickname else _poke_name.capitalize()
+
                                 if slot == 0:
                                     try:
                                         _set_active_from_party_slot(0)
                                     except Exception:
                                         pass
+                                else:
+                                    # Show confirmation popup for slots 2, 3, and 4
+                                    showInfo(f"Party Slot {slot+1} set to: {display_name}")
                                 _combo.setCurrentIndex(0)
                             slot_combo.currentIndexChanged.connect(_on_party_choice)
 
@@ -7931,6 +7957,7 @@ mw.form.menubar.addMenu(mw.pokemenu)
 # Each slot stores an index into mypokemon.json.
 
 _party_shortcuts = []
+_party_slot_actions = []  # Store references to slot menu actions for updating text
 
 def _party_path():
     try:
@@ -8060,17 +8087,51 @@ def _cycle_party(direction: int = 1):
             return
     showInfo("Could not switch: no valid non-fainted Pokémon found in party slots.")
 
+def _update_party_menu_text():
+    """Update the party slot menu items to show pokemon names."""
+    global _party_slot_actions
+    if not _party_slot_actions or len(_party_slot_actions) != 4:
+        return
+
+    try:
+        party = _load_party()
+        slots = party.get("slots", [None, None, None, None])
+        mypokemon_data = _load_mypokemon_list()
+
+        for i in range(4):
+            slot_idx = slots[i] if i < len(slots) else None
+            pokemon_name = ""
+
+            if slot_idx is not None and isinstance(mypokemon_data, list) and 0 <= slot_idx < len(mypokemon_data):
+                pokemon = mypokemon_data[slot_idx]
+                if isinstance(pokemon, dict):
+                    # Use nickname if available, otherwise use regular name
+                    nickname = pokemon.get('nickname')
+                    name = pokemon.get('name', 'Unknown')
+                    pokemon_name = f" ({nickname.capitalize()})" if nickname else f" ({name.capitalize()})"
+
+            # Update menu text
+            _party_slot_actions[i].setText(f"Party: Use Slot {i+1}{pokemon_name}")
+    except Exception:
+        # If anything fails, just keep the default text
+        pass
+
 def _register_party_actions():
     """Adds menu items + hotkeys to switch active party slot."""
     try:
+        global _party_slot_actions
+
         # Menu actions (under Ankimon menu)
         slot1 = QAction("Party: Use Slot 1", mw); slot1.triggered.connect(lambda: _set_active_from_party_slot(0)); mw.pokemenu.addAction(slot1)
         slot2 = QAction("Party: Use Slot 2", mw); slot2.triggered.connect(lambda: _set_active_from_party_slot(1)); mw.pokemenu.addAction(slot2)
         slot3 = QAction("Party: Use Slot 3", mw); slot3.triggered.connect(lambda: _set_active_from_party_slot(2)); mw.pokemenu.addAction(slot3)
         slot4 = QAction("Party: Use Slot 4", mw); slot4.triggered.connect(lambda: _set_active_from_party_slot(3)); mw.pokemenu.addAction(slot4)
-        mw.pokemenu.addSeparator()
-        nxt = QAction("Party: Next Slot", mw); nxt.triggered.connect(lambda: _cycle_party(1)); mw.pokemenu.addAction(nxt)
-        prv = QAction("Party: Previous Slot", mw); prv.triggered.connect(lambda: _cycle_party(-1)); mw.pokemenu.addAction(prv)
+
+        # Store action references for updating text later
+        _party_slot_actions = [slot1, slot2, slot3, slot4]
+
+        # Update menu text with current party pokemon names
+        _update_party_menu_text()
 
         # Hotkeys (global while Anki is focused)
         # macOS: Cmd = Ctrl in Qt's naming; this should work cross-platform.
