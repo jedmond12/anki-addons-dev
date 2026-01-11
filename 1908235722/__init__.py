@@ -219,10 +219,17 @@ if database_complete == True:
     def extract_ids_from_file():
         global owned_pokemon_ids, mypokemon_path
         filename = mypokemon_path
-        with open(filename, 'r') as file:
-            data = json.load(file)
-            ids = [character['id'] for character in data]
-            owned_pokemon_ids = ids
+        try:
+            with open(filename, 'r') as file:
+                data = json.load(file)
+                ids = [character['id'] for character in data]
+                owned_pokemon_ids = ids
+        except FileNotFoundError:
+            # First-time setup - mypokemon.json doesn't exist yet
+            owned_pokemon_ids = []
+        except Exception:
+            # Other errors - initialize as empty list
+            owned_pokemon_ids = []
 
     extract_ids_from_file()
 
@@ -6688,10 +6695,17 @@ def rate_this_addon():
 
 
 if database_complete is True:
-    with open(badgebag_path, 'r') as json_file:
-        badge_list = json.load(json_file)
-        if len(badge_list) > 2:
-            rate_this_addon()
+    try:
+        with open(badgebag_path, 'r') as json_file:
+            badge_list = json.load(json_file)
+            if len(badge_list) > 2:
+                rate_this_addon()
+    except FileNotFoundError:
+        # First-time setup - badges.json doesn't exist yet
+        pass
+    except Exception:
+        # Other errors - skip rating check
+        pass
 
 #Badges needed for achievements:
 with open(badges_list_path, 'r') as json_file:
