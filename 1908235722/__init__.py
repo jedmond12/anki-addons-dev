@@ -6071,7 +6071,7 @@ class TestWindow(QWidget):
             # Draw the text on top of the image
             # Adjust the font size as needed
             painter.setFont(custom_font)
-            painter.setPen(QColor(255, 255, 255))  # Text color - white for visibility
+            painter.setPen(QColor(0, 0, 0))  # Text color - black for readability on light backgrounds
             painter.drawText(48, 67, f"{lang_name} {gender_symbol}")
             painter.drawText(326, 200, mainpokemon_lang_name)
             painter.drawText(208, 67, lvl)
@@ -6190,7 +6190,7 @@ class TestWindow(QWidget):
         # Draw the text on top of the image
         # Adjust the font size as needed
         painter.setFont(custom_font)
-        painter.setPen(QColor(255, 255, 255))  # Text color - white for visibility
+        painter.setPen(QColor(0, 0, 0))  # Text color - black for readability on light backgrounds
         lang_name = get_pokemon_diff_lang_name(int(id))
         painter.drawText(48, 67, lang_name)
         mainpokemon_lang_name = get_pokemon_diff_lang_name(int(mainpokemon_id))
@@ -7380,14 +7380,19 @@ class CompletePokedex(QWidget):
         global icon_path, pokedex_path, frontdefault
         self.setWindowIcon(QIcon(str(icon_path)))
 
+        # Set light background and dark text for consistency (works in both light and dark mode)
+        self.setStyleSheet("background-color: white; color: black;")
+
         # Main layout
         main_layout = QVBoxLayout()
 
         # Search bar
         search_layout = QHBoxLayout()
         search_label = QLabel("Search:")
+        search_label.setStyleSheet("color: black;")  # Explicit black text
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Enter Pokémon name or ID...")
+        self.search_input.setStyleSheet("color: black; background-color: white;")  # Explicit colors
         self.search_input.textChanged.connect(self.filter_pokemon)
         search_layout.addWidget(search_label)
         search_layout.addWidget(self.search_input)
@@ -7473,12 +7478,14 @@ class CompletePokedex(QWidget):
                     img_label.setPixmap(pixmap)
                 else:
                     img_label.setText("No Image")
+                    img_label.setStyleSheet("color: black;")  # Explicit black text for light background
                 img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 card_layout.addWidget(img_label)
 
                 # Pokemon info
                 info_label = QLabel(f"#{pkmn_id} - {pkmn_name.capitalize()}")
                 info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                info_label.setStyleSheet("color: black;")  # Explicit black text for light background
                 info_font = QFont()
                 info_font.setBold(True)
                 info_label.setFont(info_font)
@@ -7489,6 +7496,7 @@ class CompletePokedex(QWidget):
                 type_text = ", ".join([t.capitalize() for t in types]) if types else "Unknown"
                 type_label = QLabel(f"Type: {type_text}")
                 type_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                type_label.setStyleSheet("color: black;")  # Explicit black text for light background
                 card_layout.addWidget(type_label)
 
                 # Force Encounter button
