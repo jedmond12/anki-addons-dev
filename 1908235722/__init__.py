@@ -112,6 +112,8 @@ user_path_sprites = addon_dir / "user_files" / "sprites"
 pkmnimgfolder = addon_dir / "user_files" / "sprites"
 backdefault = addon_dir / "user_files" / "sprites" / "back_default"
 frontdefault = addon_dir / "user_files" / "sprites" / "front_default"
+backdefault_gif = addon_dir / "user_files" / "sprites" / "back_default_gif"
+frontdefault_gif = addon_dir / "user_files" / "sprites" / "front_default_gif"
 #Assign saved Pokemon Directory
 mypokemon_path = addon_dir / "user_files" / "mypokemon.json"
 mainpokemon_path = addon_dir / "user_files" / "mainpokemon.json"
@@ -5878,9 +5880,105 @@ class TestWindow(QWidget):
         global test
         global addon_dir, icon_path
         layout = QVBoxLayout()
+
+        # Add button bar at the top
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(5)
+
+        # Pokedex button
+        pokedex_btn = QPushButton("📖 Pokédex")
+        pokedex_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #5a9fd4;
+                color: white;
+                border-radius: 5px;
+                padding: 8px 12px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #4a8fc4;
+            }
+        """)
+        pokedex_btn.clicked.connect(lambda: complete_pokedex.show_complete_pokedex())
+        button_layout.addWidget(pokedex_btn)
+
+        # Party button
+        party_btn = QPushButton("👥 Party")
+        party_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #5a9fd4;
+                color: white;
+                border-radius: 5px;
+                padding: 8px 12px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #4a8fc4;
+            }
+        """)
+        party_btn.clicked.connect(lambda: _set_active_from_party_slot(0))  # Opens party slot 1
+        button_layout.addWidget(party_btn)
+
+        # Pokemon button (Active Pokemon)
+        pokemon_btn = QPushButton("⭐ My Pokémon")
+        pokemon_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #5a9fd4;
+                color: white;
+                border-radius: 5px;
+                padding: 8px 12px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #4a8fc4;
+            }
+        """)
+        pokemon_btn.clicked.connect(lambda: mainpokemon_display.show())
+        button_layout.addWidget(pokemon_btn)
+
+        # Collection button
+        collection_btn = QPushButton("📦 Collection")
+        collection_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #5a9fd4;
+                color: white;
+                border-radius: 5px;
+                padding: 8px 12px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #4a8fc4;
+            }
+        """)
+        collection_btn.clicked.connect(lambda: pokecollection_win.show())
+        button_layout.addWidget(collection_btn)
+
+        # Reset Battle button
+        reset_btn = QPushButton("🔄 Reset Battle")
+        reset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f08030;
+                color: white;
+                border-radius: 5px;
+                padding: 8px 12px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #e07020;
+            }
+        """)
+        reset_btn.clicked.connect(reset_battle)
+        button_layout.addWidget(reset_btn)
+
+        layout.addLayout(button_layout)
+
         # Main window layout
         global addon_dir
-        layout = QVBoxLayout()
         image_file = f"ankimon_logo.png"
         image_path = str(addon_dir) + "/" + image_file
         image_label = QLabel()
@@ -5962,18 +6060,37 @@ class TestWindow(QWidget):
             pixmap_bckg = QPixmap()
             pixmap_bckg.load(str(bckgimage_path))
 
-            # Display the Pokémon image
-            pkmnimage_file = f"{id}.png"
-            pkmnimage_path = frontdefault / pkmnimage_file
+            # Display the Pokémon image (using GIF for animation)
+            pkmnimage_file = f"{id}.gif"
+            pkmnimage_path = frontdefault_gif / pkmnimage_file
             image_label = QLabel()
-            pixmap = QPixmap()
-            pixmap.load(str(pkmnimage_path))
 
-            # Display the Main Pokémon image
-            pkmnimage_file2 = f"{mainpokemon_id}.png"
-            pkmnimage_path2 = backdefault / pkmnimage_file2
-            pixmap2 = QPixmap()
-            pixmap2.load(str(pkmnimage_path2))
+            # Try to load as animated GIF using QMovie
+            from PyQt6.QtGui import QMovie
+            movie = QMovie(str(pkmnimage_path))
+            if movie.isValid():
+                pixmap = movie.currentPixmap()  # Get first frame for static display
+            else:
+                # Fallback to PNG if GIF not found
+                pkmnimage_file = f"{id}.png"
+                pkmnimage_path = frontdefault / pkmnimage_file
+                pixmap = QPixmap()
+                pixmap.load(str(pkmnimage_path))
+
+            # Display the Main Pokémon image (using GIF for animation)
+            pkmnimage_file2 = f"{mainpokemon_id}.gif"
+            pkmnimage_path2 = backdefault_gif / pkmnimage_file2
+
+            # Try to load as animated GIF
+            movie2 = QMovie(str(pkmnimage_path2))
+            if movie2.isValid():
+                pixmap2 = movie2.currentPixmap()  # Get first frame for static display
+            else:
+                # Fallback to PNG if GIF not found
+                pkmnimage_file2 = f"{mainpokemon_id}.png"
+                pkmnimage_path2 = backdefault / pkmnimage_file2
+                pixmap2 = QPixmap()
+                pixmap2.load(str(pkmnimage_path2))
 
             # Calculate the new dimensions to maintain the aspect ratio
             max_width = 150
@@ -6104,18 +6221,37 @@ class TestWindow(QWidget):
         pixmap_bckg = QPixmap()
         pixmap_bckg.load(str(bckgimage_path))
 
-        # Display the Pokémon image
-        pkmnimage_file = f"{id}.png"
-        pkmnimage_path = frontdefault / pkmnimage_file
+        # Display the Pokémon image (using GIF for animation)
+        pkmnimage_file = f"{id}.gif"
+        pkmnimage_path = frontdefault_gif / pkmnimage_file
         image_label = QLabel()
-        pixmap = QPixmap()
-        pixmap.load(str(pkmnimage_path))
 
-        # Display the Main Pokémon image
-        pkmnimage_file2 = f"{mainpokemon_id}.png"
-        pkmnimage_path2 = backdefault / pkmnimage_file2
-        pixmap2 = QPixmap()
-        pixmap2.load(str(pkmnimage_path2))
+        # Try to load as animated GIF using QMovie
+        from PyQt6.QtGui import QMovie
+        movie = QMovie(str(pkmnimage_path))
+        if movie.isValid():
+            pixmap = movie.currentPixmap()  # Get first frame for static display
+        else:
+            # Fallback to PNG if GIF not found
+            pkmnimage_file = f"{id}.png"
+            pkmnimage_path = frontdefault / pkmnimage_file
+            pixmap = QPixmap()
+            pixmap.load(str(pkmnimage_path))
+
+        # Display the Main Pokémon image (using GIF for animation)
+        pkmnimage_file2 = f"{mainpokemon_id}.gif"
+        pkmnimage_path2 = backdefault_gif / pkmnimage_file2
+
+        # Try to load as animated GIF
+        movie2 = QMovie(str(pkmnimage_path2))
+        if movie2.isValid():
+            pixmap2 = movie2.currentPixmap()  # Get first frame for static display
+        else:
+            # Fallback to PNG if GIF not found
+            pkmnimage_file2 = f"{mainpokemon_id}.png"
+            pkmnimage_path2 = backdefault / pkmnimage_file2
+            pixmap2 = QPixmap()
+            pixmap2.load(str(pkmnimage_path2))
 
         # Calculate the new dimensions to maintain the aspect ratio
         max_width = 150
