@@ -6071,7 +6071,7 @@ class TestWindow(QWidget):
             # Draw the text on top of the image
             # Adjust the font size as needed
             painter.setFont(custom_font)
-            painter.setPen(QColor(31, 31, 39))  # Text color
+            painter.setPen(QColor(255, 255, 255))  # Text color - white for visibility
             painter.drawText(48, 67, f"{lang_name} {gender_symbol}")
             painter.drawText(326, 200, mainpokemon_lang_name)
             painter.drawText(208, 67, lvl)
@@ -6190,7 +6190,7 @@ class TestWindow(QWidget):
         # Draw the text on top of the image
         # Adjust the font size as needed
         painter.setFont(custom_font)
-        painter.setPen(QColor(31, 31, 39))  # Text color
+        painter.setPen(QColor(255, 255, 255))  # Text color - white for visibility
         lang_name = get_pokemon_diff_lang_name(int(id))
         painter.drawText(48, 67, lang_name)
         mainpokemon_lang_name = get_pokemon_diff_lang_name(int(mainpokemon_id))
@@ -7414,7 +7414,9 @@ class CompletePokedex(QWidget):
             with open(pokedex_path, 'r') as file:
                 pokedex_dict = json.load(file)
             # Convert dict to list of pokemon objects
+            # Filter to unique Pokemon IDs only (no duplicate forms)
             self.all_pokemon = []
+            seen_ids = set()
             for pkmn_name, pkmn_data in pokedex_dict.items():
                 if isinstance(pkmn_data, dict):
                     # Ensure num and name are in the data
@@ -7422,7 +7424,12 @@ class CompletePokedex(QWidget):
                         pkmn_data['num'] = 0
                     if 'name' not in pkmn_data:
                         pkmn_data['name'] = pkmn_name
-                    self.all_pokemon.append(pkmn_data)
+
+                    # Only add if we haven't seen this Pokemon ID before
+                    pkmn_id = pkmn_data['num']
+                    if pkmn_id not in seen_ids and pkmn_id > 0:
+                        seen_ids.add(pkmn_id)
+                        self.all_pokemon.append(pkmn_data)
             # Sort by pokemon number
             self.all_pokemon.sort(key=lambda x: x.get('num', 0))
             self.display_pokemon(self.all_pokemon)
