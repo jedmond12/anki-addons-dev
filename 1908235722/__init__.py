@@ -6068,10 +6068,13 @@ class TestWindow(QWidget):
             # Try to load as animated GIF using QMovie
             from PyQt6.QtGui import QMovie
             movie = QMovie(str(pkmnimage_path))
-            if movie.isValid():
+            pixmap = QPixmap()
+            if movie.isValid() and movie.frameCount() > 0:
+                movie.jumpToFrame(0)  # Jump to first frame
                 pixmap = movie.currentPixmap()  # Get first frame for static display
-            else:
-                # Fallback to PNG if GIF not found
+
+            # If GIF loading failed or returned null pixmap, fallback to PNG
+            if pixmap.isNull():
                 pkmnimage_file = f"{id}.png"
                 pkmnimage_path = frontdefault / pkmnimage_file
                 pixmap = QPixmap()
@@ -6083,10 +6086,13 @@ class TestWindow(QWidget):
 
             # Try to load as animated GIF
             movie2 = QMovie(str(pkmnimage_path2))
-            if movie2.isValid():
+            pixmap2 = QPixmap()
+            if movie2.isValid() and movie2.frameCount() > 0:
+                movie2.jumpToFrame(0)  # Jump to first frame
                 pixmap2 = movie2.currentPixmap()  # Get first frame for static display
-            else:
-                # Fallback to PNG if GIF not found
+
+            # If GIF loading failed or returned null pixmap, fallback to PNG
+            if pixmap2.isNull():
                 pkmnimage_file2 = f"{mainpokemon_id}.png"
                 pkmnimage_path2 = backdefault / pkmnimage_file2
                 pixmap2 = QPixmap()
@@ -6229,10 +6235,13 @@ class TestWindow(QWidget):
         # Try to load as animated GIF using QMovie
         from PyQt6.QtGui import QMovie
         movie = QMovie(str(pkmnimage_path))
-        if movie.isValid():
+        pixmap = QPixmap()
+        if movie.isValid() and movie.frameCount() > 0:
+            movie.jumpToFrame(0)  # Jump to first frame
             pixmap = movie.currentPixmap()  # Get first frame for static display
-        else:
-            # Fallback to PNG if GIF not found
+
+        # If GIF loading failed or returned null pixmap, fallback to PNG
+        if pixmap.isNull():
             pkmnimage_file = f"{id}.png"
             pkmnimage_path = frontdefault / pkmnimage_file
             pixmap = QPixmap()
@@ -6244,10 +6253,13 @@ class TestWindow(QWidget):
 
         # Try to load as animated GIF
         movie2 = QMovie(str(pkmnimage_path2))
-        if movie2.isValid():
+        pixmap2 = QPixmap()
+        if movie2.isValid() and movie2.frameCount() > 0:
+            movie2.jumpToFrame(0)  # Jump to first frame
             pixmap2 = movie2.currentPixmap()  # Get first frame for static display
-        else:
-            # Fallback to PNG if GIF not found
+
+        # If GIF loading failed or returned null pixmap, fallback to PNG
+        if pixmap2.isNull():
             pkmnimage_file2 = f"{mainpokemon_id}.png"
             pkmnimage_path2 = backdefault / pkmnimage_file2
             pixmap2 = QPixmap()
@@ -6255,20 +6267,29 @@ class TestWindow(QWidget):
 
         # Calculate the new dimensions to maintain the aspect ratio
         max_width = 150
-        original_width = pixmap.width()
-        original_height = pixmap.height()
-        new_width = max_width
-        new_height = (original_height * max_width) //original_width
-        pixmap = pixmap.scaled(new_width, new_height)
+        # Guard: missing/invalid sprite can yield width==0 and crash scaling
+        if pixmap.isNull() or pixmap.width() <= 0 or pixmap.height() <= 0:
+            pixmap = QPixmap(max_width, max_width)
+            pixmap.fill(QColor(0, 0, 0, 0))
+        else:
+            original_width = max(1, pixmap.width())
+            original_height = pixmap.height()
+            new_width = max_width
+            new_height = (original_height * max_width) // original_width
+            pixmap = pixmap.scaled(new_width, new_height)
 
         # Calculate the new dimensions to maintain the aspect ratio
         max_width = 150
-        original_width2 = pixmap2.width()
-        original_height2 = pixmap2.height()
-
-        new_width2 = max_width
-        new_height2 = (original_height2 * max_width) // original_width2
-        pixmap2 = pixmap2.scaled(new_width2, new_height2)
+        # Guard: missing/invalid sprite can yield width==0 and crash scaling
+        if pixmap2.isNull() or pixmap2.width() <= 0 or pixmap2.height() <= 0:
+            pixmap2 = QPixmap(max_width, max_width)
+            pixmap2.fill(QColor(0, 0, 0, 0))
+        else:
+            original_width2 = max(1, pixmap2.width())
+            original_height2 = pixmap2.height()
+            new_width2 = max_width
+            new_height2 = (original_height2 * max_width) // original_width2
+            pixmap2 = pixmap2.scaled(new_width2, new_height2)
 
         # Merge the background image and the Pokémon image
         merged_pixmap = QPixmap(pixmap_bckg.size())
