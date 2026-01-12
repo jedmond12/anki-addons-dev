@@ -285,6 +285,7 @@ gender = None
 card_counter = -1
 item_receive_value = random.randint(30, 120)
 system_name = platform.system()
+forced_next_pokemon_id = None  # For Pokédex force encounter feature
 
 if system_name == "Windows" or system_name == "Linux":
     system = "win_lin"
@@ -1171,8 +1172,19 @@ if database_complete != False:
         # Initialize id with a default value to prevent UnboundLocalError
         id = None
         try:
+            # Check for forced encounter from Pokédex
+            global forced_next_pokemon_id
+            if forced_next_pokemon_id is not None and not _ankimon_is_gym_active():
+                # Use the forced pokemon ID and clear it
+                id = forced_next_pokemon_id
+                forced_next_pokemon_id = None
+                pokemon_species = None
+                try:
+                    tooltipWithColour(f"🎯 Forced encounter activated!", "#00FF00")
+                except:
+                    pass
             # If a gym battle is active, lock the opponent to the current gym team.
-            if _ankimon_is_gym_active():
+            elif _ankimon_is_gym_active():
                 _ids = _ankimon_get_gym_enemy_ids()
                 _idx = _ankimon_get_gym_enemy_index()
                 if _ids and len(_ids) > 0:
@@ -7357,6 +7369,175 @@ class Pokedex_Widget(QWidget):
         self.read_poke_coll()
         self.show()
 
+class CompletePokedex(QWidget):
+    """Complete Pokédex showing all pokemon with force encounter feature"""
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle("Complete Pokédex")
+        global icon_path, pokedex_path, frontdefault
+        self.setWindowIcon(QIcon(str(icon_path)))
+
+        # Main layout
+        main_layout = QVBoxLayout()
+
+        # Search bar
+        search_layout = QHBoxLayout()
+        search_label = QLabel("Search:")
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Enter Pokémon name or ID...")
+        self.search_input.textChanged.connect(self.filter_pokemon)
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.search_input)
+        main_layout.addLayout(search_layout)
+
+        # Scroll area for pokemon list
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_widget = QWidget()
+        self.pokemon_layout = QVBoxLayout()
+        scroll_widget.setLayout(self.pokemon_layout)
+        scroll_area.setWidget(scroll_widget)
+        main_layout.addWidget(scroll_area)
+
+        self.setLayout(main_layout)
+        self.setMinimumSize(800, 600)
+
+        # Load all pokemon
+        self.load_all_pokemon()
+
+    def load_all_pokemon(self):
+        """Load all pokemon from pokedex.json"""
+        try:
+            with open(pokedex_path, 'r') as file:
+                self.all_pokemon = json.load(file)
+            self.display_pokemon(self.all_pokemon)
+        except Exception as e:
+            error_label = QLabel(f"Error loading Pokédex: {str(e)}")
+            self.pokemon_layout.addWidget(error_label)
+
+    def display_pokemon(self, pokemon_list):
+        """Display pokemon in a grid"""
+        # Clear existing layout
+        while self.pokemon_layout.count():
+            item = self.pokemon_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # Create grid layout for pokemon entries
+        grid_layout = QGridLayout()
+        row = 0
+        col = 0
+        max_cols = 3
+
+        for pokemon in pokemon_list:
+            try:
+                pkmn_id = pokemon.get('num')
+                pkmn_name = pokemon.get('name', 'Unknown')
+
+                if not pkmn_id or not pkmn_name:
+                    continue
+
+                # Pokemon card widget
+                card_widget = QWidget()
+                card_widget.setStyleSheet("border: 2px solid #ccc; border-radius: 5px; padding: 5px; background-color: #f9f9f9;")
+                card_layout = QVBoxLayout()
+
+                # Pokemon image
+                img_label = QLabel()
+                img_path = frontdefault / f"{pkmn_id}.png"
+                if img_path.exists():
+                    pixmap = QPixmap(str(img_path))
+                    pixmap = pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio)
+                    img_label.setPixmap(pixmap)
+                else:
+                    img_label.setText("No Image")
+                img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                card_layout.addWidget(img_label)
+
+                # Pokemon info
+                info_label = QLabel(f"#{pkmn_id} - {pkmn_name.capitalize()}")
+                info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                info_font = QFont()
+                info_font.setBold(True)
+                info_label.setFont(info_font)
+                card_layout.addWidget(info_label)
+
+                # Type info
+                types = pokemon.get('types', [])
+                type_text = ", ".join([t.capitalize() for t in types]) if types else "Unknown"
+                type_label = QLabel(f"Type: {type_text}")
+                type_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                card_layout.addWidget(type_label)
+
+                # Force Encounter button
+                encounter_btn = QPushButton("⚡ Force Encounter")
+                encounter_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #4CAF50;
+                        color: white;
+                        border-radius: 5px;
+                        padding: 8px;
+                        font-weight: bold;
+                    }
+                    QPushButton:hover {
+                        background-color: #45a049;
+                    }
+                    QPushButton:pressed {
+                        background-color: #3d8b40;
+                    }
+                """)
+                encounter_btn.clicked.connect(lambda checked, pid=pkmn_id, pname=pkmn_name: self.force_encounter(pid, pname))
+                card_layout.addWidget(encounter_btn)
+
+                card_widget.setLayout(card_layout)
+                grid_layout.addWidget(card_widget, row, col)
+
+                col += 1
+                if col >= max_cols:
+                    col = 0
+                    row += 1
+
+            except Exception as e:
+                continue
+
+        self.pokemon_layout.addLayout(grid_layout)
+
+    def filter_pokemon(self):
+        """Filter pokemon based on search text"""
+        search_text = self.search_input.text().lower()
+
+        if not search_text:
+            # Show all pokemon
+            self.display_pokemon(self.all_pokemon)
+            return
+
+        # Filter pokemon by name or ID
+        filtered = []
+        for pokemon in self.all_pokemon:
+            pkmn_name = pokemon.get('name', '').lower()
+            pkmn_id = str(pokemon.get('num', ''))
+
+            if search_text in pkmn_name or search_text in pkmn_id:
+                filtered.append(pokemon)
+
+        self.display_pokemon(filtered)
+
+    def force_encounter(self, pokemon_id, pokemon_name):
+        """Set the next wild encounter to be this specific pokemon"""
+        global forced_next_pokemon_id
+        forced_next_pokemon_id = pokemon_id
+
+        from aqt.utils import showInfo
+        showInfo(f"Next wild encounter will be: {pokemon_name.capitalize()} (#{pokemon_id})\n\nAnswer a card to trigger the encounter!")
+        self.close()
+
+    def show_complete_pokedex(self):
+        self.load_all_pokemon()
+        self.show()
+
 class IDTableWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -7395,6 +7576,7 @@ if database_complete!= False:
 
 eff_chart = TableWidget()
 pokedex = Pokedex_Widget()
+complete_pokedex = CompletePokedex()
 gen_id_chart = IDTableWidget()
 
 class License(QWidget):
@@ -8211,6 +8393,11 @@ if database_complete != False:
     # set it to call testFunction when it's clicked
     mw.pokemenu.addAction(pokecol_action)
     qconnect(pokecol_action.triggered, pokecollection_win.show)
+
+    # Complete Pokédex with force encounter feature
+    complete_pokedex_action = QAction("📖 Complete Pokédex (Force Encounter)", mw)
+    mw.pokemenu.addAction(complete_pokedex_action)
+    qconnect(complete_pokedex_action.triggered, complete_pokedex.show_complete_pokedex)
     # Make new PokeAnki menu under tools
 
     test_action10 = QAction("Open Ankimon Window", mw)
