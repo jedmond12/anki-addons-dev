@@ -5977,7 +5977,14 @@ class TestWindow(QWidget):
 
         layout.addLayout(button_layout)
 
-        # Main window layout
+        # Create a content widget to hold the battle/logo display
+        # This will be what gets cleared and updated, not the buttons
+        self.content_widget = QWidget()
+        self.content_layout = QVBoxLayout()
+        self.content_widget.setLayout(self.content_layout)
+        layout.addWidget(self.content_widget)
+
+        # Add initial logo
         global addon_dir
         image_file = f"ankimon_logo.png"
         image_path = str(addon_dir) + "/" + image_file
@@ -5990,7 +5997,8 @@ class TestWindow(QWidget):
             image_label.setPixmap(pixmap)
         scaled_pixmap = pixmap.scaled(400, 400, Qt.AspectRatioMode.KeepAspectRatio)
         image_label.setPixmap(scaled_pixmap)
-        layout.addWidget(image_label)
+        self.content_layout.addWidget(image_label)
+
         first_start = True
         self.setLayout(layout)
         # Set window
@@ -6060,43 +6068,18 @@ class TestWindow(QWidget):
             pixmap_bckg = QPixmap()
             pixmap_bckg.load(str(bckgimage_path))
 
-            # Display the Pokémon image (using GIF for animation)
-            pkmnimage_file = f"{id}.gif"
-            pkmnimage_path = frontdefault_gif / pkmnimage_file
+            # Display the Pokémon image
+            pkmnimage_file = f"{id}.png"
+            pkmnimage_path = frontdefault / pkmnimage_file
             image_label = QLabel()
-
-            # Try to load as animated GIF using QMovie
-            from PyQt6.QtGui import QMovie
-            movie = QMovie(str(pkmnimage_path))
             pixmap = QPixmap()
-            if movie.isValid() and movie.frameCount() > 0:
-                movie.jumpToFrame(0)  # Jump to first frame
-                pixmap = movie.currentPixmap()  # Get first frame for static display
+            pixmap.load(str(pkmnimage_path))
 
-            # If GIF loading failed or returned null pixmap, fallback to PNG
-            if pixmap.isNull():
-                pkmnimage_file = f"{id}.png"
-                pkmnimage_path = frontdefault / pkmnimage_file
-                pixmap = QPixmap()
-                pixmap.load(str(pkmnimage_path))
-
-            # Display the Main Pokémon image (using GIF for animation)
-            pkmnimage_file2 = f"{mainpokemon_id}.gif"
-            pkmnimage_path2 = backdefault_gif / pkmnimage_file2
-
-            # Try to load as animated GIF
-            movie2 = QMovie(str(pkmnimage_path2))
+            # Display the Main Pokémon image
+            pkmnimage_file2 = f"{mainpokemon_id}.png"
+            pkmnimage_path2 = backdefault / pkmnimage_file2
             pixmap2 = QPixmap()
-            if movie2.isValid() and movie2.frameCount() > 0:
-                movie2.jumpToFrame(0)  # Jump to first frame
-                pixmap2 = movie2.currentPixmap()  # Get first frame for static display
-
-            # If GIF loading failed or returned null pixmap, fallback to PNG
-            if pixmap2.isNull():
-                pkmnimage_file2 = f"{mainpokemon_id}.png"
-                pkmnimage_path2 = backdefault / pkmnimage_file2
-                pixmap2 = QPixmap()
-                pixmap2.load(str(pkmnimage_path2))
+            pixmap2.load(str(pkmnimage_path2))
 
             # Calculate the new dimensions to maintain the aspect ratio
             max_width = 150
@@ -6227,43 +6210,18 @@ class TestWindow(QWidget):
         pixmap_bckg = QPixmap()
         pixmap_bckg.load(str(bckgimage_path))
 
-        # Display the Pokémon image (using GIF for animation)
-        pkmnimage_file = f"{id}.gif"
-        pkmnimage_path = frontdefault_gif / pkmnimage_file
+        # Display the Pokémon image
+        pkmnimage_file = f"{id}.png"
+        pkmnimage_path = frontdefault / pkmnimage_file
         image_label = QLabel()
-
-        # Try to load as animated GIF using QMovie
-        from PyQt6.QtGui import QMovie
-        movie = QMovie(str(pkmnimage_path))
         pixmap = QPixmap()
-        if movie.isValid() and movie.frameCount() > 0:
-            movie.jumpToFrame(0)  # Jump to first frame
-            pixmap = movie.currentPixmap()  # Get first frame for static display
+        pixmap.load(str(pkmnimage_path))
 
-        # If GIF loading failed or returned null pixmap, fallback to PNG
-        if pixmap.isNull():
-            pkmnimage_file = f"{id}.png"
-            pkmnimage_path = frontdefault / pkmnimage_file
-            pixmap = QPixmap()
-            pixmap.load(str(pkmnimage_path))
-
-        # Display the Main Pokémon image (using GIF for animation)
-        pkmnimage_file2 = f"{mainpokemon_id}.gif"
-        pkmnimage_path2 = backdefault_gif / pkmnimage_file2
-
-        # Try to load as animated GIF
-        movie2 = QMovie(str(pkmnimage_path2))
+        # Display the Main Pokémon image
+        pkmnimage_file2 = f"{mainpokemon_id}.png"
+        pkmnimage_path2 = backdefault / pkmnimage_file2
         pixmap2 = QPixmap()
-        if movie2.isValid() and movie2.frameCount() > 0:
-            movie2.jumpToFrame(0)  # Jump to first frame
-            pixmap2 = movie2.currentPixmap()  # Get first frame for static display
-
-        # If GIF loading failed or returned null pixmap, fallback to PNG
-        if pixmap2.isNull():
-            pkmnimage_file2 = f"{mainpokemon_id}.png"
-            pkmnimage_path2 = backdefault / pkmnimage_file2
-            pixmap2 = QPixmap()
-            pixmap2.load(str(pkmnimage_path2))
+        pixmap2.load(str(pkmnimage_path2))
 
         # Calculate the new dimensions to maintain the aspect ratio
         max_width = 150
@@ -6572,17 +6530,14 @@ class TestWindow(QWidget):
 
     def display_first_encounter(self):
         # pokemon encounter image
-        self.clear_layout(self.layout())
-        #self.setFixedWidth(556)
-        #self.setFixedHeight(371)
-        layout = self.layout()
+        # Clear only the content area, not the button bar
+        self.clear_layout(self.content_layout)
         battle_widget = self.pokemon_display_first_encounter()
         #battle_widget.setScaledContents(True) #scalable ankimon window
-        layout.addWidget(battle_widget)
+        self.content_layout.addWidget(battle_widget)
         self.setStyleSheet("background-color: rgb(44,44,44);")
-        self.setLayout(layout)
         self.setMaximumWidth(556)
-        self.setMaximumHeight(300)
+        self.setMaximumHeight(350)  # Increased to accommodate buttons
 
     def rate_display_item(self, item):
         Receive_Window = QDialog(mw)
@@ -6625,27 +6580,25 @@ class TestWindow(QWidget):
         if _ankimon_is_gym_active():
             return
         # pokemon encounter image
-        self.clear_layout(self.layout())
-        layout = self.layout()
+        # Clear only the content area, not the button bar
+        self.clear_layout(self.content_layout)
         pkmnimage_label, kill_button, catch_button, nickname_input = self.pokemon_display_dead_pokemon()
-        layout.addWidget(pkmnimage_label)
+        self.content_layout.addWidget(pkmnimage_label)
         button_widget = QWidget()
         button_layout = QHBoxLayout()
         button_layout.addWidget(kill_button)
         button_layout.addWidget(catch_button)
         button_layout.addWidget(nickname_input)
         button_widget.setLayout(button_layout)
-        layout.addWidget(button_widget)
+        self.content_layout.addWidget(button_widget)
         self.setStyleSheet("background-color: rgb(177,147,209);")
-        self.setLayout(layout)
         self.setMaximumWidth(500)
-        self.setMaximumHeight(300)
+        self.setMaximumHeight(350)  # Increased to accommodate buttons
 
     def display_gym_pokemon_fainted(self):
         """Display fainted gym pokemon with Next Pokemon button"""
-        # Clear the layout and show fainted pokemon with next button
-        self.clear_layout(self.layout())
-        layout = self.layout()
+        # Clear only the content area, not the button bar
+        self.clear_layout(self.content_layout)
 
         # Get gym battle info
         conf = _ankimon_get_col_conf()
@@ -6698,7 +6651,7 @@ class TestWindow(QWidget):
         painter.end()
         pkmnimage_label.setPixmap(pkmnpixmap_bckg)
         pkmnimage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(pkmnimage_label)
+        self.content_layout.addWidget(pkmnimage_label)
 
         # Create button widget
         button_widget = QWidget()
@@ -6740,12 +6693,11 @@ class TestWindow(QWidget):
             button_layout.addWidget(complete_button)
 
         button_widget.setLayout(button_layout)
-        layout.addWidget(button_widget)
+        self.content_layout.addWidget(button_widget)
 
         self.setStyleSheet("background-color: rgb(177,147,209);")
-        self.setLayout(layout)
         self.setMaximumWidth(500)
-        self.setMaximumHeight(350)
+        self.setMaximumHeight(400)  # Increased to accommodate buttons
 
     def keyPressEvent(self, event):
         global test, pokemon_encounter, pokedex_image_path, system, ankimon_key
