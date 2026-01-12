@@ -997,9 +997,13 @@ if item_sprites != False:
         item_names = [name for name in item_names if not name.endswith("-nugget")]
         item_name = random.choice(item_names)
         # add item to item list
-        with open(itembag_path, 'r') as json_file:
-            itembag_list = json.load(json_file)
-            itembag_list.append(item_name)
+        try:
+            with open(itembag_path, 'r') as json_file:
+                itembag_list = json.load(json_file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            # Create empty items list if file doesn't exist
+            itembag_list = []
+        itembag_list.append(item_name)
         with open(itembag_path, 'w') as json_file:
             json.dump(itembag_list, json_file)
         return item_name
@@ -1014,9 +1018,13 @@ if item_sprites != False:
                 # Append the file name without the .png extension to the list
                 fossil_names.append(file[:-4])
         fossil_name = random.choice(fossil_names)
-        with open(itembag_path, 'r') as json_file:
-            itembag_list = json.load(json_file)
-            itembag_list.append(fossil_name)
+        try:
+            with open(itembag_path, 'r') as json_file:
+                itembag_list = json.load(json_file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            # Create empty items list if file doesn't exist
+            itembag_list = []
+        itembag_list.append(fossil_name)
         with open(itembag_path, 'w') as json_file:
             json.dump(itembag_list, json_file, indent=2)
         return fossil_name
@@ -6074,10 +6082,9 @@ class TestWindow(QWidget):
         max_hp = calculate_hp(stats["hp"], level, ev, iv)
         mainpkmn_max_hp = calculate_hp(mainpokemon_stats["hp"], mainpokemon_level, mainpokemon_ev, mainpokemon_iv)
         message_box_text = (f"A wild {lang_name.capitalize()} appeared !")
-        if pokemon_encounter == 0:
-            bckgimage_path = battlescene_path / battlescene_file
-        elif pokemon_encounter > 0:
-            bckgimage_path = battlescene_path_without_dialog / battlescene_file
+
+        # Always use battle scene without dialog box for consistent positioning
+        bckgimage_path = battlescene_path_without_dialog / battlescene_file
 
         # Create a container widget
         container = QWidget()
@@ -6157,45 +6164,90 @@ class TestWindow(QWidget):
 
         background_label.setPixmap(merged_bg)
 
-        # Adjust Pokemon positions based on whether dialog box is present
-        # First encounter (pokemon_encounter == 0) has dialog at bottom, so Pokemon stay same
-        # After first move, dialog disappears and positions remain consistent
-        wild_x, wild_y = 335, 20  # Wild Pokemon upper right
-        player_x, player_y = 69, 140  # Player Pokemon lower left
+        # Get Pokemon sizes from pokedex for proper scaling
+        def get_pokemon_size(pkmn_id):
+            """Get Pokemon height in meters from pokedex, return scale factor"""
+            try:
+                pkmn_data = search_pokedex(str(pkmn_id), "all")
+                height = pkmn_data.get("heightm", 1.0) if isinstance(pkmn_data, dict) else 1.0
+                # Base size 96px for 1.0m Pokemon, scale proportionally
+                # Cap at max 120px and min 40px for visibility
+                size = max(40, min(120, int(96 * (height / 1.0))))
+                return size
+            except Exception:
+                return 96  # Default size
+
+        wild_size = get_pokemon_size(id)
+        player_size = get_pokemon_size(mainpokemon_id)
+
+        # Pokemon positions (consistent with no-dialog background)
+        wild_x, wild_y = 362, 74  # Wild Pokemon upper right
+        player_x, player_y = 96, 194  # Player Pokemon lower left
 
         # Wild Pokemon animated sprite
         wild_pkmn_label = QLabel(container)
-        wild_pkmn_label.setStyleSheet("background: transparent;")  # Remove black box
+        wild_pkmn_label.setStyleSheet("background: transparent;")
         wild_pkmn_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         wild_gif_path = frontdefault_gif / f"{id}.gif"
         if wild_gif_path.exists():
             wild_movie = QMovie(str(wild_gif_path))
-            wild_movie.setScaledSize(QSize(96, 96))  # Smaller size to match original
+            wild_movie.setScaledSize(QSize(wild_size, wild_size))
             wild_pkmn_label.setMovie(wild_movie)
             wild_movie.start()
         else:
             # Fallback to PNG
             wild_pixmap = QPixmap(str(frontdefault / f"{id}.png"))
-            wild_pixmap = wild_pixmap.scaled(96, 96, Qt.AspectRatioMode.KeepAspectRatio)
+            wild_pixmap = wild_pixmap.scaled(wild_size, wild_size, Qt.AspectRatioMode.KeepAspectRatio)
             wild_pkmn_label.setPixmap(wild_pixmap)
-        wild_pkmn_label.setGeometry(wild_x, wild_y, 96, 96)
+        wild_pkmn_label.setGeometry(wild_x, wild_y, wild_size, wild_size)
 
         # Player Pokemon animated sprite
         player_pkmn_label = QLabel(container)
-        player_pkmn_label.setStyleSheet("background: transparent;")  # Remove black box
+        player_pkmn_label.setStyleSheet("background: transparent;")
         player_pkmn_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
         if player_gif_path.exists():
             player_movie = QMovie(str(player_gif_path))
-            player_movie.setScaledSize(QSize(96, 96))  # Smaller size to match original
+            player_movie.setScaledSize(QSize(player_size, player_size))
             player_pkmn_label.setMovie(player_movie)
             player_movie.start()
         else:
             # Fallback to PNG
             player_pixmap = QPixmap(str(backdefault / f"{mainpokemon_id}.png"))
-            player_pixmap = player_pixmap.scaled(96, 96, Qt.AspectRatioMode.KeepAspectRatio)
+            player_pixmap = player_pixmap.scaled(player_size, player_size, Qt.AspectRatioMode.KeepAspectRatio)
             player_pkmn_label.setPixmap(player_pixmap)
-        player_pkmn_label.setGeometry(player_x, player_y, 96, 96)
+        player_pkmn_label.setGeometry(player_x, player_y, player_size, player_size)
+
+        # Add popup message for first encounter
+        if pokemon_encounter == 0:
+            popup_label = QLabel(container)
+            popup_label.setText(message_box_text)
+            popup_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            popup_label.setStyleSheet("""
+                QLabel {
+                    background-color: rgba(0, 0, 0, 180);
+                    color: #f0f0d0;
+                    font-size: 18px;
+                    font-weight: bold;
+                    border-radius: 10px;
+                    padding: 15px;
+                }
+            """)
+            popup_label.setGeometry(100, 230, 356, 60)
+
+            # Fade out animation
+            from PyQt6.QtCore import QTimer, QPropertyAnimation
+            opacity_effect = QGraphicsOpacityEffect(popup_label)
+            popup_label.setGraphicsEffect(opacity_effect)
+
+            fade = QPropertyAnimation(opacity_effect, b"opacity")
+            fade.setDuration(2000)  # 2 seconds
+            fade.setStartValue(1.0)
+            fade.setEndValue(0.0)
+
+            # Start fade after 1 second delay
+            QTimer.singleShot(1000, fade.start)
+            QTimer.singleShot(3000, popup_label.hide)
 
         return container
 
@@ -6799,9 +6851,13 @@ def rate_this_addon():
                 json.dump(rate_data, file, indent=4)
                 test_window.rate_display_item("potion")
                 # add item to item list
-                with open(itembag_path, 'r') as json_file:
-                    itembag_list = json.load(json_file)
-                    itembag_list.append("potion")
+                try:
+                    with open(itembag_path, 'r') as json_file:
+                        itembag_list = json.load(json_file)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    # Create empty items list if file doesn't exist
+                    itembag_list = []
+                itembag_list.append("potion")
                 with open(itembag_path, 'w') as json_file:
                     json.dump(itembag_list, json_file)
         rate_button.clicked.connect(rate_this_button)
