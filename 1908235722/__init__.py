@@ -7479,17 +7479,6 @@ class CompletePokedex(QWidget):
             error_label.setStyleSheet("color: #ff6b6b; font-size: 14px;")
             self.pokemon_layout.addWidget(error_label)
 
-    def display_pokemon(self, pokemon_list):
-        """Display pokemon in a grid with detailed info"""
-        # Clear existing layout - remove both widgets AND layouts
-        while self.pokemon_layout.count():
-            item = self.pokemon_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-            elif item.layout():
-                # Clear the layout and its children
-                self.clear_layout(item.layout())
-
     def clear_layout(self, layout):
         """Recursively clear a layout and all its children"""
         if layout is not None:
@@ -7500,6 +7489,17 @@ class CompletePokedex(QWidget):
                     widget.deleteLater()
                 else:
                     self.clear_layout(item.layout())
+
+    def display_pokemon(self, pokemon_list):
+        """Display pokemon in a grid with detailed info"""
+        # Clear existing layout - remove both widgets AND layouts
+        while self.pokemon_layout.count():
+            item = self.pokemon_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                # Clear the layout and its children
+                self.clear_layout(item.layout())
 
         # Create grid layout for pokemon entries
         grid_layout = QGridLayout()
