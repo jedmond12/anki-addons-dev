@@ -5886,7 +5886,7 @@ class TestWindow(QWidget):
         button_layout.setSpacing(5)
 
         # Pokedex button
-        pokedex_btn = QPushButton("📖 Pokédex")
+        pokedex_btn = QPushButton("Pokédex")
         pokedex_btn.setStyleSheet("""
             QPushButton {
                 background-color: #5a9fd4;
@@ -5905,7 +5905,7 @@ class TestWindow(QWidget):
 
         # Party dropdown button with menu
         from PyQt6.QtWidgets import QMenu
-        party_btn = QPushButton("👥 Party ▼")
+        party_btn = QPushButton("Party ▼")
         party_btn.setStyleSheet("""
             QPushButton {
                 background-color: #5a9fd4;
@@ -5923,15 +5923,41 @@ class TestWindow(QWidget):
             }
         """)
         party_menu = QMenu()
-        party_menu.addAction("Slot 1", lambda: _set_active_from_party_slot(0))
-        party_menu.addAction("Slot 2", lambda: _set_active_from_party_slot(1))
-        party_menu.addAction("Slot 3", lambda: _set_active_from_party_slot(2))
-        party_menu.addAction("Slot 4", lambda: _set_active_from_party_slot(3))
+
+        # Get party Pokemon names
+        try:
+            party = _load_party()
+            slots = party.get("slots", [0, 1, 2, 3])
+            my_list = _load_mypokemon_list()
+
+            for i in range(4):
+                try:
+                    idx = int(slots[i])
+                    if 0 <= idx < len(my_list):
+                        pkmn = my_list[idx]
+                        pkmn_name = pkmn.get("name", "Empty")
+                        nickname = pkmn.get("nickname", "")
+                        if nickname:
+                            label = f"Slot {i+1} ({nickname})"
+                        else:
+                            label = f"Slot {i+1} ({pkmn_name})"
+                    else:
+                        label = f"Slot {i+1} (Empty)"
+                except Exception:
+                    label = f"Slot {i+1} (Empty)"
+                party_menu.addAction(label, lambda slot=i: _set_active_from_party_slot(slot))
+        except Exception:
+            # Fallback if party loading fails
+            party_menu.addAction("Slot 1", lambda: _set_active_from_party_slot(0))
+            party_menu.addAction("Slot 2", lambda: _set_active_from_party_slot(1))
+            party_menu.addAction("Slot 3", lambda: _set_active_from_party_slot(2))
+            party_menu.addAction("Slot 4", lambda: _set_active_from_party_slot(3))
+
         party_btn.setMenu(party_menu)
         button_layout.addWidget(party_btn)
 
         # Pokemon Collection button (combined)
-        collection_btn = QPushButton("📦 Pokémon Collection")
+        collection_btn = QPushButton("Pokémon Collection")
         collection_btn.setStyleSheet("""
             QPushButton {
                 background-color: #5a9fd4;
@@ -6128,33 +6154,37 @@ class TestWindow(QWidget):
 
         # Wild Pokemon animated sprite
         wild_pkmn_label = QLabel(container)
+        wild_pkmn_label.setStyleSheet("background: transparent;")  # Remove black box
+        wild_pkmn_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         wild_gif_path = frontdefault_gif / f"{id}.gif"
         if wild_gif_path.exists():
             wild_movie = QMovie(str(wild_gif_path))
-            wild_movie.setScaledSize(QSize(150, 150))
+            wild_movie.setScaledSize(QSize(96, 96))  # Smaller size to match original
             wild_pkmn_label.setMovie(wild_movie)
             wild_movie.start()
         else:
             # Fallback to PNG
             wild_pixmap = QPixmap(str(frontdefault / f"{id}.png"))
-            wild_pixmap = wild_pixmap.scaled(150, 150, Qt.AspectRatioMode.KeepAspectRatio)
+            wild_pixmap = wild_pixmap.scaled(96, 96, Qt.AspectRatioMode.KeepAspectRatio)
             wild_pkmn_label.setPixmap(wild_pixmap)
-        wild_pkmn_label.setGeometry(335, 20, 150, 150)
+        wild_pkmn_label.setGeometry(362, 74, 96, 96)  # Adjusted position and size
 
         # Player Pokemon animated sprite
         player_pkmn_label = QLabel(container)
+        player_pkmn_label.setStyleSheet("background: transparent;")  # Remove black box
+        player_pkmn_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
         if player_gif_path.exists():
             player_movie = QMovie(str(player_gif_path))
-            player_movie.setScaledSize(QSize(150, 150))
+            player_movie.setScaledSize(QSize(96, 96))  # Smaller size to match original
             player_pkmn_label.setMovie(player_movie)
             player_movie.start()
         else:
             # Fallback to PNG
             player_pixmap = QPixmap(str(backdefault / f"{mainpokemon_id}.png"))
-            player_pixmap = player_pixmap.scaled(150, 150, Qt.AspectRatioMode.KeepAspectRatio)
+            player_pixmap = player_pixmap.scaled(96, 96, Qt.AspectRatioMode.KeepAspectRatio)
             player_pkmn_label.setPixmap(player_pixmap)
-        player_pkmn_label.setGeometry(69, 140, 150, 150)
+        player_pkmn_label.setGeometry(96, 194, 96, 96)  # Adjusted position and size
 
         return container
 
