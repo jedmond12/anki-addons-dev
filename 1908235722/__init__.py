@@ -7412,7 +7412,19 @@ class CompletePokedex(QWidget):
         """Load all pokemon from pokedex.json"""
         try:
             with open(pokedex_path, 'r') as file:
-                self.all_pokemon = json.load(file)
+                pokedex_dict = json.load(file)
+            # Convert dict to list of pokemon objects
+            self.all_pokemon = []
+            for pkmn_name, pkmn_data in pokedex_dict.items():
+                if isinstance(pkmn_data, dict):
+                    # Ensure num and name are in the data
+                    if 'num' not in pkmn_data:
+                        pkmn_data['num'] = 0
+                    if 'name' not in pkmn_data:
+                        pkmn_data['name'] = pkmn_name
+                    self.all_pokemon.append(pkmn_data)
+            # Sort by pokemon number
+            self.all_pokemon.sort(key=lambda x: x.get('num', 0))
             self.display_pokemon(self.all_pokemon)
         except Exception as e:
             error_label = QLabel(f"Error loading Pokédex: {str(e)}")
@@ -8395,7 +8407,7 @@ if database_complete != False:
     qconnect(pokecol_action.triggered, pokecollection_win.show)
 
     # Complete Pokédex with force encounter feature
-    complete_pokedex_action = QAction("📖 Complete Pokédex (Force Encounter)", mw)
+    complete_pokedex_action = QAction("📖 Pokédex", mw)
     mw.pokemenu.addAction(complete_pokedex_action)
     qconnect(complete_pokedex_action.triggered, complete_pokedex.show_complete_pokedex)
     # Make new PokeAnki menu under tools
