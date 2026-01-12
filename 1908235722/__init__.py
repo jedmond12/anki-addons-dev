@@ -5922,38 +5922,43 @@ class TestWindow(QWidget):
                 width: 0px;
             }
         """)
-        party_menu = QMenu()
+        self.party_menu = QMenu()
 
-        # Get party Pokemon names
-        try:
-            party = _load_party()
-            slots = party.get("slots", [0, 1, 2, 3])
-            my_list = _load_mypokemon_list()
+        # Update party menu dynamically when it's about to be shown
+        def update_party_menu():
+            self.party_menu.clear()
+            try:
+                party = _load_party()
+                slots = party.get("slots", [0, 1, 2, 3])
+                my_list = _load_mypokemon_list()
 
-            for i in range(4):
-                try:
-                    idx = int(slots[i])
-                    if 0 <= idx < len(my_list):
-                        pkmn = my_list[idx]
-                        pkmn_name = pkmn.get("name", "Empty")
-                        nickname = pkmn.get("nickname", "")
-                        if nickname:
-                            label = f"Slot {i+1} ({nickname})"
+                for i in range(4):
+                    try:
+                        idx = int(slots[i])
+                        if 0 <= idx < len(my_list):
+                            pkmn = my_list[idx]
+                            pkmn_name = pkmn.get("name", "Empty")
+                            nickname = pkmn.get("nickname", "")
+                            if nickname:
+                                label = f"Slot {i+1} ({nickname})"
+                            else:
+                                label = f"Slot {i+1} ({pkmn_name})"
                         else:
-                            label = f"Slot {i+1} ({pkmn_name})"
-                    else:
+                            label = f"Slot {i+1} (Empty)"
+                    except Exception:
                         label = f"Slot {i+1} (Empty)"
-                except Exception:
-                    label = f"Slot {i+1} (Empty)"
-                party_menu.addAction(label, lambda slot=i: _set_active_from_party_slot(slot))
-        except Exception:
-            # Fallback if party loading fails
-            party_menu.addAction("Slot 1", lambda: _set_active_from_party_slot(0))
-            party_menu.addAction("Slot 2", lambda: _set_active_from_party_slot(1))
-            party_menu.addAction("Slot 3", lambda: _set_active_from_party_slot(2))
-            party_menu.addAction("Slot 4", lambda: _set_active_from_party_slot(3))
+                    self.party_menu.addAction(label, lambda slot=i: _set_active_from_party_slot(slot))
+            except Exception:
+                # Fallback if party loading fails
+                self.party_menu.addAction("Slot 1", lambda: _set_active_from_party_slot(0))
+                self.party_menu.addAction("Slot 2", lambda: _set_active_from_party_slot(1))
+                self.party_menu.addAction("Slot 3", lambda: _set_active_from_party_slot(2))
+                self.party_menu.addAction("Slot 4", lambda: _set_active_from_party_slot(3))
 
-        party_btn.setMenu(party_menu)
+        # Connect the menu's aboutToShow signal to refresh the party list
+        self.party_menu.aboutToShow.connect(update_party_menu)
+
+        party_btn.setMenu(self.party_menu)
         button_layout.addWidget(party_btn)
 
         # Pokemon Collection button (combined)
@@ -6152,6 +6157,12 @@ class TestWindow(QWidget):
 
         background_label.setPixmap(merged_bg)
 
+        # Adjust Pokemon positions based on whether dialog box is present
+        # First encounter (pokemon_encounter == 0) has dialog at bottom, so Pokemon stay same
+        # After first move, dialog disappears and positions remain consistent
+        wild_x, wild_y = 335, 20  # Wild Pokemon upper right
+        player_x, player_y = 69, 140  # Player Pokemon lower left
+
         # Wild Pokemon animated sprite
         wild_pkmn_label = QLabel(container)
         wild_pkmn_label.setStyleSheet("background: transparent;")  # Remove black box
@@ -6167,7 +6178,7 @@ class TestWindow(QWidget):
             wild_pixmap = QPixmap(str(frontdefault / f"{id}.png"))
             wild_pixmap = wild_pixmap.scaled(96, 96, Qt.AspectRatioMode.KeepAspectRatio)
             wild_pkmn_label.setPixmap(wild_pixmap)
-        wild_pkmn_label.setGeometry(362, 74, 96, 96)  # Adjusted position and size
+        wild_pkmn_label.setGeometry(wild_x, wild_y, 96, 96)
 
         # Player Pokemon animated sprite
         player_pkmn_label = QLabel(container)
@@ -6184,7 +6195,7 @@ class TestWindow(QWidget):
             player_pixmap = QPixmap(str(backdefault / f"{mainpokemon_id}.png"))
             player_pixmap = player_pixmap.scaled(96, 96, Qt.AspectRatioMode.KeepAspectRatio)
             player_pkmn_label.setPixmap(player_pixmap)
-        player_pkmn_label.setGeometry(96, 194, 96, 96)  # Adjusted position and size
+        player_pkmn_label.setGeometry(player_x, player_y, 96, 96)
 
         return container
 
