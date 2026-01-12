@@ -7380,8 +7380,17 @@ class CompletePokedex(QWidget):
         global icon_path, pokedex_path, frontdefault
         self.setWindowIcon(QIcon(str(icon_path)))
 
-        # Set light background and dark text for consistency (works in both light and dark mode)
-        self.setStyleSheet("background-color: white; color: black;")
+        # Dark mode theme
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #1e1e1e;
+                color: #e0e0e0;
+            }
+            QScrollArea {
+                background-color: #1e1e1e;
+                border: none;
+            }
+        """)
 
         # Main layout
         main_layout = QVBoxLayout()
@@ -7389,10 +7398,22 @@ class CompletePokedex(QWidget):
         # Search bar
         search_layout = QHBoxLayout()
         search_label = QLabel("Search:")
-        search_label.setStyleSheet("color: black;")  # Explicit black text
+        search_label.setStyleSheet("color: #e0e0e0; font-size: 14px; font-weight: bold;")
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Enter Pokémon name or ID...")
-        self.search_input.setStyleSheet("color: black; background-color: white;")  # Explicit colors
+        self.search_input.setStyleSheet("""
+            QLineEdit {
+                color: #e0e0e0;
+                background-color: #2d2d2d;
+                border: 2px solid #4a4a4a;
+                border-radius: 5px;
+                padding: 8px;
+                font-size: 13px;
+            }
+            QLineEdit:focus {
+                border: 2px solid #5a9fd4;
+            }
+        """)
         self.search_input.textChanged.connect(self.filter_pokemon)
         search_layout.addWidget(search_label)
         search_layout.addWidget(self.search_input)
@@ -7414,8 +7435,23 @@ class CompletePokedex(QWidget):
         self.load_all_pokemon()
 
     def load_all_pokemon(self):
-        """Load all pokemon from pokedex.json"""
+        """Load all pokemon from pokedex.json and caught pokemon from mypokemon.json"""
         try:
+            # Load caught Pokemon IDs
+            global mypokemon_path
+            self.caught_pokemon_ids = set()
+            try:
+                with open(mypokemon_path, 'r') as file:
+                    caught_pokemon = json.load(file)
+                    if isinstance(caught_pokemon, list):
+                        for pkmn in caught_pokemon:
+                            if isinstance(pkmn, dict) and 'id' in pkmn:
+                                self.caught_pokemon_ids.add(pkmn['id'])
+            except (FileNotFoundError, json.JSONDecodeError):
+                # No caught Pokemon yet or invalid file
+                pass
+
+            # Load all Pokemon from Pokedex
             with open(pokedex_path, 'r') as file:
                 pokedex_dict = json.load(file)
             # Convert dict to list of pokemon objects
@@ -7440,10 +7476,11 @@ class CompletePokedex(QWidget):
             self.display_pokemon(self.all_pokemon)
         except Exception as e:
             error_label = QLabel(f"Error loading Pokédex: {str(e)}")
+            error_label.setStyleSheet("color: #ff6b6b; font-size: 14px;")
             self.pokemon_layout.addWidget(error_label)
 
     def display_pokemon(self, pokemon_list):
-        """Display pokemon in a grid"""
+        """Display pokemon in a grid with detailed info"""
         # Clear existing layout
         while self.pokemon_layout.count():
             item = self.pokemon_layout.takeAt(0)
@@ -7464,56 +7501,126 @@ class CompletePokedex(QWidget):
                 if not pkmn_id or not pkmn_name:
                     continue
 
-                # Pokemon card widget
+                # Check if caught
+                is_caught = pkmn_id in self.caught_pokemon_ids
+
+                # Pokemon card widget with dark theme
                 card_widget = QWidget()
-                card_widget.setStyleSheet("border: 2px solid #ccc; border-radius: 5px; padding: 5px; background-color: #f9f9f9;")
+                border_color = "#4CAF50" if is_caught else "#4a4a4a"
+                card_widget.setStyleSheet(f"""
+                    QWidget {{
+                        border: 2px solid {border_color};
+                        border-radius: 8px;
+                        padding: 10px;
+                        background-color: #2d2d2d;
+                    }}
+                """)
                 card_layout = QVBoxLayout()
+
+                # Caught indicator (Pokéball icon)
+                if is_caught:
+                    caught_label = QLabel("🔴 CAUGHT")
+                    caught_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    caught_label.setStyleSheet("""
+                        color: #4CAF50;
+                        font-weight: bold;
+                        font-size: 11px;
+                        padding: 3px;
+                        background-color: #1e4620;
+                        border-radius: 4px;
+                    """)
+                    card_layout.addWidget(caught_label)
 
                 # Pokemon image
                 img_label = QLabel()
                 img_path = frontdefault / f"{pkmn_id}.png"
                 if img_path.exists():
                     pixmap = QPixmap(str(img_path))
-                    pixmap = pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio)
+                    pixmap = pixmap.scaled(120, 120, Qt.AspectRatioMode.KeepAspectRatio)
                     img_label.setPixmap(pixmap)
                 else:
                     img_label.setText("No Image")
-                    img_label.setStyleSheet("color: black;")  # Explicit black text for light background
+                    img_label.setStyleSheet("color: #888;")
                 img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 card_layout.addWidget(img_label)
 
-                # Pokemon info
-                info_label = QLabel(f"#{pkmn_id} - {pkmn_name.capitalize()}")
+                # Pokemon name and ID
+                info_label = QLabel(f"#{pkmn_id:03d} - {pkmn_name.capitalize()}")
                 info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                info_label.setStyleSheet("color: black;")  # Explicit black text for light background
-                info_font = QFont()
-                info_font.setBold(True)
-                info_label.setFont(info_font)
+                info_label.setStyleSheet("color: #e0e0e0; font-size: 14px; font-weight: bold;")
                 card_layout.addWidget(info_label)
 
-                # Type info
+                # Type badges
                 types = pokemon.get('types', [])
-                type_text = ", ".join([t.capitalize() for t in types]) if types else "Unknown"
-                type_label = QLabel(f"Type: {type_text}")
-                type_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                type_label.setStyleSheet("color: black;")  # Explicit black text for light background
-                card_layout.addWidget(type_label)
+                if types:
+                    type_container = QHBoxLayout()
+                    type_container.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    type_colors = {
+                        'normal': '#A8A878', 'fire': '#F08030', 'water': '#6890F0',
+                        'electric': '#F8D030', 'grass': '#78C850', 'ice': '#98D8D8',
+                        'fighting': '#C03028', 'poison': '#A040A0', 'ground': '#E0C068',
+                        'flying': '#A890F0', 'psychic': '#F85888', 'bug': '#A8B820',
+                        'rock': '#B8A038', 'ghost': '#705898', 'dragon': '#7038F8',
+                        'dark': '#705848', 'steel': '#B8B8D0', 'fairy': '#EE99AC'
+                    }
+                    for ptype in types:
+                        type_badge = QLabel(ptype.upper())
+                        bg_color = type_colors.get(ptype.lower(), '#68A090')
+                        type_badge.setStyleSheet(f"""
+                            background-color: {bg_color};
+                            color: white;
+                            font-size: 10px;
+                            font-weight: bold;
+                            padding: 3px 8px;
+                            border-radius: 10px;
+                        """)
+                        type_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        type_container.addWidget(type_badge)
+                    card_layout.addLayout(type_container)
+
+                # Base Stats
+                base_stats = pokemon.get('baseStats', {})
+                if base_stats:
+                    stats_label = QLabel(f"HP: {base_stats.get('hp', '?')} | ATK: {base_stats.get('atk', '?')} | DEF: {base_stats.get('def', '?')}")
+                    stats_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    stats_label.setStyleSheet("color: #b0b0b0; font-size: 11px;")
+                    card_layout.addWidget(stats_label)
+
+                # Abilities
+                abilities = pokemon.get('abilities', {})
+                if abilities:
+                    ability_text = " / ".join([v for k, v in abilities.items() if k in ['0', '1', 'H']][:2])
+                    ability_label = QLabel(f"⭐ {ability_text}")
+                    ability_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    ability_label.setStyleSheet("color: #ffd700; font-size: 10px;")
+                    ability_label.setWordWrap(True)
+                    card_layout.addWidget(ability_label)
+
+                # Height and Weight
+                height = pokemon.get('heightm')
+                weight = pokemon.get('weightkg')
+                if height and weight:
+                    hw_label = QLabel(f"📏 {height}m | ⚖ {weight}kg")
+                    hw_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    hw_label.setStyleSheet("color: #90c090; font-size: 10px;")
+                    card_layout.addWidget(hw_label)
 
                 # Force Encounter button
                 encounter_btn = QPushButton("⚡ Force Encounter")
                 encounter_btn.setStyleSheet("""
                     QPushButton {
-                        background-color: #4CAF50;
+                        background-color: #5a9fd4;
                         color: white;
                         border-radius: 5px;
                         padding: 8px;
                         font-weight: bold;
+                        font-size: 11px;
                     }
                     QPushButton:hover {
-                        background-color: #45a049;
+                        background-color: #4a8fc4;
                     }
                     QPushButton:pressed {
-                        background-color: #3d8b40;
+                        background-color: #3a7fb4;
                     }
                 """)
                 encounter_btn.clicked.connect(lambda checked, pid=pkmn_id, pname=pkmn_name: self.force_encounter(pid, pname))
