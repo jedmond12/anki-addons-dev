@@ -6270,7 +6270,7 @@ class PokemonPlacementTool(QDialog):
         painter = QPainter(canvas)
 
         # Draw battle background if available
-        bg_path = Path(addon_dir) / "addon_sprites" / "background_battle.png"
+        bg_path = addon_dir / "user_files" / "addon_sprites" / "background_battle.png"
         if bg_path.exists():
             bg = QPixmap(str(bg_path))
             painter.drawPixmap(0, 0, bg)
@@ -6283,8 +6283,9 @@ class PokemonPlacementTool(QDialog):
             painter.drawLine(0, i, 555, i)
 
         # Draw sprites
-        frontdefault = Path(addon_dir) / "pokemon_sprites" / "front_default"
-        backdefault = Path(addon_dir) / "pokemon_sprites" / "back_default"
+        sprite_folder = addon_dir / "user_files" / "sprites"
+        frontdefault = sprite_folder / "front_default"
+        backdefault = sprite_folder / "back_default"
 
         # Draw enemy Pokemon (front sprite)
         enemy_path = frontdefault / f"{self.enemy_pokemon_id}.png"
