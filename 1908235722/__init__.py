@@ -6112,6 +6112,257 @@ def bottom_anchor_pos(ground_x, ground_y, sprite_w, sprite_h, anchor="center"):
     draw_y = int(ground_y - sprite_h)   # bottom anchored to ground
     return draw_x, draw_y
 
+
+class PokemonPlacementTool(QDialog):
+    """Visual tool for positioning Pokemon sprites and getting exact coordinates"""
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Pokémon Placement Tool")
+        self.setFixedSize(800, 600)
+
+        # Sprite positioning data
+        self.player_x = 96
+        self.player_y = 184
+        self.player_size = 80
+        self.enemy_x = 420
+        self.enemy_y = 112
+        self.enemy_size = 80
+
+        # Dragging state
+        self.dragging_player = False
+        self.dragging_enemy = False
+        self.drag_offset_x = 0
+        self.drag_offset_y = 0
+
+        # Get current player Pokemon for display
+        self.player_pokemon_id = mw.col.get_config("mainpokemon")
+        self.enemy_pokemon_id = 25  # Pikachu as default example
+
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+
+        # Info label
+        info_label = QLabel("Drag sprites to position them. Use +/- to adjust size.\nCoordinates shown below are for copying.")
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        # Battle scene display
+        self.scene_label = QLabel()
+        self.scene_label.setFixedSize(555, 258)
+        self.scene_label.setStyleSheet("border: 2px solid black;")
+        self.scene_label.mousePressEvent = self.mouse_press
+        self.scene_label.mouseMoveEvent = self.mouse_move
+        self.scene_label.mouseReleaseEvent = self.mouse_release
+        layout.addWidget(self.scene_label)
+
+        # Control buttons
+        controls_layout = QHBoxLayout()
+
+        # Player controls
+        player_group = QLabel("PLAYER:")
+        controls_layout.addWidget(player_group)
+
+        player_minus_btn = QPushButton("-")
+        player_minus_btn.clicked.connect(lambda: self.adjust_size("player", -10))
+        controls_layout.addWidget(player_minus_btn)
+
+        player_plus_btn = QPushButton("+")
+        player_plus_btn.clicked.connect(lambda: self.adjust_size("player", 10))
+        controls_layout.addWidget(player_plus_btn)
+
+        controls_layout.addStretch()
+
+        # Enemy controls
+        enemy_group = QLabel("ENEMY:")
+        controls_layout.addWidget(enemy_group)
+
+        enemy_minus_btn = QPushButton("-")
+        enemy_minus_btn.clicked.connect(lambda: self.adjust_size("enemy", -10))
+        controls_layout.addWidget(enemy_minus_btn)
+
+        enemy_plus_btn = QPushButton("+")
+        enemy_plus_btn.clicked.connect(lambda: self.adjust_size("enemy", 10))
+        controls_layout.addWidget(enemy_plus_btn)
+
+        layout.addLayout(controls_layout)
+
+        # Coordinates display
+        self.coords_text = QTextEdit()
+        self.coords_text.setReadOnly(True)
+        self.coords_text.setMaximumHeight(150)
+        layout.addWidget(self.coords_text)
+
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.close)
+        layout.addWidget(close_btn)
+
+        self.setLayout(layout)
+        self.update_scene()
+
+    def adjust_size(self, sprite_type, delta):
+        """Adjust sprite size"""
+        if sprite_type == "player":
+            self.player_size = max(20, min(200, self.player_size + delta))
+        else:
+            self.enemy_size = max(20, min(200, self.enemy_size + delta))
+        self.update_scene()
+
+    def mouse_press(self, event):
+        """Handle mouse press to start dragging"""
+        x, y = event.pos().x(), event.pos().y()
+
+        # Check if clicking on player sprite
+        player_draw_x = self.player_x - self.player_size // 2
+        player_draw_y = self.player_y - self.player_size
+        if (player_draw_x <= x <= player_draw_x + self.player_size and
+            player_draw_y <= y <= player_draw_y + self.player_size):
+            self.dragging_player = True
+            self.drag_offset_x = x - self.player_x
+            self.drag_offset_y = y - self.player_y
+            return
+
+        # Check if clicking on enemy sprite
+        enemy_draw_x = self.enemy_x - self.enemy_size // 2
+        enemy_draw_y = self.enemy_y - self.enemy_size
+        if (enemy_draw_x <= x <= enemy_draw_x + self.enemy_size and
+            enemy_draw_y <= y <= enemy_draw_y + self.enemy_size):
+            self.dragging_enemy = True
+            self.drag_offset_x = x - self.enemy_x
+            self.drag_offset_y = y - self.enemy_y
+
+    def mouse_move(self, event):
+        """Handle mouse move for dragging"""
+        if not (self.dragging_player or self.dragging_enemy):
+            return
+
+        x = event.pos().x() - self.drag_offset_x
+        y = event.pos().y() - self.drag_offset_y
+
+        # Keep within bounds
+        x = max(0, min(555, x))
+        y = max(0, min(258, y))
+
+        if self.dragging_player:
+            self.player_x = x
+            self.player_y = y
+        elif self.dragging_enemy:
+            self.enemy_x = x
+            self.enemy_y = y
+
+        self.update_scene()
+
+    def mouse_release(self, event):
+        """Handle mouse release to stop dragging"""
+        self.dragging_player = False
+        self.dragging_enemy = False
+
+    def update_scene(self):
+        """Redraw the battle scene with current positions"""
+        global addon_dir
+
+        # Create canvas
+        canvas = QPixmap(555, 258)
+        canvas.fill(QColor(200, 200, 200))
+        painter = QPainter(canvas)
+
+        # Draw battle background if available
+        bg_path = Path(addon_dir) / "addon_sprites" / "background_battle.png"
+        if bg_path.exists():
+            bg = QPixmap(str(bg_path))
+            painter.drawPixmap(0, 0, bg)
+
+        # Draw grid lines for reference
+        painter.setPen(QPen(QColor(100, 100, 100, 100), 1, Qt.PenStyle.DashLine))
+        for i in range(0, 555, 50):
+            painter.drawLine(i, 0, i, 258)
+        for i in range(0, 258, 50):
+            painter.drawLine(0, i, 555, i)
+
+        # Draw sprites
+        frontdefault = Path(addon_dir) / "pokemon_sprites" / "front_default"
+        backdefault = Path(addon_dir) / "pokemon_sprites" / "back_default"
+
+        # Draw enemy Pokemon (front sprite)
+        enemy_path = frontdefault / f"{self.enemy_pokemon_id}.png"
+        if enemy_path.exists():
+            enemy_pixmap = QPixmap(str(enemy_path))
+            enemy_pixmap = enemy_pixmap.scaled(
+                self.enemy_size, self.enemy_size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            enemy_draw_x = self.enemy_x - enemy_pixmap.width() // 2
+            enemy_draw_y = self.enemy_y - enemy_pixmap.height()
+            painter.drawPixmap(enemy_draw_x, enemy_draw_y, enemy_pixmap)
+
+            # Draw crosshair at ground point
+            painter.setPen(QPen(QColor(255, 0, 0), 2))
+            painter.drawLine(self.enemy_x - 10, self.enemy_y, self.enemy_x + 10, self.enemy_y)
+            painter.drawLine(self.enemy_x, self.enemy_y - 10, self.enemy_x, self.enemy_y + 10)
+
+        # Draw player Pokemon (back sprite)
+        player_path = backdefault / f"{self.player_pokemon_id}.png"
+        if player_path.exists():
+            player_pixmap = QPixmap(str(player_path))
+            player_pixmap = player_pixmap.scaled(
+                self.player_size, self.player_size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            player_draw_x = self.player_x - player_pixmap.width() // 2
+            player_draw_y = self.player_y - player_pixmap.height()
+            painter.drawPixmap(player_draw_x, player_draw_y, player_pixmap)
+
+            # Draw crosshair at ground point
+            painter.setPen(QPen(QColor(0, 0, 255), 2))
+            painter.drawLine(self.player_x - 10, self.player_y, self.player_x + 10, self.player_y)
+            painter.drawLine(self.player_x, self.player_y - 10, self.player_x, self.player_y + 10)
+
+        painter.end()
+        self.scene_label.setPixmap(canvas)
+
+        # Update coordinates display
+        coords_info = f"""CURRENT POSITIONING DATA (copy this info):
+
+PLAYER Pokemon (blue crosshair):
+  Ground Point: ({self.player_x}, {self.player_y})
+  Size: {self.player_size}px
+
+ENEMY Pokemon (red crosshair):
+  Ground Point: ({self.enemy_x}, {self.enemy_y})
+  Size: {self.enemy_size}px
+
+CODE TO USE:
+  # Player ground point
+  PLAYER_GROUND_X, PLAYER_GROUND_Y = {self.player_x}, {self.player_y}
+
+  # Enemy ground point
+  ENEMY_GROUND_X, ENEMY_GROUND_Y = {self.enemy_x}, {self.enemy_y}
+
+  # Sizes (if dynamic sizing based on Pokemon)
+  player_size = {self.player_size}
+  enemy_size = {self.enemy_size}
+"""
+        self.coords_text.setText(coords_info)
+
+
+# Global instance
+_placement_tool = None
+
+def show_placement_tool():
+    """Show the Pokemon Placement Tool"""
+    global _placement_tool
+    if _placement_tool is None:
+        _placement_tool = PokemonPlacementTool()
+    _placement_tool.show()
+    _placement_tool.raise_()
+    _placement_tool.activateWindow()
+
+
 class TestWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -9084,6 +9335,11 @@ if database_complete != False:
     reset_battle_action = QAction("🔄 Reset Battle", mw)
     qconnect(reset_battle_action.triggered, reset_battle)
     mw.pokemenu.addAction(reset_battle_action)
+
+    # Add Pokemon Placement Tool
+    placement_tool_action = QAction("🎯 Pokémon Placement Tool", mw)
+    qconnect(placement_tool_action.triggered, show_placement_tool)
+    mw.pokemenu.addAction(placement_tool_action)
 
     mw.pokemenu.addSeparator()
 
