@@ -6402,9 +6402,37 @@ class TestWindow(QWidget):
         wild_size = get_pokemon_size(id)
         player_size = get_pokemon_size(mainpokemon_id)
 
-        # Pokemon positions (consistent with no-dialog background)
-        wild_x, wild_y = 362, 74  # Wild Pokemon upper right
-        player_x, player_y = 96, 194  # Player Pokemon lower left
+        # Pokemon base positions (consistent with no-dialog background)
+        wild_x_base, wild_y_base = 362, 74  # Wild Pokemon upper right
+        player_x_base, player_y_base = 96, 194  # Player Pokemon lower left
+
+        # Adjust wild Pokemon position based on size
+        # Tiny Pokemon (30-50px): Move forward (left) by 15px
+        # Medium Pokemon (51-90px): No adjustment (perfect)
+        # Medium-large Pokemon (91-120px): Move back (right) by 10px
+        if wild_size <= 50:
+            wild_x = wild_x_base - 15  # Move forward for tiny
+            wild_y = wild_y_base
+        elif wild_size <= 90:
+            wild_x = wild_x_base  # Perfect position for medium
+            wild_y = wild_y_base
+        else:  # 91-120px (medium-large)
+            wild_x = wild_x_base + 10  # Move back for large
+            wild_y = wild_y_base
+
+        # Adjust player Pokemon position based on size
+        # Small Pokemon (30-60px): Move back (down) by 10px
+        # Medium-large Pokemon (91-120px): Move up by 10px
+        # Medium (61-90px): No adjustment
+        if player_size <= 60:
+            player_x = player_x_base + 5  # Move back slightly
+            player_y = player_y_base + 10  # Move down for small
+        elif player_size >= 91:
+            player_x = player_x_base
+            player_y = player_y_base - 10  # Move up for large
+        else:  # 61-90px (medium)
+            player_x = player_x_base
+            player_y = player_y_base
 
         # Wild Pokemon animated sprite
         wild_pkmn_label = QLabel(container)
