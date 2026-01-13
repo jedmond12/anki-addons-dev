@@ -119,6 +119,7 @@ mypokemon_path = addon_dir / "user_files" / "mypokemon.json"
 mainpokemon_path = addon_dir / "user_files" / "mainpokemon.json"
 battlescene_path = addon_dir / "addon_sprites" / "battle_scenes"
 battlescene_path_without_dialog = addon_dir / "addon_sprites" / "battle_scenes_without_dialog"
+enemy_battles_path = addon_dir / "addon_sprites" / "enemy_battles"
 battle_ui_path = addon_dir / "pkmnbattlescene - UI_transp"
 type_style_file = addon_dir / "addon_files" / "types.json"
 next_lvl_file_path = addon_dir / "addon_files" / "ExpPokemonAddon.csv"
@@ -2127,20 +2128,81 @@ def generate_enemy_trainer_pokemon():
 
     return name, id, trainer_level, ability, type, stats, enemy_attacks, base_experience, growth_rate, trainer_hp, trainer_hp, ev, trainer_iv, gender, battle_status, battle_stats
 
+def get_random_trainer():
+    """Select a random enemy trainer with their sprite and battle scene"""
+    global enemy_battles_path
+
+    # Define trainer types with their associated sprites and scenes
+    trainers = {
+        "Plasma Grunt": {
+            "sprites": ["plasma_grunt_female.png", "plama_grunt_male.png"],
+            "scene": "plasmagrunts_pkmnbattlescene.png",
+            "title": "Team Plasma Grunt"
+        },
+        "Ghetsis": {
+            "sprites": ["ghetsis.png"],
+            "scene": "plasmagrunts_pkmnbattlescene.png",
+            "title": "Ghetsis"
+        },
+        "Shadow Triad": {
+            "sprites": ["shadow_triad.png"],
+            "scene": "plasmagrunts_pkmnbattlescene.png",
+            "title": "Shadow Triad"
+        },
+        "Veteran": {
+            "sprites": ["veteran_m.png"],
+            "scene": "pkmnbattlescene.png",
+            "title": "Veteran Trainer"
+        },
+        "Ranger": {
+            "sprites": ["pokémon_ranger_female.png", "pokémon_ranger_male.png"],
+            "scene": "grass_pkmnbattlescene.png",
+            "title": "Pokémon Ranger"
+        },
+        "Policeman": {
+            "sprites": ["policeman.png"],
+            "scene": "metalcity_pkmnbattlescene.png",
+            "title": "Officer"
+        },
+        "Hooligans": {
+            "sprites": ["hooligans.png"],
+            "scene": "pkmnbattlescene.png",
+            "title": "Street Hooligans"
+        },
+        "Gym Leader": {
+            "sprites": ["lenora.png", "marshal.png"],
+            "scene": "pkmnbattlescene.png",
+            "title": "Gym Leader"
+        }
+    }
+
+    # Randomly select a trainer type
+    trainer_type = random.choice(list(trainers.keys()))
+    trainer_data = trainers[trainer_type]
+
+    # Randomly select a sprite from that trainer's available sprites
+    sprite = random.choice(trainer_data["sprites"])
+
+    return trainer_data["title"], sprite, trainer_data["scene"]
+
 def check_enemy_trainer_encounter():
     """Check if it's time for an enemy trainer battle and show dialog"""
-    global enemy_trainer_card_counter, test_window, pkmn_window
+    global enemy_trainer_card_counter, test_window, pkmn_window, current_trainer_name
 
     # Every 10 cards, trigger potential enemy trainer battle
     if enemy_trainer_card_counter >= 10:
         # Reset counter
         enemy_trainer_card_counter = 0
 
+        # Select random trainer
+        trainer_name, trainer_sprite, trainer_scene = get_random_trainer()
+        current_trainer_name = trainer_name
+
         # Show dialog asking if user wants to engage
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setWindowTitle("Enemy Trainer Encountered!")
-        msg.setText("A wild trainer has challenged you to a battle!\n\nThis trainer's Pokemon will be tougher than wild encounters.")
+        msg.setText(f"A {trainer_name} challenges you to a battle!\n\nThis trainer's Pokemon will be tougher than wild encounters.")
         msg.setInformativeText("Do you want to accept the challenge?")
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg.setDefaultButton(QMessageBox.StandardButton.Yes)
@@ -2149,37 +2211,34 @@ def check_enemy_trainer_encounter():
 
         if result == QMessageBox.StandardButton.Yes:
             # User accepted - start enemy trainer battle
-            start_enemy_trainer_battle()
+            start_enemy_trainer_battle(trainer_name, trainer_sprite, trainer_scene)
             return True
         else:
             # User declined - show message
-            tooltipWithColour("You declined the battle. The trainer walks away...", "#FFA500")
+            tooltipWithColour(f"You declined the battle. The {trainer_name} walks away...", "#FFA500")
             return False
 
     return False
 
-def start_enemy_trainer_battle():
+def start_enemy_trainer_battle(trainer_name, trainer_sprite, trainer_scene):
     """Start an enemy trainer battle with a tougher Pokemon"""
     global name, id, level, hp, max_hp, ability, type, enemy_attacks, attacks, base_experience, stats, battlescene_file, ev, iv, gender, battle_status, battle_stats
     global test_window, pkmn_window, pokemon_encounter
+    global current_trainer_name, current_trainer_sprite, is_trainer_battle
 
-    # Reset encounter counter to show "A wild trainer appeared!" message
+    # Set trainer battle flag and info
+    is_trainer_battle = True
+    current_trainer_name = trainer_name
+    current_trainer_sprite = trainer_sprite
+
+    # Reset encounter counter to show trainer intro message
     pokemon_encounter = 0
 
     # Generate tough enemy trainer Pokemon
     name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, hp, max_hp, ev, iv, gender, battle_status, battle_stats = generate_enemy_trainer_pokemon()
 
-    # Select battle scene - for now use default or plasmagrunt scene if available
-    # Check if plasmagrunt scene exists
-    plasmagrunt_scene = "plasmagrunts_pkmnbattlescene.png"
-    battlescene_path_check = battlescene_path_without_dialog / plasmagrunt_scene
-
-    if battlescene_path_check.exists():
-        battlescene_file = plasmagrunt_scene
-    else:
-        # Use type-based scene as fallback
-        primary_type = type[0] if isinstance(type, list) and len(type) > 0 else None
-        battlescene_file = random_battle_scene(primary_type)
+    # Use the trainer's designated battle scene
+    battlescene_file = trainer_scene
 
     # Recalculate max HP
     max_hp = calculate_hp(stats["hp"], level, ev, iv)
@@ -2187,7 +2246,7 @@ def start_enemy_trainer_battle():
     # Display the battle
     if test_window is not None and pkmn_window is True:
         test_window.display_first_encounter()
-        tooltipWithColour(f"Enemy Trainer sent out {name.capitalize()} (Level {level})!", "#FF4444")
+        tooltipWithColour(f"{trainer_name} sent out {name.capitalize()} (Level {level})!", "#FF4444")
 
     # Update life bar
     class Container(object):
@@ -2198,7 +2257,11 @@ def start_enemy_trainer_battle():
 
 def new_pokemon():
     global name, id, level, hp, max_hp, ability, type, enemy_attacks, attacks, base_experience, stats, battlescene_file, ev, iv, gender, battle_status
-    # new pokemon
+    global is_trainer_battle, current_trainer_name, current_trainer_sprite
+    # new pokemon - reset trainer battle flag
+    is_trainer_battle = False
+    current_trainer_name = None
+    current_trainer_sprite = None
     gender = None
     name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, hp, max_hp, ev, iv, gender, battle_status, battle_stats = generate_random_pokemon()
     # Select battle scene based on Pokemon's primary type
@@ -2681,6 +2744,9 @@ def calc_multiply_card_rating():
 reviewed_cards_count = 0
 general_card_count_for_battle = 0
 enemy_trainer_card_counter = 0  # Counter for enemy trainer battles every 10 cards
+current_trainer_name = None  # Current enemy trainer name
+current_trainer_sprite = None  # Current enemy trainer sprite filename
+is_trainer_battle = False  # Flag to track if current battle is vs trainer
 cry_counter = 0
 seconds = 0
 myseconds = 0
@@ -2694,6 +2760,7 @@ def on_review_card(*args):
         global attack_counter
         global pkmn_window
         global achievements
+        global current_trainer_name, current_trainer_sprite, is_trainer_battle
         # Increment the counter when a card is reviewed
         reviewed_cards_count += 1
         card_counter += 1
@@ -6217,6 +6284,7 @@ class TestWindow(QWidget):
         global mainpokemon_id, mainpokemon_name, mainpokemon_level, mainpokemon_ability, mainpokemon_type, mainpokemon_xp, mainpokemon_stats, mainpokemon_attacks, mainpokemon_base_experience, mainpokemon_ev, mainpokemon_iv, mainpokemon_hp, mainpokemon_current_hp, mainpokemon_growth_rate
         global battlescene_path, battlescene_path_without_dialog, battlescene_file, battle_ui_path
         global attack_counter, merged_pixmap, window
+        global is_trainer_battle, current_trainer_name, current_trainer_sprite, enemy_battles_path
         attack_counter = 0
         caught = 0
         id = int(search_pokedex(name.lower(), "num"))
@@ -6224,7 +6292,12 @@ class TestWindow(QWidget):
         name = name.capitalize()
         max_hp = calculate_hp(stats["hp"], level, ev, iv)
         mainpkmn_max_hp = calculate_hp(mainpokemon_stats["hp"], mainpokemon_level, mainpokemon_ev, mainpokemon_iv)
-        message_box_text = (f"A wild {lang_name.capitalize()} appeared !")
+
+        # Set message based on whether it's a trainer battle or wild encounter
+        if is_trainer_battle and current_trainer_name:
+            message_box_text = (f"{current_trainer_name} wants to battle!")
+        else:
+            message_box_text = (f"A wild {lang_name.capitalize()} appeared !")
 
         # Always use battle scene without dialog box for consistent positioning
         bckgimage_path = battlescene_path_without_dialog / battlescene_file
@@ -6360,6 +6433,22 @@ class TestWindow(QWidget):
             player_pixmap = player_pixmap.scaled(player_size, player_size, Qt.AspectRatioMode.KeepAspectRatio)
             player_pkmn_label.setPixmap(player_pixmap)
         player_pkmn_label.setGeometry(player_x, player_y, player_size, player_size)
+
+        # Display trainer sprite if this is a trainer battle
+        if is_trainer_battle and current_trainer_sprite:
+            trainer_sprite_path = enemy_battles_path / current_trainer_sprite
+            if trainer_sprite_path.exists():
+                trainer_label = QLabel(container)
+                trainer_label.setStyleSheet("background: transparent;")
+                trainer_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+                trainer_pixmap = QPixmap(str(trainer_sprite_path))
+                # Scale trainer sprite to reasonable size (80px wide max)
+                trainer_scaled = trainer_pixmap.scaledToWidth(80, Qt.TransformationMode.SmoothTransformation)
+                trainer_label.setPixmap(trainer_scaled)
+                # Position trainer sprite on the left side of the wild Pokemon area
+                trainer_x = 260  # Left of wild Pokemon
+                trainer_y = 40   # Aligned with top of battle area
+                trainer_label.setGeometry(trainer_x, trainer_y, trainer_scaled.width(), trainer_scaled.height())
 
         # Add popup message for first encounter
         if pokemon_encounter == 0:
