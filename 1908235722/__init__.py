@@ -6136,7 +6136,12 @@ class PokemonPlacementTool(QDialog):
         self.drag_offset_y = 0
 
         # Get current player Pokemon for display
-        self.player_pokemon_id = mw.col.get_config("mainpokemon")
+        try:
+            self.player_pokemon_id = mw.col.get_config("mainpokemon")
+            if not self.player_pokemon_id:
+                self.player_pokemon_id = 6  # Charizard as fallback
+        except:
+            self.player_pokemon_id = 6  # Charizard as fallback
         self.enemy_pokemon_id = 25  # Pikachu as default example
 
         self.init_ui()
@@ -6637,55 +6642,17 @@ class TestWindow(QWidget):
             gender_symbol = ""
 
         custom_font = load_custom_font(26)
-        hp_font = load_custom_font(24)  # Slightly smaller for HP text
         msg_font = load_custom_font(32)
         mainpokemon_lang_name = get_pokemon_diff_lang_name(int(mainpokemon_id))
 
         painter.setFont(custom_font)
         painter.setPen(QColor(0, 0, 0))
-
-        # Enemy status box layout (top-left area)
-        ENEMY_BOX_X, ENEMY_BOX_Y = 28, 38
-        ENEMY_BOX_W, ENEMY_BOX_H = 210, 60
-        PAD = 10
-        enemy_left = ENEMY_BOX_X + PAD
-        enemy_right = ENEMY_BOX_X + ENEMY_BOX_W - PAD
-        enemy_top = ENEMY_BOX_Y + PAD
-
-        # Enemy name: left aligned
-        enemy_name_metrics = painter.fontMetrics()
-        enemy_name_ascent = enemy_name_metrics.ascent()
-        painter.drawText(enemy_left, enemy_top + enemy_name_ascent, f"{lang_name} {gender_symbol}")
-
-        # Enemy level: right aligned on same line
-        lv_text = f"Lv{lvl}"
-        lv_text_width = enemy_name_metrics.horizontalAdvance(lv_text)
-        painter.drawText(enemy_right - lv_text_width, enemy_top + enemy_name_ascent, lv_text)
-
-        # Player status box layout (bottom-right area)
-        PLAYER_BOX_X, PLAYER_BOX_Y = 316, 170
-        PLAYER_BOX_W, PLAYER_BOX_H = 210, 90
-        player_left = PLAYER_BOX_X + PAD
-        player_right = PLAYER_BOX_X + PLAYER_BOX_W - PAD
-        player_top = PLAYER_BOX_Y + PAD
-        player_bottom = PLAYER_BOX_Y + PLAYER_BOX_H - PAD
-
-        # Player name: left aligned
-        player_name_metrics = painter.fontMetrics()
-        player_name_ascent = player_name_metrics.ascent()
-        painter.drawText(player_left, player_top + player_name_ascent, mainpokemon_lang_name)
-
-        # Player level: right aligned on same line
-        main_lv_text = f"Lv{mainlvl}"
-        main_lv_text_width = player_name_metrics.horizontalAdvance(main_lv_text)
-        painter.drawText(player_right - main_lv_text_width, player_top + player_name_ascent, main_lv_text)
-
-        # Player HP: right aligned near bottom, using slightly smaller font
-        painter.setFont(hp_font)
-        hp_text = f"{mainpokemon_hp} / {mainpkmn_max_hp}"
-        hp_metrics = painter.fontMetrics()
-        hp_text_width = hp_metrics.horizontalAdvance(hp_text)
-        painter.drawText(player_right - hp_text_width, player_bottom, hp_text)
+        painter.drawText(36,67,f"{lang_name} {gender_symbol}")
+        painter.drawText(208,67,lvl)
+        painter.drawText(328,199,mainpokemon_lang_name)
+        painter.drawText(490,199,mainlvl)
+        painter.drawText(487,238,f"{mainpkmn_max_hp}")
+        painter.drawText(442,238,f"{mainpokemon_hp}")
 
         # Battle message
         painter.setFont(msg_font)
@@ -6928,56 +6895,18 @@ class TestWindow(QWidget):
 
         # custom font
         custom_font = load_custom_font(28)
-        hp_font = load_custom_font(24)  # Slightly smaller for HP text
         msg_font = load_custom_font(32)
 
         painter.setFont(custom_font)
         painter.setPen(QColor(0, 0, 0))
-
-        # Enemy status box layout (top-left area)
-        ENEMY_BOX_X, ENEMY_BOX_Y = 28, 38
-        ENEMY_BOX_W, ENEMY_BOX_H = 210, 60
-        PAD = 10
-        enemy_left = ENEMY_BOX_X + PAD
-        enemy_right = ENEMY_BOX_X + ENEMY_BOX_W - PAD
-        enemy_top = ENEMY_BOX_Y + PAD
-
-        # Enemy name: left aligned
         lang_name = get_pokemon_diff_lang_name(int(id))
-        enemy_name_metrics = painter.fontMetrics()
-        enemy_name_ascent = enemy_name_metrics.ascent()
-        painter.drawText(enemy_left, enemy_top + enemy_name_ascent, lang_name)
-
-        # Enemy level: right aligned on same line
-        lv_text = f"Lv{lvl}"
-        lv_text_width = enemy_name_metrics.horizontalAdvance(lv_text)
-        painter.drawText(enemy_right - lv_text_width, enemy_top + enemy_name_ascent, lv_text)
-
-        # Player status box layout (bottom-right area)
-        PLAYER_BOX_X, PLAYER_BOX_Y = 316, 170
-        PLAYER_BOX_W, PLAYER_BOX_H = 210, 90
-        player_left = PLAYER_BOX_X + PAD
-        player_right = PLAYER_BOX_X + PLAYER_BOX_W - PAD
-        player_top = PLAYER_BOX_Y + PAD
-        player_bottom = PLAYER_BOX_Y + PLAYER_BOX_H - PAD
-
-        # Player name: left aligned
+        painter.drawText(36,67,lang_name)
+        painter.drawText(208,67,lvl)
         mainpokemon_lang_name = get_pokemon_diff_lang_name(int(mainpokemon_id))
-        player_name_metrics = painter.fontMetrics()
-        player_name_ascent = player_name_metrics.ascent()
-        painter.drawText(player_left, player_top + player_name_ascent, mainpokemon_lang_name)
-
-        # Player level: right aligned on same line
-        main_lv_text = f"Lv{mainlvl}"
-        main_lv_text_width = player_name_metrics.horizontalAdvance(main_lv_text)
-        painter.drawText(player_right - main_lv_text_width, player_top + player_name_ascent, main_lv_text)
-
-        # Player HP: right aligned near bottom, using slightly smaller font
-        painter.setFont(hp_font)
-        hp_text = f"{mainpokemon_current_hp} / {mainpokemon_hp}"
-        hp_metrics = painter.fontMetrics()
-        hp_text_width = hp_metrics.horizontalAdvance(hp_text)
-        painter.drawText(player_right - hp_text_width, player_bottom, hp_text)
+        painter.drawText(328,199,mainpokemon_lang_name)
+        painter.drawText(490,199,mainlvl)
+        painter.drawText(487,238,f"{mainpokemon_hp}")
+        painter.drawText(442,238,f"{mainpokemon_current_hp}")
 
         # Battle message
         painter.setFont(msg_font)
