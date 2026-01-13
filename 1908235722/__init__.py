@@ -6686,8 +6686,8 @@ class TestWindow(QWidget):
 
         # Ground baseline coordinates for bottom-anchored positioning
         # These coordinates represent where Pokemon "feet" touch the ground
-        ENEMY_GROUND_X, ENEMY_GROUND_Y = 447, 151  # Enemy Pokemon ground baseline
-        PLAYER_GROUND_X, PLAYER_GROUND_Y = 96, 219  # Player Pokemon ground baseline
+        ENEMY_GROUND_X, ENEMY_GROUND_Y = 390, 166  # Enemy Pokemon ground baseline
+        PLAYER_GROUND_X, PLAYER_GROUND_Y = 134, 249  # Player Pokemon ground baseline
 
         # Wild Pokemon animated sprite
         wild_pkmn_label = QLabel(container)
@@ -6863,8 +6863,8 @@ class TestWindow(QWidget):
 
         # Ground baseline coordinates for bottom-anchored positioning
         # These coordinates represent where Pokemon "feet" touch the ground
-        ENEMY_GROUND_X, ENEMY_GROUND_Y = 447, 151  # Enemy Pokemon ground baseline
-        PLAYER_GROUND_X, PLAYER_GROUND_Y = 96, 219  # Player Pokemon ground baseline
+        ENEMY_GROUND_X, ENEMY_GROUND_Y = 390, 166  # Enemy Pokemon ground baseline
+        PLAYER_GROUND_X, PLAYER_GROUND_Y = 134, 249  # Player Pokemon ground baseline
 
         # Calculate bottom-anchored positions for sprites
         enemy_draw_x, enemy_draw_y = bottom_anchor_pos(ENEMY_GROUND_X, ENEMY_GROUND_Y, new_width, new_height, anchor="center")
