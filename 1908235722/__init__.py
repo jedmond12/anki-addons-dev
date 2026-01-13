@@ -6390,9 +6390,10 @@ class TestWindow(QWidget):
                     # Then get height using the name
                     height = search_pokedex(pkmn_name.lower(), "heightm")
                     if height and isinstance(height, (int, float)):
-                        # Base size 80px for 1.0m Pokemon, scale proportionally
-                        # Cap at max 200px and min 30px for more dramatic size differences
-                        size = max(30, min(200, int(80 * height)))
+                        # Base size 60px for 1.0m Pokemon, scale proportionally
+                        # Cap at max 120px to prevent covering UI elements (status bars)
+                        # Min 30px for tiny Pokemon
+                        size = max(30, min(120, int(60 * height)))
                         return size
                 return 80  # Default size if lookup fails
             except Exception:
