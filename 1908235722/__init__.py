@@ -955,16 +955,53 @@ def resize_pixmap_img(pixmap, max_width):
     pixmap2 = pixmap.scaled(new_width, new_height)
     return pixmap2
 
-def random_battle_scene():
-    global battlescene_path
-    battle_scenes = {}
-    for index, filename in enumerate(os.listdir(battlescene_path)):
-        if filename.endswith(".png"):
-            battle_scenes[index + 1] = filename
-    # Get the corresponding file name
-    battlescene_file = battle_scenes.get(random.randint(1, len(battle_scenes)))
+def random_battle_scene(pokemon_type=None):
+    """Select battle scene based on Pokemon type, or random if no type specified"""
+    global battlescene_path_without_dialog
 
-    return battlescene_file
+    # Type to battle scene mapping
+    type_scene_map = {
+        "Water": ["ocean_pkmnbattlescene.png", "beach_pkmnbattlescene.png"],
+        "Fire": ["desert_pkmnbattlescene.png"],
+        "Grass": ["grass_pkmnbattlescene.png"],
+        "Bug": ["grass_pkmnbattlescene.png"],
+        "Ice": ["ice_pkmnbattlescene.png"],
+        "Ground": ["ground_pkmnbattlescene.png", "desert_pkmnbattlescene.png"],
+        "Rock": ["rock_pkmnbattlescene.png", "ground_pkmnbattlescene.png"],
+        "Poison": ["toxic_pkmnbattlescene.png"],
+        "Psychic": ["psychic_pkmnbattlescene.png"],
+        "Steel": ["metal_city_pkmnbattlescene.png", "rock_pkmnbattlescene.png"],  # metal_city when added
+        "Dragon": ["rock_pkmnbattlescene.png"],
+        "Dark": ["psychic_pkmnbattlescene.png"],
+        "Ghost": ["psychic_pkmnbattlescene.png"],
+        "Fighting": ["ground_pkmnbattlescene.png"],
+        "Normal": ["grass_pkmnbattlescene.png"],
+        "Flying": ["grass_pkmnbattlescene.png"],
+        "Electric": ["pkmnbattlescene.png"],
+        "Fairy": ["grass_pkmnbattlescene.png"],
+    }
+
+    # Get list of all available battle scenes
+    available_scenes = []
+    for filename in os.listdir(battlescene_path_without_dialog):
+        if filename.endswith(".png"):
+            available_scenes.append(filename)
+
+    # If no type specified or type not in map, return random scene
+    if not pokemon_type or pokemon_type not in type_scene_map:
+        return random.choice(available_scenes) if available_scenes else "pkmnbattlescene.png"
+
+    # Get scenes for this type
+    type_scenes = type_scene_map[pokemon_type]
+
+    # Filter to only scenes that actually exist
+    existing_type_scenes = [scene for scene in type_scenes if scene in available_scenes]
+
+    # Return random scene from type's options, or fallback to random
+    if existing_type_scenes:
+        return random.choice(existing_type_scenes)
+    else:
+        return random.choice(available_scenes) if available_scenes else "pkmnbattlescene.png"
 
 if berries_sprites != False:
     def random_berries():
@@ -2063,12 +2100,110 @@ def calculate_max_hp_wildpokemon():
     wild_pk_max_hp = calculate_hp(stats["hp"], level, ev, iv)
     return wild_pk_max_hp
 
+def generate_enemy_trainer_pokemon():
+    """Generate a tougher enemy trainer Pokemon with higher level and better IVs"""
+    global mainpokemon_level
+
+    # Get a random Pokemon first
+    name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, hp, max_hp, ev, iv, gender, battle_status, battle_stats = generate_random_pokemon()
+
+    # Make it tougher:
+    # 1. Level is 3-5 levels higher than player's Pokemon
+    level_boost = random.randint(3, 5)
+    trainer_level = mainpokemon_level + level_boost
+
+    # 2. Better IVs (20-31 instead of random)
+    trainer_iv = {
+        "hp": random.randint(20, 31),
+        "atk": random.randint(20, 31),
+        "def": random.randint(20, 31),
+        "spa": random.randint(20, 31),
+        "spd": random.randint(20, 31),
+        "spe": random.randint(20, 31)
+    }
+
+    # 3. Recalculate HP with new level and IVs
+    trainer_hp = calculate_hp(stats["hp"], trainer_level, ev, trainer_iv)
+
+    return name, id, trainer_level, ability, type, stats, enemy_attacks, base_experience, growth_rate, trainer_hp, trainer_hp, ev, trainer_iv, gender, battle_status, battle_stats
+
+def check_enemy_trainer_encounter():
+    """Check if it's time for an enemy trainer battle and show dialog"""
+    global enemy_trainer_card_counter, test_window, pkmn_window
+
+    # Every 10 cards, trigger potential enemy trainer battle
+    if enemy_trainer_card_counter >= 10:
+        # Reset counter
+        enemy_trainer_card_counter = 0
+
+        # Show dialog asking if user wants to engage
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setWindowTitle("Enemy Trainer Encountered!")
+        msg.setText("A wild trainer has challenged you to a battle!\n\nThis trainer's Pokemon will be tougher than wild encounters.")
+        msg.setInformativeText("Do you want to accept the challenge?")
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setDefaultButton(QMessageBox.StandardButton.Yes)
+
+        result = msg.exec()
+
+        if result == QMessageBox.StandardButton.Yes:
+            # User accepted - start enemy trainer battle
+            start_enemy_trainer_battle()
+            return True
+        else:
+            # User declined - show message
+            tooltipWithColour("You declined the battle. The trainer walks away...", "#FFA500")
+            return False
+
+    return False
+
+def start_enemy_trainer_battle():
+    """Start an enemy trainer battle with a tougher Pokemon"""
+    global name, id, level, hp, max_hp, ability, type, enemy_attacks, attacks, base_experience, stats, battlescene_file, ev, iv, gender, battle_status, battle_stats
+    global test_window, pkmn_window, pokemon_encounter
+
+    # Reset encounter counter to show "A wild trainer appeared!" message
+    pokemon_encounter = 0
+
+    # Generate tough enemy trainer Pokemon
+    name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, hp, max_hp, ev, iv, gender, battle_status, battle_stats = generate_enemy_trainer_pokemon()
+
+    # Select battle scene - for now use default or plasmagrunt scene if available
+    # Check if plasmagrunt scene exists
+    plasmagrunt_scene = "plasmagrunts_pkmnbattlescene.png"
+    battlescene_path_check = battlescene_path_without_dialog / plasmagrunt_scene
+
+    if battlescene_path_check.exists():
+        battlescene_file = plasmagrunt_scene
+    else:
+        # Use type-based scene as fallback
+        primary_type = type[0] if isinstance(type, list) and len(type) > 0 else None
+        battlescene_file = random_battle_scene(primary_type)
+
+    # Recalculate max HP
+    max_hp = calculate_hp(stats["hp"], level, ev, iv)
+
+    # Display the battle
+    if test_window is not None and pkmn_window is True:
+        test_window.display_first_encounter()
+        tooltipWithColour(f"Enemy Trainer sent out {name.capitalize()} (Level {level})!", "#FF4444")
+
+    # Update life bar
+    class Container(object):
+        pass
+    reviewer = Container()
+    reviewer.web = mw.reviewer.web
+    update_life_bar(reviewer, 0, 0)
+
 def new_pokemon():
     global name, id, level, hp, max_hp, ability, type, enemy_attacks, attacks, base_experience, stats, battlescene_file, ev, iv, gender, battle_status
     # new pokemon
     gender = None
     name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, hp, max_hp, ev, iv, gender, battle_status, battle_stats = generate_random_pokemon()
-    battlescene_file = random_battle_scene()
+    # Select battle scene based on Pokemon's primary type
+    primary_type = type[0] if isinstance(type, list) and len(type) > 0 else None
+    battlescene_file = random_battle_scene(primary_type)
     max_hp = calculate_hp(stats["hp"], level, ev, iv)
     #reset mainpokemon hp
     if test_window is not None:
@@ -2480,7 +2615,9 @@ if database_complete != False:
         starter = False
         mainpokemon_level = 5
     name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, hp, max_hp, ev, iv, gender, battle_status, battle_stats = generate_random_pokemon()
-    battlescene_file = random_battle_scene()
+    # Select battle scene based on Pokemon's primary type
+    primary_type = type[0] if isinstance(type, list) and len(type) > 0 else None
+    battlescene_file = random_battle_scene(primary_type)
 
 def get_effectiveness(move_type):
     global mainpokemon_type, effectiveness_chart_file_path, type
@@ -2543,13 +2680,14 @@ def calc_multiply_card_rating():
 
 reviewed_cards_count = 0
 general_card_count_for_battle = 0
+enemy_trainer_card_counter = 0  # Counter for enemy trainer battles every 10 cards
 cry_counter = 0
 seconds = 0
 myseconds = 0
 # Hook into Anki's card review event
 def on_review_card(*args):
     try:
-        global reviewed_cards_count, card_ratings_count, card_counter, general_card_count_for_battle, cry_counter, battle_sounds
+        global reviewed_cards_count, card_ratings_count, card_counter, general_card_count_for_battle, enemy_trainer_card_counter, cry_counter, battle_sounds
         global hp, stats, type, battle_status, name, battle_stats, enemy_attacks, level
         global pokemon_encounter, mainpokemon_hp, seconds, myseconds, animate_time
         global mainpokemon_xp, mainpokemon_current_hp, mainpokemon_attacks, mainpokemon_level, mainpokemon_stats, mainpokemon_type, mainpokemon_name, mainpokemon_battle_stats, mainpokemon_ev, mainpokemon_iv
@@ -2560,6 +2698,7 @@ def on_review_card(*args):
         reviewed_cards_count += 1
         card_counter += 1
         cry_counter += 1
+        enemy_trainer_card_counter += 1
         dmg = 0
         seconds = 0
         myseconds = 0
@@ -2594,6 +2733,10 @@ def on_review_card(*args):
             if check is False:
                 receive_badge(6,achievements)
                 test_window.display_badge(6)
+
+        # Check for enemy trainer battle every 10 cards
+        check_enemy_trainer_encounter()
+
         if reviewed_cards_count >= cards_per_round:
             reviewed_cards_count = 0
             attack_counter = 0
@@ -6170,12 +6313,12 @@ class TestWindow(QWidget):
             try:
                 pkmn_data = search_pokedex(str(pkmn_id), "all")
                 height = pkmn_data.get("heightm", 1.0) if isinstance(pkmn_data, dict) else 1.0
-                # Base size 96px for 1.0m Pokemon, scale proportionally
-                # Cap at max 120px and min 40px for visibility
-                size = max(40, min(120, int(96 * (height / 1.0))))
+                # Base size 80px for 1.0m Pokemon, scale proportionally
+                # Cap at max 200px and min 30px for more dramatic size differences
+                size = max(30, min(200, int(80 * height)))
                 return size
             except Exception:
-                return 96  # Default size
+                return 80  # Default size
 
         wild_size = get_pokemon_size(id)
         player_size = get_pokemon_size(mainpokemon_id)
@@ -6225,7 +6368,7 @@ class TestWindow(QWidget):
             popup_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             popup_label.setStyleSheet("""
                 QLabel {
-                    background-color: rgba(0, 0, 0, 180);
+                    background-color: rgb(0, 0, 0);
                     color: #f0f0d0;
                     font-size: 18px;
                     font-weight: bold;
