@@ -6089,6 +6089,29 @@ test = 1
 video = False
 pkmn_window = False #if fighting window open
 first_start = False
+
+# Helper function for bottom-anchored sprite positioning
+def bottom_anchor_pos(ground_x, ground_y, sprite_w, sprite_h, anchor="center"):
+    """
+    Calculate draw position for bottom-anchored sprites.
+
+    Args:
+        ground_x: X coordinate of the ground point (baseline)
+        ground_y: Y coordinate of the ground point (baseline)
+        sprite_w: Width of the sprite
+        sprite_h: Height of the sprite
+        anchor: "center" means x is center of sprite, otherwise left-aligned
+
+    Returns:
+        Tuple of (draw_x, draw_y) for top-left corner of sprite
+    """
+    if anchor == "center":
+        draw_x = int(ground_x - sprite_w / 2)
+    else:
+        draw_x = int(ground_x)
+    draw_y = int(ground_y - sprite_h)   # bottom anchored to ground
+    return draw_x, draw_y
+
 class TestWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -6362,17 +6385,57 @@ class TestWindow(QWidget):
             gender_symbol = ""
 
         custom_font = load_custom_font(26)
+        hp_font = load_custom_font(24)  # Slightly smaller for HP text
         msg_font = load_custom_font(32)
         mainpokemon_lang_name = get_pokemon_diff_lang_name(int(mainpokemon_id))
 
         painter.setFont(custom_font)
         painter.setPen(QColor(0, 0, 0))
-        painter.drawText(48, 67, f"{lang_name} {gender_symbol}")
-        painter.drawText(326, 200, mainpokemon_lang_name)
-        painter.drawText(208, 67, lvl)
-        painter.drawText(490, 199, mainlvl)
-        painter.drawText(487, 238, f"{mainpkmn_max_hp}")
-        painter.drawText(442, 238, f"{mainpokemon_hp}")
+
+        # Enemy status box layout (top-left area)
+        ENEMY_BOX_X, ENEMY_BOX_Y = 28, 38
+        ENEMY_BOX_W, ENEMY_BOX_H = 210, 60
+        PAD = 10
+        enemy_left = ENEMY_BOX_X + PAD
+        enemy_right = ENEMY_BOX_X + ENEMY_BOX_W - PAD
+        enemy_top = ENEMY_BOX_Y + PAD
+
+        # Enemy name: left aligned
+        enemy_name_metrics = painter.fontMetrics()
+        enemy_name_ascent = enemy_name_metrics.ascent()
+        painter.drawText(enemy_left, enemy_top + enemy_name_ascent, f"{lang_name} {gender_symbol}")
+
+        # Enemy level: right aligned on same line
+        lv_text = f"Lv{lvl}"
+        lv_text_width = enemy_name_metrics.horizontalAdvance(lv_text)
+        painter.drawText(enemy_right - lv_text_width, enemy_top + enemy_name_ascent, lv_text)
+
+        # Player status box layout (bottom-right area)
+        PLAYER_BOX_X, PLAYER_BOX_Y = 316, 170
+        PLAYER_BOX_W, PLAYER_BOX_H = 210, 90
+        player_left = PLAYER_BOX_X + PAD
+        player_right = PLAYER_BOX_X + PLAYER_BOX_W - PAD
+        player_top = PLAYER_BOX_Y + PAD
+        player_bottom = PLAYER_BOX_Y + PLAYER_BOX_H - PAD
+
+        # Player name: left aligned
+        player_name_metrics = painter.fontMetrics()
+        player_name_ascent = player_name_metrics.ascent()
+        painter.drawText(player_left, player_top + player_name_ascent, mainpokemon_lang_name)
+
+        # Player level: right aligned on same line
+        main_lv_text = f"Lv{mainlvl}"
+        main_lv_text_width = player_name_metrics.horizontalAdvance(main_lv_text)
+        painter.drawText(player_right - main_lv_text_width, player_top + player_name_ascent, main_lv_text)
+
+        # Player HP: right aligned near bottom, using slightly smaller font
+        painter.setFont(hp_font)
+        hp_text = f"{mainpokemon_hp} / {mainpkmn_max_hp}"
+        hp_metrics = painter.fontMetrics()
+        hp_text_width = hp_metrics.horizontalAdvance(hp_text)
+        painter.drawText(player_right - hp_text_width, player_bottom, hp_text)
+
+        # Battle message
         painter.setFont(msg_font)
         painter.setPen(QColor(240, 240, 208))
         painter.drawText(40, 320, message_box_text)
@@ -6402,37 +6465,14 @@ class TestWindow(QWidget):
         wild_size = get_pokemon_size(id)
         player_size = get_pokemon_size(mainpokemon_id)
 
-        # Pokemon base positions (consistent with no-dialog background)
-        wild_x_base, wild_y_base = 362, 74  # Wild Pokemon upper right
-        player_x_base, player_y_base = 96, 194  # Player Pokemon lower left
+        # Ground baseline coordinates for bottom-anchored positioning
+        # This ensures all Pokemon sprites have their feet on the same ground level
+        ENEMY_GROUND_X, ENEMY_GROUND_Y = 420, 112  # Enemy Pokemon ground baseline
+        PLAYER_GROUND_X, PLAYER_GROUND_Y = 96, 184  # Player Pokemon ground baseline (default, works for Reshiram)
 
-        # Adjust wild Pokemon position based on size
-        # Tiny Pokemon (30-50px): Move forward (left) by 15px
-        # Medium Pokemon (51-90px): No adjustment (perfect)
-        # Medium-large Pokemon (91-120px): Move back (right) by 10px
-        if wild_size <= 50:
-            wild_x = wild_x_base - 15  # Move forward for tiny
-            wild_y = wild_y_base
-        elif wild_size <= 90:
-            wild_x = wild_x_base  # Perfect position for medium
-            wild_y = wild_y_base
-        else:  # 91-120px (medium-large)
-            wild_x = wild_x_base + 10  # Move back for large
-            wild_y = wild_y_base
-
-        # Adjust player Pokemon position based on size
-        # Small Pokemon (30-60px): Move back (down) by 10px
-        # Medium-large Pokemon (91-120px): Move up by 10px
-        # Medium (61-90px): No adjustment
-        if player_size <= 60:
-            player_x = player_x_base + 5  # Move back slightly
-            player_y = player_y_base + 10  # Move down for small
-        elif player_size >= 91:
-            player_x = player_x_base
-            player_y = player_y_base - 10  # Move up for large
-        else:  # 61-90px (medium)
-            player_x = player_x_base
-            player_y = player_y_base
+        # Special case: Darkrai needs a lower baseline
+        if mainpokemon_name and mainpokemon_name.lower() == "darkrai":
+            PLAYER_GROUND_Y = 194  # Darkrai-specific baseline
 
         # Wild Pokemon animated sprite
         wild_pkmn_label = QLabel(container)
@@ -6449,7 +6489,10 @@ class TestWindow(QWidget):
             wild_pixmap = QPixmap(str(frontdefault / f"{id}.png"))
             wild_pixmap = wild_pixmap.scaled(wild_size, wild_size, Qt.AspectRatioMode.KeepAspectRatio)
             wild_pkmn_label.setPixmap(wild_pixmap)
-        wild_pkmn_label.setGeometry(wild_x, wild_y, wild_size, wild_size)
+
+        # Calculate bottom-anchored position for enemy Pokemon
+        enemy_draw_x, enemy_draw_y = bottom_anchor_pos(ENEMY_GROUND_X, ENEMY_GROUND_Y, wild_size, wild_size, anchor="center")
+        wild_pkmn_label.setGeometry(enemy_draw_x, enemy_draw_y, wild_size, wild_size)
 
         # Player Pokemon animated sprite
         player_pkmn_label = QLabel(container)
@@ -6466,7 +6509,10 @@ class TestWindow(QWidget):
             player_pixmap = QPixmap(str(backdefault / f"{mainpokemon_id}.png"))
             player_pixmap = player_pixmap.scaled(player_size, player_size, Qt.AspectRatioMode.KeepAspectRatio)
             player_pkmn_label.setPixmap(player_pixmap)
-        player_pkmn_label.setGeometry(player_x, player_y, player_size, player_size)
+
+        # Calculate bottom-anchored position for player Pokemon
+        player_draw_x, player_draw_y = bottom_anchor_pos(PLAYER_GROUND_X, PLAYER_GROUND_Y, player_size, player_size, anchor="center")
+        player_pkmn_label.setGeometry(player_draw_x, player_draw_y, player_size, player_size)
 
         # Display trainer sprite if this is a trainer battle
         if is_trainer_battle and current_trainer_sprite:
@@ -6599,14 +6645,22 @@ class TestWindow(QWidget):
         draw_hp_bar(401, 208, 8, 116, mainpokemon_current_hp, mainpokemon_hp)  # main pokemon hp_bar
 
         painter.drawPixmap(0, 0, pixmap_ui)
-        # Find the Pokemon Images Height and Width
-        wpkmn_width = (new_width / 2)
-        wpkmn_height = new_height
-        mpkmn_width = (new_width2 / 2)
-        mpkmn_height = new_height2
-        # draw pokemon image to a specific pixel
-        painter.drawPixmap((410 - wpkmn_width), (170 - wpkmn_height), pixmap)
-        painter.drawPixmap((144 - mpkmn_width), (290 - mpkmn_height), pixmap2)
+
+        # Ground baseline coordinates for bottom-anchored positioning
+        ENEMY_GROUND_X, ENEMY_GROUND_Y = 420, 112  # Enemy Pokemon ground baseline
+        PLAYER_GROUND_X, PLAYER_GROUND_Y = 96, 184  # Player Pokemon ground baseline
+
+        # Special case: Darkrai needs a lower baseline
+        if mainpokemon_name and mainpokemon_name.lower() == "darkrai":
+            PLAYER_GROUND_Y = 194  # Darkrai-specific baseline
+
+        # Calculate bottom-anchored positions for sprites
+        enemy_draw_x, enemy_draw_y = bottom_anchor_pos(ENEMY_GROUND_X, ENEMY_GROUND_Y, new_width, new_height, anchor="center")
+        player_draw_x, player_draw_y = bottom_anchor_pos(PLAYER_GROUND_X, PLAYER_GROUND_Y, new_width2, new_height2, anchor="center")
+
+        # Draw pokemon sprites with bottom-anchored positioning
+        painter.drawPixmap(enemy_draw_x, enemy_draw_y, pixmap)
+        painter.drawPixmap(player_draw_x, player_draw_y, pixmap2)
 
         experience = find_experience_for_level(mainpokemon_growth_rate, mainpokemon_level)
         experience = int(experience)
@@ -6622,22 +6676,60 @@ class TestWindow(QWidget):
 
         # custom font
         custom_font = load_custom_font(28)
+        hp_font = load_custom_font(24)  # Slightly smaller for HP text
         msg_font = load_custom_font(32)
 
-        # Draw the text on top of the image
-        # Adjust the font size as needed
         painter.setFont(custom_font)
-        painter.setPen(QColor(0, 0, 0))  # Text color - black for readability on light backgrounds
+        painter.setPen(QColor(0, 0, 0))
+
+        # Enemy status box layout (top-left area)
+        ENEMY_BOX_X, ENEMY_BOX_Y = 28, 38
+        ENEMY_BOX_W, ENEMY_BOX_H = 210, 60
+        PAD = 10
+        enemy_left = ENEMY_BOX_X + PAD
+        enemy_right = ENEMY_BOX_X + ENEMY_BOX_W - PAD
+        enemy_top = ENEMY_BOX_Y + PAD
+
+        # Enemy name: left aligned
         lang_name = get_pokemon_diff_lang_name(int(id))
-        painter.drawText(48, 67, lang_name)
+        enemy_name_metrics = painter.fontMetrics()
+        enemy_name_ascent = enemy_name_metrics.ascent()
+        painter.drawText(enemy_left, enemy_top + enemy_name_ascent, lang_name)
+
+        # Enemy level: right aligned on same line
+        lv_text = f"Lv{lvl}"
+        lv_text_width = enemy_name_metrics.horizontalAdvance(lv_text)
+        painter.drawText(enemy_right - lv_text_width, enemy_top + enemy_name_ascent, lv_text)
+
+        # Player status box layout (bottom-right area)
+        PLAYER_BOX_X, PLAYER_BOX_Y = 316, 170
+        PLAYER_BOX_W, PLAYER_BOX_H = 210, 90
+        player_left = PLAYER_BOX_X + PAD
+        player_right = PLAYER_BOX_X + PLAYER_BOX_W - PAD
+        player_top = PLAYER_BOX_Y + PAD
+        player_bottom = PLAYER_BOX_Y + PLAYER_BOX_H - PAD
+
+        # Player name: left aligned
         mainpokemon_lang_name = get_pokemon_diff_lang_name(int(mainpokemon_id))
-        painter.drawText(326, 200, mainpokemon_lang_name)
-        painter.drawText(208, 67, lvl)
-        painter.drawText(490, 199, mainlvl)
-        painter.drawText(487, 238, f"{mainpokemon_hp}")
-        painter.drawText(442, 238, f"{mainpokemon_current_hp}")
+        player_name_metrics = painter.fontMetrics()
+        player_name_ascent = player_name_metrics.ascent()
+        painter.drawText(player_left, player_top + player_name_ascent, mainpokemon_lang_name)
+
+        # Player level: right aligned on same line
+        main_lv_text = f"Lv{mainlvl}"
+        main_lv_text_width = player_name_metrics.horizontalAdvance(main_lv_text)
+        painter.drawText(player_right - main_lv_text_width, player_top + player_name_ascent, main_lv_text)
+
+        # Player HP: right aligned near bottom, using slightly smaller font
+        painter.setFont(hp_font)
+        hp_text = f"{mainpokemon_current_hp} / {mainpokemon_hp}"
+        hp_metrics = painter.fontMetrics()
+        hp_text_width = hp_metrics.horizontalAdvance(hp_text)
+        painter.drawText(player_right - hp_text_width, player_bottom, hp_text)
+
+        # Battle message
         painter.setFont(msg_font)
-        painter.setPen(QColor(240, 240, 208))  # Text color
+        painter.setPen(QColor(240, 240, 208))
         painter.drawText(40, 320, message_box_text)
         painter.end()
         # Set the merged image as the pixmap for the QLabel
