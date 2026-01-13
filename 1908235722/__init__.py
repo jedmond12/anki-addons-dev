@@ -2102,25 +2102,25 @@ def calculate_max_hp_wildpokemon():
     return wild_pk_max_hp
 
 def generate_enemy_trainer_pokemon():
-    """Generate a tougher enemy trainer Pokemon with higher level and better IVs"""
+    """Generate a slightly tougher enemy trainer Pokemon with random variation"""
     global mainpokemon_level
 
     # Get a random Pokemon first
     name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, hp, max_hp, ev, iv, gender, battle_status, battle_stats = generate_random_pokemon()
 
-    # Make it tougher:
-    # 1. Level is 3-5 levels higher than player's Pokemon
-    level_boost = random.randint(3, 5)
-    trainer_level = mainpokemon_level + level_boost
+    # Make it slightly tougher with random variation:
+    # 1. Level can be -1 to +2 relative to player (more random, less guaranteed tough)
+    level_variation = random.randint(-1, 2)
+    trainer_level = max(5, mainpokemon_level + level_variation)  # Never below level 5
 
-    # 2. Better IVs (20-31 instead of random)
+    # 2. Slightly better IVs on average (10-20 range, vs wild pokemon's full random)
     trainer_iv = {
-        "hp": random.randint(20, 31),
-        "atk": random.randint(20, 31),
-        "def": random.randint(20, 31),
-        "spa": random.randint(20, 31),
-        "spd": random.randint(20, 31),
-        "spe": random.randint(20, 31)
+        "hp": random.randint(10, 20),
+        "atk": random.randint(10, 20),
+        "def": random.randint(10, 20),
+        "spa": random.randint(10, 20),
+        "spd": random.randint(10, 20),
+        "spe": random.randint(10, 20)
     }
 
     # 3. Recalculate HP with new level and IVs
@@ -2189,8 +2189,8 @@ def check_enemy_trainer_encounter():
     """Check if it's time for an enemy trainer battle and show dialog"""
     global enemy_trainer_card_counter, test_window, pkmn_window, current_trainer_name
 
-    # Every 10 cards, trigger potential enemy trainer battle
-    if enemy_trainer_card_counter >= 10:
+    # Every 20 cards, trigger potential enemy trainer battle
+    if enemy_trainer_card_counter >= 20:
         # Reset counter
         enemy_trainer_card_counter = 0
 
@@ -2202,7 +2202,7 @@ def check_enemy_trainer_encounter():
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setWindowTitle("Enemy Trainer Encountered!")
-        msg.setText(f"A {trainer_name} challenges you to a battle!\n\nThis trainer's Pokemon will be tougher than wild encounters.")
+        msg.setText(f"A {trainer_name} challenges you to a battle!")
         msg.setInformativeText("Do you want to accept the challenge?")
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg.setDefaultButton(QMessageBox.StandardButton.Yes)
@@ -2743,7 +2743,7 @@ def calc_multiply_card_rating():
 
 reviewed_cards_count = 0
 general_card_count_for_battle = 0
-enemy_trainer_card_counter = 0  # Counter for enemy trainer battles every 10 cards
+enemy_trainer_card_counter = 0  # Counter for enemy trainer battles every 20 cards
 current_trainer_name = None  # Current enemy trainer name
 current_trainer_sprite = None  # Current enemy trainer sprite filename
 is_trainer_battle = False  # Flag to track if current battle is vs trainer
@@ -6384,12 +6384,17 @@ class TestWindow(QWidget):
         def get_pokemon_size(pkmn_id):
             """Get Pokemon height in meters from pokedex, return scale factor"""
             try:
-                pkmn_data = search_pokedex(str(pkmn_id), "all")
-                height = pkmn_data.get("heightm", 1.0) if isinstance(pkmn_data, dict) else 1.0
-                # Base size 80px for 1.0m Pokemon, scale proportionally
-                # Cap at max 200px and min 30px for more dramatic size differences
-                size = max(30, min(200, int(80 * height)))
-                return size
+                # First get pokemon name from ID
+                pkmn_name = search_pokedex_by_id(pkmn_id)
+                if pkmn_name and pkmn_name != 'Pokémon not found':
+                    # Then get height using the name
+                    height = search_pokedex(pkmn_name.lower(), "heightm")
+                    if height and isinstance(height, (int, float)):
+                        # Base size 80px for 1.0m Pokemon, scale proportionally
+                        # Cap at max 200px and min 30px for more dramatic size differences
+                        size = max(30, min(200, int(80 * height)))
+                        return size
+                return 80  # Default size if lookup fails
             except Exception:
                 return 80  # Default size
 
