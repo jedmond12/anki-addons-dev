@@ -6685,13 +6685,9 @@ class TestWindow(QWidget):
         player_size = get_pokemon_size(mainpokemon_id)
 
         # Ground baseline coordinates for bottom-anchored positioning
-        # This ensures all Pokemon sprites have their feet on the same ground level
-        ENEMY_GROUND_X, ENEMY_GROUND_Y = 420, 112  # Enemy Pokemon ground baseline
-        PLAYER_GROUND_X, PLAYER_GROUND_Y = 96, 184  # Player Pokemon ground baseline (default, works for Reshiram)
-
-        # Special case: Darkrai needs a lower baseline
-        if mainpokemon_name and mainpokemon_name.lower() == "darkrai":
-            PLAYER_GROUND_Y = 194  # Darkrai-specific baseline
+        # These coordinates represent where Pokemon "feet" touch the ground
+        ENEMY_GROUND_X, ENEMY_GROUND_Y = 447, 151  # Enemy Pokemon ground baseline
+        PLAYER_GROUND_X, PLAYER_GROUND_Y = 96, 219  # Player Pokemon ground baseline
 
         # Wild Pokemon animated sprite
         wild_pkmn_label = QLabel(container)
@@ -6866,12 +6862,9 @@ class TestWindow(QWidget):
         painter.drawPixmap(0, 0, pixmap_ui)
 
         # Ground baseline coordinates for bottom-anchored positioning
-        ENEMY_GROUND_X, ENEMY_GROUND_Y = 420, 112  # Enemy Pokemon ground baseline
-        PLAYER_GROUND_X, PLAYER_GROUND_Y = 96, 184  # Player Pokemon ground baseline
-
-        # Special case: Darkrai needs a lower baseline
-        if mainpokemon_name and mainpokemon_name.lower() == "darkrai":
-            PLAYER_GROUND_Y = 194  # Darkrai-specific baseline
+        # These coordinates represent where Pokemon "feet" touch the ground
+        ENEMY_GROUND_X, ENEMY_GROUND_Y = 447, 151  # Enemy Pokemon ground baseline
+        PLAYER_GROUND_X, PLAYER_GROUND_Y = 96, 219  # Player Pokemon ground baseline
 
         # Calculate bottom-anchored positions for sprites
         enemy_draw_x, enemy_draw_y = bottom_anchor_pos(ENEMY_GROUND_X, ENEMY_GROUND_Y, new_width, new_height, anchor="center")
