@@ -1360,21 +1360,59 @@ if database_complete != False:
                         pass
                     # Recursive call with depth tracking
                     return generate_random_pokemon(_recursion_depth + 1)
-            var_level = 3
-            if mainpokemon_level or mainpokemon_level != None:
+            # Special level calculation for Gym/Elite Four/Champion battles
+            if is_special_battle:
                 try:
-                    level = random.randint((mainpokemon_level - (random.randint(0, var_level))), (mainpokemon_level + (random.randint(0, var_level))))  # Random level between 1 and 100
-                    if mainpokemon_level == 100:
-                        level = 100
-                    if level < 0:
-                        level = 1
+                    # Get current round for scaling
+                    stats = _load_progression_stats()
+                    current_round = stats["lifetime"].get("current_round", 1)
+
+                    # Get base level based on battle type
+                    conf = _ankimon_get_col_conf()
+                    base_level = 10  # Fallback
+
+                    if _ankimon_is_gym_active() and conf:
+                        # Get gym leader key and Pokemon index
+                        leader_key = conf.get("ankimon_gym_leader_key", "")
+                        pokemon_idx = int(conf.get("ankimon_gym_enemy_index", 0))
+                        base_levels = _get_gym_base_levels().get(leader_key, [])
+                        base_level = base_levels[pokemon_idx] if pokemon_idx < len(base_levels) else 10 + (pokemon_idx * 5)
+
+                    elif _ankimon_is_elite_four_active() and conf:
+                        # Get Elite Four member key and Pokemon index
+                        member_key = conf.get("ankimon_elite_four_member_key", "")
+                        pokemon_idx = int(conf.get("ankimon_elite_four_pokemon_index", 0))
+                        base_levels = _get_elite_four_base_levels().get(member_key, [])
+                        base_level = base_levels[pokemon_idx] if pokemon_idx < len(base_levels) else 50 + (pokemon_idx * 2)
+
+                    elif _ankimon_is_champion_active() and conf:
+                        # Get Champion Pokemon index
+                        pokemon_idx = int(conf.get("ankimon_champion_pokemon_index", 0))
+                        base_levels = _get_champion_base_levels()
+                        base_level = base_levels[pokemon_idx] if pokemon_idx < len(base_levels) else 58 + (pokemon_idx * 2)
+
+                    # Apply scaling based on current round
+                    level = _get_scaled_level(base_level, current_round)
                 except Exception as e:
-                    showWarning(f"Error in generate random pokemon{e}")
-                    mainpokemon_level = 5
-                    level = 5
+                    print(f"Error calculating scaled level: {e}")
+                    level = mainpokemon_level if mainpokemon_level else 10
             else:
-                level = 5
-                min_level = 0
+                # Normal wild Pokemon - use player level
+                var_level = 3
+                if mainpokemon_level or mainpokemon_level != None:
+                    try:
+                        level = random.randint((mainpokemon_level - (random.randint(0, var_level))), (mainpokemon_level + (random.randint(0, var_level))))  # Random level between 1 and 100
+                        if mainpokemon_level == 100:
+                            level = 100
+                        if level < 0:
+                            level = 1
+                    except Exception as e:
+                        showWarning(f"Error in generate random pokemon{e}")
+                        mainpokemon_level = 5
+                        level = 5
+                else:
+                    level = 5
+                    min_level = 0
             if min_level is None or not min_level or mainpokemon_level is None or not mainpokemon_level:
                 level = 5
                 min_level = 0
@@ -10772,6 +10810,52 @@ def _ankimon_all_elite_four_defeated():
     except Exception:
         return False
 
+def _get_scaled_level(base_level, current_round):
+    """Calculate scaled Pokemon level based on current round
+
+    Args:
+        base_level: Base level from original game (e.g., 12 for Roark's Geodude)
+        current_round: Current progression round (1, 2, 3, etc.)
+
+    Returns:
+        Scaled level for this round
+    """
+    if current_round <= 1:
+        return base_level
+
+    # Scaling formula: add 20-25 levels per round
+    level_increase = (current_round - 1) * 22  # 22 levels per round average
+    scaled_level = base_level + level_increase
+
+    # Cap at level 100
+    return min(scaled_level, 100)
+
+def _get_gym_base_levels():
+    """Get base levels for gym leaders (Round 1 canonical levels)"""
+    return {
+        "roark": [12, 12, 14],  # Geodude, Onix, Cranidos
+        "gardenia": [19, 19, 22],  # Cherubi, Turtwig, Roserade
+        "maylene": [27, 27, 30],  # Meditite, Machoke, Lucario
+        "crasher_wake": [27, 29, 33],  # Gyarados, Quagsire, Floatzel
+        "fantina": [32, 34, 36],  # Duskull, Haunter, Mismagius
+        "byron": [36, 36, 39],  # Magneton, Steelix, Bastiodon
+        "candice": [38, 38, 40, 42],  # Snover, Sneasel, Medicham, Abomasnow
+        "volkner": [46, 46, 48, 50]  # Raichu, Ambipom, Octillery, Luxray (note: actual Volkner has different team)
+    }
+
+def _get_elite_four_base_levels():
+    """Get base levels for Elite Four members (Round 1 canonical levels)"""
+    return {
+        "aaron": [49, 49, 51, 53, 53],  # Dustox, Beautifly, Vespiquen, Heracross, Drapion
+        "bertha": [50, 52, 52, 53, 55],  # Whiscash, Sudowoodo, Golem, Hippowdon, Rhyperior
+        "flint": [52, 53, 53, 55, 57],  # Houndoom, Flareon, Rapidash, Infernape, Magmortar
+        "lucian": [53, 53, 54, 55, 59]  # Mr. Mime, Espeon, Bronzong, Alakazam, Gallade
+    }
+
+def _get_champion_base_levels():
+    """Get base levels for Champion Cynthia (Round 1 canonical levels)"""
+    return [58, 58, 58, 60, 60, 62]  # Spiritomb, Roserade, Togekiss, Lucario, Milotic, Garchomp
+
 def _ankimon_gym_overlay_html(count: int) -> str:
     pct = int((count / ANKIMON_GYM_TARGET) * 100)
     if pct < 0:
@@ -10839,6 +10923,37 @@ def _ankimon_show_gym_leader_dialog(leader: dict):
         title.setStyleSheet("font-weight: 700; font-size: 14px;")
         layout.addWidget(title)
 
+        # Get current round for level scaling
+        try:
+            stats = _load_progression_stats()
+            current_round = stats["lifetime"].get("current_round", 1)
+        except:
+            current_round = 1
+
+        # Display Pokemon team with names and levels
+        team_ids = leader.get("team", [])
+        base_levels = _get_gym_base_levels().get(leader.get("key", ""), [])
+
+        team_info = QLabel("Opponent Team:")
+        team_info.setStyleSheet("font-weight: bold; font-size: 12px; padding: 5px;")
+        layout.addWidget(team_info)
+
+        for i, pokemon_id in enumerate(team_ids):
+            try:
+                pokemon_name = search_pokedex_by_id(pokemon_id)
+                base_level = base_levels[i] if i < len(base_levels) else 10 + (i * 5)
+                scaled_level = _get_scaled_level(base_level, current_round)
+
+                # Mark the ace (last Pokemon) with a star
+                ace_marker = " ⭐" if i == len(team_ids) - 1 else ""
+                pokemon_label = QLabel(f"  • {pokemon_name} (Lv. {scaled_level}){ace_marker}")
+                pokemon_label.setStyleSheet("font-size: 11px; padding: 2px;")
+                layout.addWidget(pokemon_label)
+            except:
+                pass
+
+        layout.addSpacing(10)
+
         gif_label = QLabel()
         gif_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -10851,6 +10966,13 @@ def _ankimon_show_gym_leader_dialog(leader: dict):
         else:
             gif_label.setText(f"(Missing gym leader GIF for {leader.get('name','Gym')})\nPlace it in addon_sprites/gym_leaders/")
         layout.addWidget(gif_label)
+
+        # Show round info if not Round 1
+        if current_round > 1:
+            round_info = QLabel(f"⚠️ Round {current_round} - Pokemon levels scaled up!")
+            round_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            round_info.setStyleSheet("color: #FF6B6B; font-weight: bold; font-size: 11px; padding: 5px;")
+            layout.addWidget(round_info)
 
         btn_row = QHBoxLayout()
         start_btn = QPushButton("Start Gym Battle")
@@ -11052,10 +11174,44 @@ def _ankimon_elite_four_ready_popup():
         title.setFont(font)
         outer.addWidget(title)
 
-        # Team preview
-        team_label = QLabel(f"Team: {len(member['team'])} Pokemon")
-        team_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        outer.addWidget(team_label)
+        # Get current round for level scaling
+        try:
+            stats = _load_progression_stats()
+            current_round = stats["lifetime"].get("current_round", 1)
+        except:
+            current_round = 1
+
+        # Display Pokemon team with names and levels
+        team_ids = member.get("team", [])
+        base_levels = _get_elite_four_base_levels().get(member.get("key", ""), [])
+
+        team_info = QLabel("Opponent Team:")
+        team_info.setStyleSheet("font-weight: bold; font-size: 13px; padding: 5px;")
+        team_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        outer.addWidget(team_info)
+
+        for i, pokemon_id in enumerate(team_ids):
+            try:
+                pokemon_name = search_pokedex_by_id(pokemon_id)
+                base_level = base_levels[i] if i < len(base_levels) else 50 + (i * 2)
+                scaled_level = _get_scaled_level(base_level, current_round)
+
+                # Mark the ace (last Pokemon) with a star
+                ace_marker = " ⭐" if i == len(team_ids) - 1 else ""
+                pokemon_label = QLabel(f"  • {pokemon_name} (Lv. {scaled_level}){ace_marker}")
+                pokemon_label.setStyleSheet("font-size: 12px; padding: 2px;")
+                outer.addWidget(pokemon_label)
+            except:
+                pass
+
+        # Show round info if not Round 1
+        if current_round > 1:
+            round_info = QLabel(f"⚠️ Round {current_round} - Elite Four leveled up!")
+            round_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            round_info.setStyleSheet("color: #FF6B6B; font-weight: bold; font-size: 12px; padding: 10px;")
+            outer.addWidget(round_info)
+
+        outer.addSpacing(10)
 
         # Buttons
         btn_row = QHBoxLayout()
@@ -11120,15 +11276,48 @@ def _ankimon_champion_ready_popup():
         title.setFont(font)
         outer.addWidget(title)
 
-        # Team preview
-        team_label = QLabel(f"Team: {len(champion_team)} Pokemon")
-        team_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        outer.addWidget(team_label)
+        # Get current round for level scaling
+        try:
+            stats = _load_progression_stats()
+            current_round = stats["lifetime"].get("current_round", 1)
+        except:
+            current_round = 1
+
+        # Display Pokemon team with names and levels
+        base_levels = _get_champion_base_levels()
+
+        team_info = QLabel("Champion's Team:")
+        team_info.setStyleSheet("font-weight: bold; font-size: 13px; padding: 5px;")
+        team_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        outer.addWidget(team_info)
+
+        for i, pokemon_id in enumerate(champion_team):
+            try:
+                pokemon_name = search_pokedex_by_id(pokemon_id)
+                base_level = base_levels[i] if i < len(base_levels) else 58 + (i * 2)
+                scaled_level = _get_scaled_level(base_level, current_round)
+
+                # Mark the ace (Garchomp) with a star
+                ace_marker = " ⭐⭐" if i == len(champion_team) - 1 else ""
+                pokemon_label = QLabel(f"  • {pokemon_name} (Lv. {scaled_level}){ace_marker}")
+                pokemon_label.setStyleSheet("font-size: 12px; padding: 2px;")
+                outer.addWidget(pokemon_label)
+            except:
+                pass
 
         warning = QLabel("⚠️ This is the final challenge!")
         warning.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        warning.setStyleSheet("color: #FF6B6B; font-weight: bold;")
+        warning.setStyleSheet("color: #FF6B6B; font-weight: bold; font-size: 14px; padding: 10px;")
         outer.addWidget(warning)
+
+        # Show round info if not Round 1
+        if current_round > 1:
+            round_info = QLabel(f"🔥 Round {current_round} - Champion at peak strength!")
+            round_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            round_info.setStyleSheet("color: #FFD700; font-weight: bold; font-size: 12px; padding: 5px;")
+            outer.addWidget(round_info)
+
+        outer.addSpacing(10)
 
         # Buttons
         btn_row = QHBoxLayout()
