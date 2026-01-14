@@ -2816,6 +2816,25 @@ def complete_champion_battle():
                 mega_state = _load_mega_state()
                 mega_state["key_stone_unlocked"] = True
                 _save_mega_state(mega_state)
+
+                # Add Key Stone to items bag
+                try:
+                    with open(itembag_path, 'r') as json_file:
+                        itembag_list = json.load(json_file)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    itembag_list = []
+
+                itembag_list.append("key_stone")
+                with open(itembag_path, 'w') as json_file:
+                    json.dump(itembag_list, json_file)
+
+                # Display Key Stone item popup
+                try:
+                    if test_window is not None:
+                        test_window.rate_display_item("key_stone")
+                except Exception as e:
+                    print(f"Error displaying Key Stone: {e}")
+
                 tooltipWithColour("🔑 You obtained the Key Stone! Mega Evolution is now unlocked!", "#FF00FF")
             except Exception as e:
                 print(f"Error unlocking Key Stone: {e}")
@@ -7616,6 +7635,34 @@ class TestWindow(QWidget):
         player_draw_x, player_draw_y = bottom_anchor_pos(PLAYER_GROUND_X, PLAYER_GROUND_Y, player_size, player_size, anchor="center")
         player_pkmn_label.setGeometry(player_draw_x, player_draw_y, player_size, player_size)
 
+        # Display held item icon if main Pokemon has one
+        try:
+            with open(mainpokemon_path, 'r') as file:
+                mainpkmn_data = json.load(file)
+                if isinstance(mainpkmn_data, list) and len(mainpkmn_data) > 0:
+                    held_item = mainpkmn_data[0].get('held_item')
+                    if held_item:
+                        # Display held item icon in bottom left corner
+                        held_item_label = QLabel(container)
+                        held_item_label.setStyleSheet("background: transparent;")
+                        held_item_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+                        # Try to load the item sprite
+                        item_sprite_path = items_path / f"{held_item}.png"
+                        if not item_sprite_path.exists():
+                            # Try without the prefix format
+                            item_sprite_path = items_path / f"{held_item}"
+
+                        if item_sprite_path.exists():
+                            held_item_pixmap = QPixmap(str(item_sprite_path))
+                            # Scale to small icon size (30x30)
+                            held_item_scaled = held_item_pixmap.scaled(30, 30, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                            held_item_label.setPixmap(held_item_scaled)
+                            # Position in bottom left corner (near player Pokemon status box)
+                            held_item_label.setGeometry(320, 265, 30, 30)
+        except Exception as e:
+            print(f"Error displaying held item: {e}")
+
         # Display trainer sprite for any trainer battle (enemy, Elite Four, Champion)
         trainer_sprite_path = None
 
@@ -9729,12 +9776,31 @@ class ItemWindow(QWidget):
 
     def Check_Evo_Item(self, pkmn_name, item_name):
         try:
+            # Check if it's a mega stone (formatted as 80px-Bag_{Name}_ZA_Sprite)
+            if "80px-Bag_" in item_name and "ZA_Sprite" in item_name:
+                # Extract stone name (e.g., "Ampharosite" from "80px-Bag_Ampharosite_ZA_Sprite")
+                stone_name = item_name.replace("80px-Bag_", "").replace("_ZA_Sprite", "")
+
+                # Get Pokemon ID and check if it matches the stone
+                pokemon_id = search_pokedex(pkmn_name.lower(), "num")
+                expected_stone = _get_mega_stone_name(pokemon_id)
+
+                if stone_name == expected_stone:
+                    # Assign mega stone to Pokemon
+                    self.assign_held_item(pkmn_name, item_name)
+                    self.delete_item(item_name)
+                    showInfo(f"✨ {stone_name} has been given to {pkmn_name.capitalize()}!\n{pkmn_name.capitalize()} can now Mega Evolve in battle!")
+                else:
+                    showInfo(f"{pkmn_name.capitalize()} cannot use {stone_name}.\nThis stone is for a different Pokemon.")
+                return
+
+            # Handle evolution items
             evoName = search_pokedex(pkmn_name.lower(), "evos")
             evoName = f"{evoName[0]}"
             evoItem = search_pokedex(evoName.lower(), "evoItem")
-            item_name = item_name.replace("-", " ")  # Remove hyphens from item_name
+            item_name_clean = item_name.replace("-", " ")  # Remove hyphens from item_name
             evoItem = str(evoItem).lower()
-            if evoItem == item_name:  # Corrected this line to assign the item_name to evoItem
+            if evoItem == item_name_clean:  # Corrected this line to assign the item_name to evoItem
                 # Perform your action when the item matches the Pokémon's evolution item
                 showInfo("Pokemon Evolution is fitting !")
                 evo_window.display_pokemon_evo(pkmn_name)
@@ -9743,6 +9809,28 @@ class ItemWindow(QWidget):
         except Exception as e:
             showWarning(f"{e}")
     
+    def assign_held_item(self, pkmn_name, item_name):
+        """Assign a held item to a Pokemon"""
+        try:
+            global mypokemon_path
+            with open(mypokemon_path, 'r') as file:
+                pokemon_list = json.load(file)
+
+            # Find the Pokemon and assign the item
+            for pokemon in pokemon_list:
+                if pokemon['name'].lower() == pkmn_name.lower():
+                    pokemon['held_item'] = item_name
+                    break
+
+            # Save the updated Pokemon data
+            with open(mypokemon_path, 'w') as file:
+                json.dump(pokemon_list, file, indent=2)
+
+        except Exception as e:
+            print(f"Error assigning held item: {e}")
+            import traceback
+            traceback.print_exc()
+
     def write_item_file(self):
         with open(itembag_path, 'w') as json_file:
             json.dump(self.itembag_list, json_file)
@@ -10443,15 +10531,23 @@ def _award_random_mega_stone():
         except (FileNotFoundError, json.JSONDecodeError):
             itembag_list = []
 
-        # Use lowercase stone name with hyphens for consistency
-        item_name = stone_name.lower().replace(" ", "-")
+        # Use sprite filename format: 80px-Bag_{StoneName}_ZA_Sprite
+        item_name = f"80px-Bag_{stone_name}_ZA_Sprite"
         itembag_list.append(item_name)
 
         with open(itembag_path, 'w') as json_file:
             json.dump(itembag_list, json_file)
 
-        # Get Pokemon name
+        # Get Pokemon name and display the item
         pokemon_name = search_pokedex_by_id(chosen_id)
+
+        # Show item popup like other items
+        try:
+            if test_window is not None:
+                test_window.rate_display_item(item_name)
+        except Exception as e:
+            print(f"Error displaying mega stone: {e}")
+
         tooltipWithColour(f"✨ Received {stone_name} for {pokemon_name}! ✨", "#FFD700")
         return True
     except Exception as e:
@@ -10887,8 +10983,8 @@ from aqt import gui_hooks
 import json
 
 ANKIMON_GYM_TARGET = 100
-ANKIMON_ELITE_FOUR_TARGET = 10  # TESTING MODE: Set to 10 for speed run (normal: 150)
-ANKIMON_CHAMPION_TARGET = 10    # TESTING MODE: Set to 10 for speed run (normal: 200)
+ANKIMON_ELITE_FOUR_TARGET = 150
+ANKIMON_CHAMPION_TARGET = 200
 
 def _ankimon_gym_state():
     """Get the current gym card counter from persistent storage."""
