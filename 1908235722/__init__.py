@@ -2406,7 +2406,7 @@ def get_random_trainer():
         "Gym Leader": {
             "sprites": ["lenora.png", "marshal.png"],
             "scene": "pkmnbattlescene.png",
-            "title": "Gym Leader"
+            "title": "Veteran Trainer"  # Changed from "Gym Leader" to avoid confusion
         }
     }
 
@@ -2794,17 +2794,20 @@ def complete_champion_battle():
 
         mw.col.setMod()
 
-        # Track Champion battle completion
+        # Track Champion battle completion and check if first time BEFORE incrementing
         try:
             stats_data = _load_progression_stats()
+
+            # Check if first time defeating Champion (before incrementing)
+            is_first_time = stats_data["lifetime"]["total_champion_battles"] == 0
+
+            # Now increment the count
             stats_data["lifetime"]["total_champion_battles"] += 1
             stats_data["current_round"]["champion_defeated"] = True
 
-            # Check if first time defeating Champion
-            is_first_time = stats_data["lifetime"]["current_round"] == 1
-
             _save_progression_stats(stats_data)
-        except Exception:
+        except Exception as e:
+            print(f"Error tracking champion stats: {e}")
             is_first_time = False
 
         # Award Key Stone on first completion
@@ -2818,9 +2821,11 @@ def complete_champion_battle():
                 print(f"Error unlocking Key Stone: {e}")
 
         # Award Lucarionite on second completion
-        elif stats_data["lifetime"]["current_round"] == 2:
+        elif stats_data.get("lifetime", {}).get("total_champion_battles", 0) == 2:
             try:
                 mega_state = _load_mega_state()
+                if "mega_stones" not in mega_state:
+                    mega_state["mega_stones"] = {}
                 mega_state["mega_stones"]["448"] = mega_state["mega_stones"].get("448", 0) + 1
                 _save_mega_state(mega_state)
                 tooltipWithColour("✨ You obtained Lucarionite! (Lucario's Mega Stone)", "#FF00FF")
@@ -2893,27 +2898,49 @@ def _trigger_round_progression():
         # Remove all gym badges from inventory
         try:
             global achievements
-            # Gym badges are IDs 25-32
+            # Refresh achievements from file
+            achievements = check_badges(achievements)
+
+            # Remove gym badges (IDs 25-32)
             for badge_id in range(25, 33):
-                # Remove badge from achievements (implementation may vary)
-                try:
-                    if check_for_badge(achievements, badge_id):
-                        # Badge removal would need to be implemented
-                        pass
-                except:
-                    pass
+                achievements[str(badge_id)] = False
+
+            # Rebuild and save badge collection
+            badges_collection = []
+            for num in range(1, 69):
+                if achievements[str(num)] is True:
+                    badges_collection.append(int(num))
+            save_badges(badges_collection)
         except Exception as e:
             print(f"Error removing badges: {e}")
 
-        # Reset gym/Elite Four/Champion counters
+        # Reset gym/Elite Four/Champion counters and states
         try:
             conf = _ankimon_get_col_conf()
             if conf:
+                # Reset counters
                 conf["ankimon_gym_index"] = 0
                 conf["ankimon_gym_counter"] = 0
                 conf["ankimon_elite_four_index"] = 0
                 conf["ankimon_elite_four_counter"] = 0
                 conf["ankimon_champion_counter"] = 0
+
+                # Clear any pending or active battle flags
+                conf["ankimon_gym_active"] = False
+                conf["ankimon_gym_pending"] = False
+                conf["ankimon_elite_four_active"] = False
+                conf["ankimon_elite_four_pending"] = False
+                conf["ankimon_champion_active"] = False
+                conf["ankimon_champion_pending"] = False
+
+                # Clear battle state variables
+                conf["ankimon_gym_enemy_ids"] = []
+                conf["ankimon_gym_enemy_index"] = 0
+                conf["ankimon_elite_four_enemy_ids"] = []
+                conf["ankimon_elite_four_pokemon_index"] = 0
+                conf["ankimon_champion_enemy_ids"] = []
+                conf["ankimon_champion_pokemon_index"] = 0
+
                 mw.col.setMod()
         except Exception as e:
             print(f"Error resetting counters: {e}")
@@ -7589,21 +7616,46 @@ class TestWindow(QWidget):
         player_draw_x, player_draw_y = bottom_anchor_pos(PLAYER_GROUND_X, PLAYER_GROUND_Y, player_size, player_size, anchor="center")
         player_pkmn_label.setGeometry(player_draw_x, player_draw_y, player_size, player_size)
 
-        # Display trainer sprite if this is a trainer battle
+        # Display trainer sprite for any trainer battle (enemy, Elite Four, Champion)
+        trainer_sprite_path = None
+
+        # Check for enemy trainer battle
         if is_trainer_battle and current_trainer_sprite:
             trainer_sprite_path = enemy_battles_path / current_trainer_sprite
-            if trainer_sprite_path.exists():
-                trainer_label = QLabel(container)
-                trainer_label.setStyleSheet("background: transparent;")
-                trainer_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-                trainer_pixmap = QPixmap(str(trainer_sprite_path))
-                # Scale trainer sprite to reasonable size (80px wide max)
-                trainer_scaled = trainer_pixmap.scaledToWidth(80, Qt.TransformationMode.SmoothTransformation)
-                trainer_label.setPixmap(trainer_scaled)
-                # Position trainer sprite on the left side of the wild Pokemon area
-                trainer_x = 260  # Left of wild Pokemon
-                trainer_y = 40   # Aligned with top of battle area
-                trainer_label.setGeometry(trainer_x, trainer_y, trainer_scaled.width(), trainer_scaled.height())
+
+        # Check for Elite Four battle
+        elif _ankimon_is_elite_four_active():
+            try:
+                conf = _ankimon_get_col_conf()
+                if conf:
+                    member_key = conf.get("ankimon_elite_four_member_key")
+                    if member_key:
+                        elite_sprite_dir = addon_dir / "addon_sprites" / "elite_four_champion_sprite"
+                        trainer_sprite_path = elite_sprite_dir / f"{member_key}.png"
+            except Exception:
+                pass
+
+        # Check for Champion battle
+        elif _ankimon_is_champion_active():
+            try:
+                elite_sprite_dir = addon_dir / "addon_sprites" / "elite_four_champion_sprite"
+                trainer_sprite_path = elite_sprite_dir / "cynthia.png"
+            except Exception:
+                pass
+
+        # Display the trainer sprite if we have a valid path
+        if trainer_sprite_path and trainer_sprite_path.exists():
+            trainer_label = QLabel(container)
+            trainer_label.setStyleSheet("background: transparent;")
+            trainer_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            trainer_pixmap = QPixmap(str(trainer_sprite_path))
+            # Scale trainer sprite to reasonable size (80px wide max)
+            trainer_scaled = trainer_pixmap.scaledToWidth(80, Qt.TransformationMode.SmoothTransformation)
+            trainer_label.setPixmap(trainer_scaled)
+            # Position trainer sprite on the left side of the wild Pokemon area
+            trainer_x = 260  # Left of wild Pokemon
+            trainer_y = 40   # Aligned with top of battle area
+            trainer_label.setGeometry(trainer_x, trainer_y, trainer_scaled.width(), trainer_scaled.height())
 
         # Add popup message for first encounter
         if pokemon_encounter == 0:
@@ -10384,6 +10436,20 @@ def _award_random_mega_stone():
         mega_state["mega_stones"][str(chosen_id)] = mega_state["mega_stones"].get(str(chosen_id), 0) + 1
         _save_mega_state(mega_state)
 
+        # Add mega stone to items bag so it appears in UI
+        try:
+            with open(itembag_path, 'r') as json_file:
+                itembag_list = json.load(json_file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            itembag_list = []
+
+        # Use lowercase stone name with hyphens for consistency
+        item_name = stone_name.lower().replace(" ", "-")
+        itembag_list.append(item_name)
+
+        with open(itembag_path, 'w') as json_file:
+            json.dump(itembag_list, json_file)
+
         # Get Pokemon name
         pokemon_name = search_pokedex_by_id(chosen_id)
         tooltipWithColour(f"✨ Received {stone_name} for {pokemon_name}! ✨", "#FFD700")
@@ -11456,10 +11522,13 @@ def _ankimon_gym_on_answer(*args):
                 _ankimon_set_champion_state(ch)
     except Exception:
         pass
-    _ankimon_render_gym_overlay(mw.reviewer)
+    # Overlay removed - progress now shown in Ankimon window
+    # _ankimon_render_gym_overlay(mw.reviewer)
 
 def _ankimon_gym_on_question(*args):
-    _ankimon_render_gym_overlay(mw.reviewer)
+    # Overlay removed - progress now shown in Ankimon window
+    # _ankimon_render_gym_overlay(mw.reviewer)
+    pass
 
 def _ankimon_check_incomplete_gym():
     """Check for incomplete gym battles on startup and prompt user to continue"""
