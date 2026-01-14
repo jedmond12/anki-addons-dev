@@ -1509,6 +1509,20 @@ def kill_pokemon():
         # Track specific battle types
         if is_trainer_battle:
             stats_data["lifetime"]["total_trainer_battles"] += 1
+
+            # After defeating Champion, enemy trainer battles have a chance to drop mega stones
+            try:
+                # Check if Champion has been defeated at least once
+                if stats_data["lifetime"]["total_champion_battles"] > 0:
+                    # 30% chance to receive a mega stone from enemy trainer
+                    if random.random() < 0.30:
+                        mega_state = _load_mega_state()
+                        if mega_state.get("key_stone_unlocked", False):
+                            if _award_random_mega_stone():
+                                # Success message already shown by _award_random_mega_stone
+                                pass
+            except Exception as e:
+                print(f"Error awarding mega stone from trainer: {e}")
         else:
             stats_data["lifetime"]["total_wild_battles"] += 1
 
@@ -2408,6 +2422,12 @@ def get_random_trainer():
 def check_enemy_trainer_encounter():
     """Check if it's time for an enemy trainer battle and show dialog"""
     global enemy_trainer_card_counter, test_window, pkmn_window, current_trainer_name
+
+    # Don't interrupt special battles (gym, Elite Four, Champion)
+    if _ankimon_is_gym_active() or _ankimon_is_elite_four_active() or _ankimon_is_champion_active():
+        # Counter still increments but don't trigger battle
+        # Will trigger after special battle ends
+        return False
 
     # Every 20 cards, trigger potential enemy trainer battle
     if enemy_trainer_card_counter >= 20:
@@ -7320,6 +7340,23 @@ class TestWindow(QWidget):
 
         layout.addLayout(button_layout)
 
+        # Add progress label for gym/Elite Four/Champion counter
+        self.progress_label = QLabel("")
+        self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.progress_label.setStyleSheet("""
+            QLabel {
+                background-color: rgba(74, 144, 226, 0.9);
+                color: white;
+                padding: 8px;
+                border-radius: 5px;
+                font-weight: bold;
+                font-size: 13px;
+                margin: 5px;
+            }
+        """)
+        self.progress_label.setVisible(False)  # Hidden by default
+        layout.addWidget(self.progress_label)
+
         # Create a content widget to hold the battle/logo display
         # This will be what gets cleared and updated, not the buttons
         self.content_widget = QWidget()
@@ -7939,8 +7976,48 @@ class TestWindow(QWidget):
 
         return pkmnimage_label, kill_button, catch_button, nickname_input
 
+    def update_progress_label(self):
+        """Update the progress label with current gym/Elite Four/Champion progress"""
+        try:
+            conf = _ankimon_get_col_conf()
+            if not conf:
+                self.progress_label.setVisible(False)
+                return
+
+            # Determine current objective and progress
+            if not _ankimon_all_gym_badges_earned():
+                # Working on gyms
+                gym_counter = conf.get("ankimon_gym_counter", 0)
+                gym_index = conf.get("ankimon_gym_index", 0) % 8
+                gym_names = ["Roark", "Gardenia", "Maylene", "Crasher Wake", "Fantina", "Byron", "Candice", "Volkner"]
+                gym_name = gym_names[gym_index]
+                pct = int((gym_counter / ANKIMON_GYM_TARGET) * 100)
+                self.progress_label.setText(f"🏟 Next Gym ({gym_name}): {gym_counter}/{ANKIMON_GYM_TARGET} cards ({pct}%)")
+                self.progress_label.setVisible(True)
+            elif not _ankimon_all_elite_four_defeated():
+                # Working on Elite Four
+                elite_counter = conf.get("ankimon_elite_four_counter", 0)
+                member_idx = conf.get("ankimon_elite_four_index", 0) % 4
+                members = ["Aaron", "Bertha", "Flint", "Lucian"]
+                member_name = members[member_idx]
+                pct = int((elite_counter / ANKIMON_ELITE_FOUR_TARGET) * 100)
+                self.progress_label.setText(f"⚔️ Elite Four ({member_name}): {elite_counter}/{ANKIMON_ELITE_FOUR_TARGET} cards ({pct}%)")
+                self.progress_label.setVisible(True)
+            else:
+                # Working on Champion
+                champion_counter = conf.get("ankimon_champion_counter", 0)
+                pct = int((champion_counter / ANKIMON_CHAMPION_TARGET) * 100)
+                self.progress_label.setText(f"👑 Champion (Cynthia): {champion_counter}/{ANKIMON_CHAMPION_TARGET} cards ({pct}%)")
+                self.progress_label.setVisible(True)
+        except Exception as e:
+            print(f"Error updating progress label: {e}")
+            self.progress_label.setVisible(False)
+
     def display_first_encounter(self):
         # pokemon encounter image
+        # Update progress label
+        self.update_progress_label()
+
         # Clear only the content area, not the button bar
         self.clear_layout(self.content_layout)
         battle_widget = self.pokemon_display_first_encounter()
@@ -10744,8 +10821,8 @@ from aqt import gui_hooks
 import json
 
 ANKIMON_GYM_TARGET = 100
-ANKIMON_ELITE_FOUR_TARGET = 150
-ANKIMON_CHAMPION_TARGET = 200
+ANKIMON_ELITE_FOUR_TARGET = 10  # TESTING MODE: Set to 10 for speed run (normal: 150)
+ANKIMON_CHAMPION_TARGET = 10    # TESTING MODE: Set to 10 for speed run (normal: 200)
 
 def _ankimon_gym_state():
     """Get the current gym card counter from persistent storage."""
