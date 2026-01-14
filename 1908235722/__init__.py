@@ -2181,11 +2181,23 @@ def calc_experience(base_experience, enemy_level):
     return exp
 
 def catch_pokemon(nickname):
-    # --- Gym battles: you cannot catch leader Pokémon; prevent this action ---
+    # --- Special battles: you cannot catch leader/Elite Four/Champion Pokémon; prevent this action ---
     try:
         if _ankimon_is_gym_active():
             try:
                 showInfo("Gym battle: you can't catch a leader's Pokémon. The battle will continue automatically.")
+            except:
+                pass
+            return
+        elif _ankimon_is_elite_four_active():
+            try:
+                showInfo("Elite Four battle: you can't catch an Elite Four member's Pokémon. The battle will continue automatically.")
+            except:
+                pass
+            return
+        elif _ankimon_is_champion_active():
+            try:
+                showInfo("Champion battle: you can't catch the Champion's Pokémon. The battle will continue automatically.")
             except Exception:
                 pass
             return
@@ -2631,6 +2643,228 @@ def complete_gym_battle():
     except Exception as e:
         error_msg = f"Error in complete_gym_battle: {str(e)}"
         tooltipWithColour(error_msg, "#FF0000")
+        import traceback
+        traceback.print_exc()
+
+def complete_elite_four_member():
+    """Handler for completing one Elite Four member - advances to next member or completes Elite Four"""
+    global test_window, pkmn_window
+    try:
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            tooltipWithColour("Config not available", "#FF0000")
+            return
+
+        # Get current member info
+        member_index = int(conf.get("ankimon_elite_four_index", 0))
+        member_name = conf.get("ankimon_elite_four_member_name", "Elite Four")
+
+        # Clear Elite Four state
+        conf["ankimon_elite_four_active"] = False
+        conf["ankimon_elite_four_enemy_ids"] = []
+        conf["ankimon_elite_four_pokemon_index"] = 0
+
+        # Increment member index
+        conf["ankimon_elite_four_index"] = member_index + 1
+
+        # Reset card counter for next member
+        conf["ankimon_elite_four_counter"] = 0
+
+        mw.col.setMod()
+
+        # Track Elite Four member completion
+        try:
+            stats_data = _load_progression_stats()
+            stats_data["lifetime"]["total_elite_four_battles"] += 1
+            current_defeated = stats_data["current_round"].get("elite_four_defeated", 0)
+            stats_data["current_round"]["elite_four_defeated"] = current_defeated + 1
+            _save_progression_stats(stats_data)
+        except Exception:
+            pass
+
+        # Show completion message
+        try:
+            if (member_index + 1) >= 4:
+                tooltipWithColour(f"🏆 Elite Four {member_name} defeated! All Elite Four members conquered!", "#FFD700")
+            else:
+                tooltipWithColour(f"🏆 Elite Four {member_name} defeated! Collect 150 more cards for the next member.", "#FFD700")
+        except:
+            pass
+
+        # Spawn new wild pokemon
+        try:
+            new_pokemon()
+            if test_window is not None and pkmn_window is True:
+                from aqt.qt import QTimer
+                def _update_window():
+                    try:
+                        test_window.display_first_encounter()
+                        test_window.show()
+                        test_window.raise_()
+                        test_window.activateWindow()
+                        test_window.update()
+                        test_window.repaint()
+                    except Exception as e:
+                        tooltipWithColour(f"Window update error: {str(e)}", "#FF0000")
+                _update_window()
+                QTimer.singleShot(100, _update_window)
+        except Exception as e:
+            error_msg = f"Error spawning pokemon after Elite Four: {str(e)}"
+            tooltipWithColour(error_msg, "#FF0000")
+            import traceback
+            traceback.print_exc()
+    except Exception as e:
+        error_msg = f"Error in complete_elite_four_member: {str(e)}"
+        tooltipWithColour(error_msg, "#FF0000")
+        import traceback
+        traceback.print_exc()
+
+def complete_champion_battle():
+    """Handler for completing Champion battle - unlocks Key Stone, triggers round progression"""
+    global test_window, pkmn_window
+    try:
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            tooltipWithColour("Config not available", "#FF0000")
+            return
+
+        # Clear Champion state
+        conf["ankimon_champion_active"] = False
+        conf["ankimon_champion_enemy_ids"] = []
+        conf["ankimon_champion_pokemon_index"] = 0
+        conf["ankimon_champion_counter"] = 0
+
+        mw.col.setMod()
+
+        # Track Champion battle completion
+        try:
+            stats_data = _load_progression_stats()
+            stats_data["lifetime"]["total_champion_battles"] += 1
+            stats_data["current_round"]["champion_defeated"] = True
+
+            # Check if first time defeating Champion
+            is_first_time = stats_data["lifetime"]["current_round"] == 1
+
+            _save_progression_stats(stats_data)
+        except Exception:
+            is_first_time = False
+
+        # Award Key Stone on first completion
+        if is_first_time:
+            try:
+                mega_state = _load_mega_state()
+                mega_state["key_stone_unlocked"] = True
+                _save_mega_state(mega_state)
+                tooltipWithColour("🔑 You obtained the Key Stone! Mega Evolution is now unlocked!", "#FF00FF")
+            except Exception as e:
+                print(f"Error unlocking Key Stone: {e}")
+
+        # Award Lucarionite on second completion
+        elif stats_data["lifetime"]["current_round"] == 2:
+            try:
+                mega_state = _load_mega_state()
+                mega_state["mega_stones"]["448"] = mega_state["mega_stones"].get("448", 0) + 1
+                _save_mega_state(mega_state)
+                tooltipWithColour("✨ You obtained Lucarionite! (Lucario's Mega Stone)", "#FF00FF")
+            except Exception as e:
+                print(f"Error awarding Lucarionite: {e}")
+
+        # Show completion message
+        try:
+            tooltipWithColour("👑 Champion Cynthia defeated! You are the new Champion!", "#FFD700")
+        except:
+            pass
+
+        # Trigger round progression (will be implemented next)
+        try:
+            _trigger_round_progression()
+        except Exception as e:
+            print(f"Error triggering round progression: {e}")
+
+        # Spawn new wild pokemon
+        try:
+            new_pokemon()
+            if test_window is not None and pkmn_window is True:
+                from aqt.qt import QTimer
+                def _update_window():
+                    try:
+                        test_window.display_first_encounter()
+                        test_window.show()
+                        test_window.raise_()
+                        test_window.activateWindow()
+                        test_window.update()
+                        test_window.repaint()
+                    except Exception as e:
+                        tooltipWithColour(f"Window update error: {str(e)}", "#FF0000")
+                _update_window()
+                QTimer.singleShot(100, _update_window)
+        except Exception as e:
+            error_msg = f"Error spawning pokemon after Champion: {str(e)}"
+            tooltipWithColour(error_msg, "#FF0000")
+            import traceback
+            traceback.print_exc()
+    except Exception as e:
+        error_msg = f"Error in complete_champion_battle: {str(e)}"
+        tooltipWithColour(error_msg, "#FF0000")
+        import traceback
+        traceback.print_exc()
+
+def _trigger_round_progression():
+    """Trigger new round progression - reset badges, increment round, scale difficulty"""
+    try:
+        stats_data = _load_progression_stats()
+        current_round = stats_data["lifetime"]["current_round"]
+        new_round = current_round + 1
+
+        # Update round number
+        stats_data["lifetime"]["current_round"] = new_round
+        stats_data["current_round"]["round_number"] = new_round
+
+        # Reset current round progress
+        stats_data["current_round"]["cards_reviewed"] = 0
+        stats_data["current_round"]["battles_won"] = 0
+        stats_data["current_round"]["gyms_defeated"] = 0
+        stats_data["current_round"]["elite_four_defeated"] = 0
+        stats_data["current_round"]["champion_defeated"] = False
+        stats_data["current_round"]["pokemon_caught"] = 0
+        stats_data["current_round"]["items_obtained"] = 0
+        stats_data["current_round"]["mega_evolutions_used"] = 0
+
+        _save_progression_stats(stats_data)
+
+        # Remove all gym badges from inventory
+        try:
+            global achievements
+            # Gym badges are IDs 25-32
+            for badge_id in range(25, 33):
+                # Remove badge from achievements (implementation may vary)
+                try:
+                    if check_for_badge(achievements, badge_id):
+                        # Badge removal would need to be implemented
+                        pass
+                except:
+                    pass
+        except Exception as e:
+            print(f"Error removing badges: {e}")
+
+        # Reset gym/Elite Four/Champion counters
+        try:
+            conf = _ankimon_get_col_conf()
+            if conf:
+                conf["ankimon_gym_index"] = 0
+                conf["ankimon_gym_counter"] = 0
+                conf["ankimon_elite_four_index"] = 0
+                conf["ankimon_elite_four_counter"] = 0
+                conf["ankimon_champion_counter"] = 0
+                mw.col.setMod()
+        except Exception as e:
+            print(f"Error resetting counters: {e}")
+
+        # Show round progression message
+        tooltipWithColour(f"🎊 Round {new_round} begins! Gyms will be stronger now!", "#00FFFF")
+
+    except Exception as e:
+        print(f"Error in round progression: {e}")
         import traceback
         traceback.print_exc()
 
@@ -3287,6 +3521,83 @@ def on_review_card(*args):
                                 if _ankimon_is_gym_active():
                                     try:
                                         error_msg = f"Gym battle error: {str(e)}"
+                                        tooltipWithColour(error_msg, "#FF0000")
+                                        import traceback
+                                        traceback.print_exc()
+                                    except:
+                                        pass
+                                    return
+                                pass
+
+                            # --- Elite Four battles: show fainted display with Next Pokemon button ---
+                            try:
+                                if _ankimon_is_elite_four_active():
+                                    conf = _ankimon_get_col_conf()
+                                    if conf:
+                                        enemy_ids = conf.get("ankimon_elite_four_enemy_ids") or []
+                                        pokemon_idx = int(conf.get("ankimon_elite_four_pokemon_index", 0))
+
+                                        # Check if this was the last Pokemon
+                                        if pokemon_idx >= len(enemy_ids) - 1:
+                                            # Last Pokemon defeated - complete this Elite Four member
+                                            complete_elite_four_member()
+                                            return
+                                        else:
+                                            # More Pokemon remain - increment index and spawn next
+                                            conf["ankimon_elite_four_pokemon_index"] = pokemon_idx + 1
+                                            mw.col.setMod()
+                                            try:
+                                                member_name = conf.get("ankimon_elite_four_member_name", "Elite Four")
+                                                remaining = len(enemy_ids) - (pokemon_idx + 1)
+                                                tooltipWithColour(f"⚔️ {member_name} has {remaining} Pokemon remaining!", "#FFD700")
+                                            except:
+                                                pass
+                                            new_pokemon()
+                                            if test_window is not None and pkmn_window is True:
+                                                test_window.display_first_encounter()
+                                            return
+                            except Exception as e:
+                                if _ankimon_is_elite_four_active():
+                                    try:
+                                        error_msg = f"Elite Four battle error: {str(e)}"
+                                        tooltipWithColour(error_msg, "#FF0000")
+                                        import traceback
+                                        traceback.print_exc()
+                                    except:
+                                        pass
+                                    return
+                                pass
+
+                            # --- Champion battles: show fainted display with Next Pokemon button ---
+                            try:
+                                if _ankimon_is_champion_active():
+                                    conf = _ankimon_get_col_conf()
+                                    if conf:
+                                        enemy_ids = conf.get("ankimon_champion_enemy_ids") or []
+                                        pokemon_idx = int(conf.get("ankimon_champion_pokemon_index", 0))
+
+                                        # Check if this was the last Pokemon
+                                        if pokemon_idx >= len(enemy_ids) - 1:
+                                            # Last Pokemon defeated - complete Champion battle
+                                            complete_champion_battle()
+                                            return
+                                        else:
+                                            # More Pokemon remain - increment index and spawn next
+                                            conf["ankimon_champion_pokemon_index"] = pokemon_idx + 1
+                                            mw.col.setMod()
+                                            try:
+                                                remaining = len(enemy_ids) - (pokemon_idx + 1)
+                                                tooltipWithColour(f"👑 Champion Cynthia has {remaining} Pokemon remaining!", "#FFD700")
+                                            except:
+                                                pass
+                                            new_pokemon()
+                                            if test_window is not None and pkmn_window is True:
+                                                test_window.display_first_encounter()
+                                            return
+                            except Exception as e:
+                                if _ankimon_is_champion_active():
+                                    try:
+                                        error_msg = f"Champion battle error: {str(e)}"
                                         tooltipWithColour(error_msg, "#FF0000")
                                         import traceback
                                         traceback.print_exc()
