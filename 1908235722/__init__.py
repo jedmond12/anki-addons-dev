@@ -134,6 +134,8 @@ items_path = addon_dir / "user_files" / "sprites" / "items"
 badges_path = addon_dir / "user_files" / "sprites" / "badges"
 itembag_path = addon_dir / "user_files" / "items.json"
 badgebag_path = addon_dir / "user_files" / "badges.json"
+progression_stats_path = addon_dir / "user_files" / "progression_stats.json"
+mega_state_path = addon_dir / "user_files" / "mega_state.json"
 pokenames_lang_path = addon_dir / "user_files" / "data_files" / "pokemon_species_names.csv"
 pokedesc_lang_path = addon_dir / "user_files" / "data_files" / "pokemon_species_flavor_text.csv"
 pokeapi_db_path = user_path_data / "pokeapi_db.json"
@@ -1379,6 +1381,46 @@ def kill_pokemon():
     exp = int(calc_experience(base_experience, level))
     mainpokemon_level = save_main_pokemon_progress(mainpokemon_path, mainpokemon_level, mainpokemon_name, mainpokemon_base_experience, mainpokemon_growth_rate, exp)
 
+    # Track battle wins in progression stats
+    try:
+        stats_data = _load_progression_stats()
+        stats_data["lifetime"]["total_battles_won"] += 1
+        stats_data["current_round"]["battles_won"] += 1
+        stats_data["session"]["battles_won"] += 1
+        stats_data["session"]["xp_gained"] += exp
+
+        # Track specific battle types
+        if is_trainer_battle:
+            stats_data["lifetime"]["total_trainer_battles"] += 1
+        else:
+            stats_data["lifetime"]["total_wild_battles"] += 1
+
+        _save_progression_stats(stats_data)
+    except Exception:
+        pass  # Don't break gameplay if stats tracking fails
+
+    # Award mega energy for battle win (1 energy per battle)
+    try:
+        mega_state = _load_mega_state()
+        if mega_state.get("key_stone_unlocked", False):
+            # Only award energy if key stone is unlocked
+            mega_state["mega_energy"] = mega_state.get("mega_energy", 0) + 1
+            _save_mega_state(mega_state)
+            try:
+                current_energy = mega_state["mega_energy"]
+                if current_energy % 5 == 0:  # Show message every 5 energy
+                    tooltipWithColour(f"⚡ Mega Energy: {current_energy}/20", "#00FFFF")
+            except:
+                pass
+    except Exception:
+        pass  # Don't break gameplay if energy tracking fails
+
+    # Reset mega battle state (battle ended)
+    try:
+        _reset_mega_battle_state()
+    except Exception:
+        pass
+
     # Check if gym battle is pending and start it now
     try:
         conf = _ankimon_get_col_conf()
@@ -1615,6 +1657,16 @@ def save_caught_pokemon(nickname):
     # Save the caught Pokémon's data to a JSON file
     with open(str(mypokemon_path), "w") as json_file:
         json.dump(caught_pokemon_data, json_file, indent=2)
+
+    # Track Pokemon caught in progression stats
+    try:
+        stats_data = _load_progression_stats()
+        stats_data["lifetime"]["total_pokemon_caught"] += 1
+        stats_data["current_round"]["pokemon_caught"] += 1
+        stats_data["session"]["pokemon_caught"] += 1
+        _save_progression_stats(stats_data)
+    except Exception:
+        pass  # Don't break gameplay if stats tracking fails
 
 def find_details_move(move_name):
     global moves_file_path
@@ -2263,6 +2315,22 @@ def new_pokemon():
     current_trainer_name = None
     current_trainer_sprite = None
     gender = None
+
+    # Check for legendary battles (priority order: Primal Groudon > Primal Kyogre > Mega Rayquaza)
+    try:
+        if _check_legendary_available('mega_rayquaza'):
+            _trigger_legendary_battle('mega_rayquaza')
+            return
+        elif _check_legendary_available('primal_kyogre'):
+            _trigger_legendary_battle('primal_kyogre')
+            return
+        elif _check_legendary_available('primal_groudon'):
+            _trigger_legendary_battle('primal_groudon')
+            return
+    except Exception as e:
+        print(f"Error checking legendary availability: {e}")
+        pass  # Continue with normal Pokemon if legendary check fails
+
     name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, hp, max_hp, ev, iv, gender, battle_status, battle_stats = generate_random_pokemon()
     # Select battle scene based on Pokemon's primary type
     primary_type = type[0] if isinstance(type, list) and len(type) > 0 else None
@@ -2384,6 +2452,15 @@ def complete_gym_battle():
         # Save config immediately
         mw.col.setMod()
 
+        # Track gym battle completion in progression stats
+        try:
+            stats_data = _load_progression_stats()
+            stats_data["lifetime"]["total_gym_battles"] += 1
+            stats_data["current_round"]["gyms_defeated"] += 1
+            _save_progression_stats(stats_data)
+        except Exception:
+            pass  # Don't break gameplay if stats tracking fails
+
         # Award gym badge (badges 25-32 for gyms 0-7)
         badge_num = 25 + (current_gym_idx % 8)
         try:
@@ -2392,6 +2469,13 @@ def complete_gym_battle():
                 receive_badge(badge_num, achievements)
                 if test_window is not None:
                     test_window.display_badge(badge_num)
+                # Track badge earned
+                try:
+                    stats_data = _load_progression_stats()
+                    stats_data["lifetime"]["total_badges_earned"] += 1
+                    _save_progression_stats(stats_data)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -2770,9 +2854,46 @@ def on_review_card(*args):
         seconds = 0
         myseconds = 0
         general_card_count_for_battle += 1
+
+        # Track card reviews in progression stats
+        try:
+            stats_data = _load_progression_stats()
+            stats_data["lifetime"]["total_cards_reviewed"] += 1
+            stats_data["current_round"]["cards_reviewed"] += 1
+            stats_data["session"]["cards_reviewed"] += 1
+
+            # Track cards in wild/enemy battles for mega stone rewards
+            if pokemon_encounter > 0:  # Currently in a battle
+                if not _ankimon_is_gym_active():  # Not a gym battle
+                    # This is a wild or enemy trainer battle
+                    cards_in_battles = stats_data.get("cards_in_wild_enemy_battles", 0)
+                    cards_in_battles += 1
+                    stats_data["cards_in_wild_enemy_battles"] = cards_in_battles
+
+                    # Award mega stone every 500 cards
+                    if cards_in_battles > 0 and cards_in_battles % 500 == 0:
+                        try:
+                            mega_state = _load_mega_state()
+                            if mega_state.get("key_stone_unlocked", False):
+                                _award_random_mega_stone()
+                        except Exception as e:
+                            print(f"Error awarding mega stone: {e}")
+
+            _save_progression_stats(stats_data)
+        except Exception:
+            pass  # Don't break gameplay if stats tracking fails
         if battle_sounds == True:
             if general_card_count_for_battle == 1:
                 play_sound()
+
+        # Try to trigger mega evolution at battle start (first card)
+        if general_card_count_for_battle == 1 and pokemon_encounter > 0:
+            try:
+                if _can_mega_evolve():
+                    _trigger_mega_evolution()
+            except Exception as e:
+                print(f"Error checking mega evolution: {e}")
+
         #test achievment system
         if card_counter == 100:
             check = check_for_badge(achievements,1)
@@ -2855,6 +2976,14 @@ def on_review_card(*args):
                                     def_stat = mainpokemon_stats["def"]
                                     atk_stat = stats["atk"]
                                 enemy_dmg = int(calc_atk_dmg(level,(multiplier * 2),enemy_move["basePower"], atk_stat, def_stat, type, enemy_move["type"],mainpokemon_type, critRatio))
+
+                                # Apply mega evolution damage reduction (0.85x taken)
+                                try:
+                                    if _is_mega_active():
+                                        enemy_dmg = int(enemy_dmg * 0.85)
+                                except Exception:
+                                    pass
+
                                 if enemy_dmg == 0:
                                     enemy_dmg = 1
                                 mainpokemon_hp -= enemy_dmg
@@ -2881,6 +3010,14 @@ def on_review_card(*args):
                             def_stat = mainpokemon_stats["def"]
                             atk_stat = stats["atk"]                        
                         enemy_dmg = int(calc_atk_dmg(level,(multiplier * 2),random.randint(60, 100), atk_stat, def_stat, type, "Normal", mainpokemon_type, critRatio))
+
+                        # Apply mega evolution damage reduction (0.85x taken)
+                        try:
+                            if _is_mega_active():
+                                enemy_dmg = int(enemy_dmg * 0.85)
+                        except Exception:
+                            pass
+
                         if enemy_dmg == 0:
                             enemy_dmg = 1
                         mainpokemon_hp -= enemy_dmg
@@ -2945,6 +3082,14 @@ def on_review_card(*args):
                                     def_stat = stats["def"]
                                     atk_stat = mainpokemon_stats["atk"]
                                 dmg = int(calc_atk_dmg(mainpokemon_level, multiplier,move["basePower"], atk_stat, def_stat, mainpokemon_type, move["type"],type, critRatio))
+
+                                # Apply mega evolution damage boost (1.25x dealt)
+                                try:
+                                    if _is_mega_active():
+                                        dmg = int(dmg * 1.25)
+                                except Exception:
+                                    pass
+
                                 if dmg == 0:
                                     dmg = 1
                                 hp -= dmg
@@ -7167,6 +7312,31 @@ class TestWindow(QWidget):
         # Prevent this from showing during gym battles
         if _ankimon_is_gym_active():
             return
+
+        # Check if this is a legendary Pokemon - auto-capture instead of showing dialog
+        global name
+        try:
+            legendary_names = ['Groudon-Primal', 'Kyogre-Primal', 'Rayquaza-Mega']
+            if name in legendary_names:
+                # Determine legendary type
+                legendary_type = None
+                if name == 'Groudon-Primal':
+                    legendary_type = 'primal_groudon'
+                elif name == 'Kyogre-Primal':
+                    legendary_type = 'primal_kyogre'
+                elif name == 'Rayquaza-Mega':
+                    legendary_type = 'mega_rayquaza'
+
+                if legendary_type:
+                    _complete_legendary_capture(legendary_type)
+                    # Spawn new Pokemon after legendary capture
+                    new_pokemon()
+                    self.display_first_encounter()
+                    return
+        except Exception as e:
+            print(f"Error handling legendary capture: {e}")
+            pass
+
         # pokemon encounter image
         # Clear only the content area, not the button bar
         self.clear_layout(self.content_layout)
@@ -9073,6 +9243,546 @@ def _save_party(party: dict):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(party, f, indent=2)
+
+def _load_progression_stats():
+    """Load progression stats from JSON file with defaults"""
+    default_stats = {
+        "lifetime": {
+            "total_cards_reviewed": 0,
+            "total_battles_won": 0,
+            "total_wild_battles": 0,
+            "total_trainer_battles": 0,
+            "total_gym_battles": 0,
+            "total_elite_four_battles": 0,
+            "total_champion_battles": 0,
+            "total_pokemon_caught": 0,
+            "total_pokemon_evolved": 0,
+            "total_badges_earned": 0,
+            "total_items_used": 0,
+            "total_mega_evolutions": 0,
+            "current_round": 1,
+            "highest_level_reached": 1,
+            "legendary_encounters": 0,
+            "primal_battles_won": 0
+        },
+        "current_round": {
+            "round_number": 1,
+            "cards_reviewed": 0,
+            "battles_won": 0,
+            "gyms_defeated": 0,
+            "elite_four_defeated": 0,
+            "champion_defeated": False,
+            "pokemon_caught": 0,
+            "items_obtained": 0,
+            "mega_evolutions_used": 0
+        },
+        "session": {
+            "cards_reviewed": 0,
+            "battles_won": 0,
+            "xp_gained": 0,
+            "pokemon_caught": 0
+        },
+        "legendary_captures": {
+            "primal_groudon_captured": False,
+            "primal_kyogre_captured": False,
+            "mega_rayquaza_captured": False,
+            "primal_groudon_battles": 0,
+            "primal_kyogre_battles": 0,
+            "mega_rayquaza_battles": 0
+        },
+        "cards_in_wild_enemy_battles": 0
+    }
+
+    try:
+        with open(str(progression_stats_path), "r", encoding="utf-8") as f:
+            stats = json.load(f) or {}
+    except FileNotFoundError:
+        # First time - create file with defaults
+        stats = default_stats
+        _save_progression_stats(stats)
+        return stats
+    except Exception:
+        stats = {}
+
+    # Ensure all sections exist with defaults
+    if not isinstance(stats, dict):
+        stats = default_stats
+    else:
+        # Merge with defaults to ensure all fields exist
+        for section in default_stats:
+            if section not in stats:
+                stats[section] = default_stats[section]
+            elif isinstance(default_stats[section], dict):
+                for key in default_stats[section]:
+                    if key not in stats[section]:
+                        stats[section][key] = default_stats[section][key]
+
+    return stats
+
+def _save_progression_stats(stats: dict):
+    """Save progression stats to JSON file"""
+    try:
+        os.makedirs(os.path.dirname(str(progression_stats_path)), exist_ok=True)
+        with open(str(progression_stats_path), "w", encoding="utf-8") as f:
+            json.dump(stats, f, indent=2)
+    except Exception as e:
+        print(f"Error saving progression stats: {e}")
+
+def _load_mega_state():
+    """Load mega evolution state from JSON file with defaults"""
+    default_state = {
+        "key_stone_unlocked": False,
+        "mega_energy": 0,
+        "mega_active": False,
+        "mega_used_this_battle": False,
+        "mega_stones": {}  # {dex_id: count}
+    }
+
+    try:
+        with open(str(mega_state_path), "r", encoding="utf-8") as f:
+            state = json.load(f) or {}
+    except FileNotFoundError:
+        # First time - create file with defaults
+        state = default_state
+        _save_mega_state(state)
+        return state
+    except Exception:
+        state = {}
+
+    # Ensure all fields exist with defaults
+    if not isinstance(state, dict):
+        state = default_state
+    else:
+        for key in default_state:
+            if key not in state:
+                state[key] = default_state[key]
+
+    return state
+
+def _save_mega_state(state: dict):
+    """Save mega evolution state to JSON file"""
+    try:
+        os.makedirs(os.path.dirname(str(mega_state_path)), exist_ok=True)
+        with open(str(mega_state_path), "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+    except Exception as e:
+        print(f"Error saving mega state: {e}")
+
+def _check_legendary_available(legendary_type):
+    """Check if a legendary battle is available based on card count
+
+    Args:
+        legendary_type: 'primal_groudon', 'primal_kyogre', or 'mega_rayquaza'
+
+    Returns:
+        bool: True if legendary battle can be triggered
+    """
+    global card_counter
+    stats = _load_progression_stats()
+
+    thresholds = {
+        'primal_groudon': 5000,
+        'primal_kyogre': 6000,
+        'mega_rayquaza': 7000
+    }
+
+    if legendary_type not in thresholds:
+        return False
+
+    # Check if card threshold is met
+    if card_counter < thresholds[legendary_type]:
+        return False
+
+    # Check if already captured this round
+    captured_key = f"{legendary_type}_captured"
+    if not stats["legendary_captures"][captured_key]:
+        # First time - always available once threshold is met
+        return True
+
+    # Already captured - check if re-battle is available this round
+    battles_key = f"{legendary_type}_battles"
+    current_round = stats["current_round"]["round_number"]
+
+    # Allow one re-battle per round after initial capture
+    # We track battles per round in a separate structure
+    return stats["legendary_captures"].get(battles_key, 0) < current_round
+
+def _trigger_legendary_battle(legendary_type):
+    """Trigger a special legendary battle
+
+    Args:
+        legendary_type: 'primal_groudon', 'primal_kyogre', or 'mega_rayquaza'
+    """
+    global name, id, level, hp, max_hp, ability, type, enemy_attacks, base_experience, stats, ev, iv, gender, battle_status, growth_rate, pokemon_species
+
+    # Legendary Pokemon definitions
+    legendary_data = {
+        'primal_groudon': {
+            'name': 'Groudon-Primal',
+            'id': 383,  # Groudon Pokedex ID
+            'level': 70,
+            'pokemon_species': 'Legendary'
+        },
+        'primal_kyogre': {
+            'name': 'Kyogre-Primal',
+            'id': 382,  # Kyogre Pokedex ID
+            'level': 70,
+            'pokemon_species': 'Legendary'
+        },
+        'mega_rayquaza': {
+            'name': 'Rayquaza-Mega',
+            'id': 384,  # Rayquaza Pokedex ID
+            'level': 75,
+            'pokemon_species': 'Legendary'
+        }
+    }
+
+    if legendary_type not in legendary_data:
+        return
+
+    data = legendary_data[legendary_type]
+
+    # Set up the legendary Pokemon for battle
+    name = data['name']
+    id = data['id']
+    level = data['level']
+    pokemon_species = data['pokemon_species']
+
+    # Get Pokemon data from pokedex
+    try:
+        ability = search_pokedex(name.split('-')[0].lower(), "abilities")
+        if ability and isinstance(ability, dict):
+            ability = list(ability.values())[0] if ability else "Unknown"
+        type = search_pokedex(name.split('-')[0].lower(), "types")
+        base_experience = search_pokedex(name.split('-')[0].lower(), "baseExp")
+        stats = search_pokedex(name.split('-')[0].lower(), "baseStats")
+        growth_rate = search_pokedex(name.split('-')[0].lower(), "growth_rate")
+
+        # Generate high-level stats
+        ev = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+        iv = {
+            "hp": random.randint(20, 31),
+            "atk": random.randint(20, 31),
+            "def": random.randint(20, 31),
+            "spa": random.randint(20, 31),
+            "spd": random.randint(20, 31),
+            "spe": random.randint(20, 31)
+        }
+
+        max_hp = calculate_hp(stats["hp"], level, ev, iv)
+        hp = max_hp
+
+        # Generate powerful moveset
+        enemy_attacks = generate_attacks(id, level)
+
+        # Set gender and battle status
+        gender = random.choice(["male", "female", "genderless"])
+        battle_status = None
+
+        # Show legendary encounter message
+        tooltipWithColour(f"⚡ A Legendary {name} appears! ⚡", "#FFD700")
+
+        # Update battle window if active
+        global test_window, pkmn_window
+        if pkmn_window is True and test_window is not None:
+            test_window.display_first_encounter()
+
+    except Exception as e:
+        print(f"Error triggering legendary battle: {e}")
+        import traceback
+        traceback.print_exc()
+
+def _get_mega_capable_pokemon_ids():
+    """Return list of Pokemon IDs that can mega evolve"""
+    # Complete list of Pokemon that can mega evolve (by National Dex ID)
+    return [
+        3,    # Venusaur
+        6,    # Charizard (X and Y)
+        9,    # Blastoise
+        15,   # Beedrill
+        18,   # Pidgeot
+        65,   # Alakazam
+        80,   # Slowbro
+        94,   # Gengar
+        115,  # Kangaskhan
+        127,  # Pinsir
+        130,  # Gyarados
+        142,  # Aerodactyl
+        150,  # Mewtwo (X and Y)
+        181,  # Ampharos
+        208,  # Steelix
+        212,  # Scizor
+        214,  # Heracross
+        229,  # Houndoom
+        248,  # Tyranitar
+        254,  # Sceptile
+        257,  # Blaziken
+        260,  # Swampert
+        282,  # Gardevoir
+        302,  # Sableye
+        303,  # Mawile
+        306,  # Aggron
+        308,  # Medicham
+        310,  # Manectric
+        319,  # Sharpedo
+        323,  # Camerupt
+        334,  # Altaria
+        354,  # Banette
+        359,  # Absol
+        362,  # Glalie
+        373,  # Salamence
+        376,  # Metagross
+        380,  # Latias
+        381,  # Latios
+        384,  # Rayquaza
+        428,  # Lopunny
+        445,  # Garchomp
+        448,  # Lucario
+        460,  # Abomasnow
+        475,  # Gallade
+        531,  # Audino
+        719   # Diancie
+    ]
+
+def _get_owned_mega_capable_pokemon():
+    """Return list of owned Pokemon IDs that can mega evolve"""
+    try:
+        mega_capable_ids = _get_mega_capable_pokemon_ids()
+        pokemon_list = _load_mypokemon_list()
+        owned_ids = [p.get("id") for p in pokemon_list if "id" in p]
+        return [id for id in owned_ids if id in mega_capable_ids]
+    except Exception as e:
+        print(f"Error getting owned mega-capable Pokemon: {e}")
+        return []
+
+def _get_mega_stone_name(pokemon_id):
+    """Get the name of the mega stone for a Pokemon ID"""
+    stone_names = {
+        3: "Venusaurite",
+        6: "Charizardite",  # Note: Simplified (normally X or Y)
+        9: "Blastoisinite",
+        15: "Beedrillite",
+        18: "Pidgeotite",
+        65: "Alakazite",
+        80: "Slowbronite",
+        94: "Gengarite",
+        115: "Kangaskhanite",
+        127: "Pinsirite",
+        130: "Gyaradosite",
+        142: "Aerodactylite",
+        150: "Mewtwonite",  # Note: Simplified (normally X or Y)
+        181: "Ampharosite",
+        208: "Steelixite",
+        212: "Scizorite",
+        214: "Heracronite",
+        229: "Houndoominite",
+        248: "Tyranitarite",
+        254: "Sceptilite",
+        257: "Blazikenite",
+        260: "Swampertite",
+        282: "Gardevoirite",
+        302: "Sablenite",
+        303: "Mawilite",
+        306: "Aggronite",
+        308: "Medichamite",
+        310: "Manectite",
+        319: "Sharpedonite",
+        323: "Cameruptite",
+        334: "Altarianite",
+        354: "Banettite",
+        359: "Absolite",
+        362: "Glalitite",
+        373: "Salamencite",
+        376: "Metagrossite",
+        380: "Latiasite",
+        381: "Latiosite",
+        384: "Rayquazite",
+        428: "Lopunnite",
+        445: "Garchompite",
+        448: "Lucarionite",
+        460: "Abomasite",
+        475: "Galladite",
+        531: "Audinite",
+        719: "Diancite"
+    }
+    return stone_names.get(pokemon_id, f"Mega Stone #{pokemon_id}")
+
+def _award_random_mega_stone():
+    """Award a random mega stone for an owned Pokemon that can mega evolve"""
+    try:
+        eligible_ids = _get_owned_mega_capable_pokemon()
+
+        if not eligible_ids:
+            # No eligible Pokemon owned
+            tooltipWithColour("No Mega Evolution capable Pokemon owned yet!", "#FFD700")
+            return False
+
+        # Choose a random eligible Pokemon
+        chosen_id = random.choice(eligible_ids)
+        stone_name = _get_mega_stone_name(chosen_id)
+
+        # Add mega stone to inventory
+        mega_state = _load_mega_state()
+        if "mega_stones" not in mega_state:
+            mega_state["mega_stones"] = {}
+
+        mega_state["mega_stones"][str(chosen_id)] = mega_state["mega_stones"].get(str(chosen_id), 0) + 1
+        _save_mega_state(mega_state)
+
+        # Get Pokemon name
+        pokemon_name = search_pokedex_by_id(chosen_id)
+        tooltipWithColour(f"✨ Received {stone_name} for {pokemon_name}! ✨", "#FFD700")
+        return True
+    except Exception as e:
+        print(f"Error awarding mega stone: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def _can_mega_evolve():
+    """Check if the slot 1 Pokemon can mega evolve"""
+    try:
+        # Check if key stone is unlocked
+        mega_state = _load_mega_state()
+        if not mega_state.get("key_stone_unlocked", False):
+            return False
+
+        # Check if enough energy
+        if mega_state.get("mega_energy", 0) < 20:
+            return False
+
+        # Check if already mega evolved this battle
+        if mega_state.get("mega_used_this_battle", False):
+            return False
+
+        # Get slot 1 Pokemon from party
+        party = _load_party()
+        slot_1_index = party.get("slots", [0])[0]
+
+        # Load Pokemon list
+        pokemon_list = _load_mypokemon_list()
+        if slot_1_index >= len(pokemon_list):
+            return False
+
+        slot_1_pokemon = pokemon_list[slot_1_index]
+        pokemon_id = slot_1_pokemon.get("id")
+
+        # Check if Pokemon can mega evolve
+        if pokemon_id not in _get_mega_capable_pokemon_ids():
+            return False
+
+        # Check if player has a mega stone for this Pokemon
+        mega_stones = mega_state.get("mega_stones", {})
+        if mega_stones.get(str(pokemon_id), 0) <= 0:
+            return False
+
+        return True
+    except Exception as e:
+        print(f"Error checking mega evolution: {e}")
+        return False
+
+def _trigger_mega_evolution():
+    """Trigger mega evolution for slot 1 Pokemon"""
+    try:
+        # Get slot 1 Pokemon
+        party = _load_party()
+        slot_1_index = party.get("slots", [0])[0]
+        pokemon_list = _load_mypokemon_list()
+
+        if slot_1_index >= len(pokemon_list):
+            return False
+
+        slot_1_pokemon = pokemon_list[slot_1_index]
+        pokemon_id = slot_1_pokemon.get("id")
+        pokemon_name = slot_1_pokemon.get("name", "Unknown")
+
+        # Update mega state
+        mega_state = _load_mega_state()
+
+        # Consume energy
+        mega_state["mega_energy"] = max(0, mega_state.get("mega_energy", 0) - 20)
+
+        # Consume mega stone
+        mega_stones = mega_state.get("mega_stones", {})
+        mega_stones[str(pokemon_id)] = max(0, mega_stones.get(str(pokemon_id), 0) - 1)
+        mega_state["mega_stones"] = mega_stones
+
+        # Mark mega as active and used this battle
+        mega_state["mega_active"] = True
+        mega_state["mega_used_this_battle"] = True
+
+        _save_mega_state(mega_state)
+
+        # Track mega evolution usage
+        try:
+            stats_data = _load_progression_stats()
+            stats_data["lifetime"]["total_mega_evolutions"] += 1
+            stats_data["current_round"]["mega_evolutions_used"] += 1
+            _save_progression_stats(stats_data)
+        except:
+            pass
+
+        # Show mega evolution message
+        stone_name = _get_mega_stone_name(pokemon_id)
+        tooltipWithColour(f"⚡ {pokemon_name} Mega Evolved using {stone_name}! ⚡", "#FF00FF")
+
+        return True
+    except Exception as e:
+        print(f"Error triggering mega evolution: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def _reset_mega_battle_state():
+    """Reset mega evolution state at end of battle"""
+    try:
+        mega_state = _load_mega_state()
+        mega_state["mega_active"] = False
+        mega_state["mega_used_this_battle"] = False
+        _save_mega_state(mega_state)
+    except Exception as e:
+        print(f"Error resetting mega state: {e}")
+
+def _is_mega_active():
+    """Check if mega evolution is currently active"""
+    try:
+        mega_state = _load_mega_state()
+        return mega_state.get("mega_active", False)
+    except Exception:
+        return False
+
+def _complete_legendary_capture(legendary_type):
+    """Handle completion of legendary capture - guaranteed capture
+
+    Args:
+        legendary_type: 'primal_groudon', 'primal_kyogre', or 'mega_rayquaza'
+    """
+    stats = _load_progression_stats()
+
+    # Mark as captured if first time
+    captured_key = f"{legendary_type}_captured"
+    is_first_capture = not stats["legendary_captures"][captured_key]
+
+    if is_first_capture:
+        stats["legendary_captures"][captured_key] = True
+        stats["lifetime"]["legendary_encounters"] += 1
+
+    # Increment battle count for this legendary
+    battles_key = f"{legendary_type}_battles"
+    stats["legendary_captures"][battles_key] = stats["legendary_captures"].get(battles_key, 0) + 1
+    stats["lifetime"]["primal_battles_won"] += 1
+
+    _save_progression_stats(stats)
+
+    # Force capture the legendary
+    global name
+    if is_first_capture:
+        save_caught_pokemon(name)
+        tooltipWithColour(f"🎉 {name} was captured! 🎉", "#FFD700")
+    else:
+        # Re-battle - award mega stone instead
+        _award_random_mega_stone()
+        tooltipWithColour(f"🏆 {name} defeated! You received a Mega Stone!", "#FFD700")
 
 def _load_mypokemon_list():
     global mypokemon_path
