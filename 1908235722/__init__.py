@@ -1360,21 +1360,59 @@ if database_complete != False:
                         pass
                     # Recursive call with depth tracking
                     return generate_random_pokemon(_recursion_depth + 1)
-            var_level = 3
-            if mainpokemon_level or mainpokemon_level != None:
+            # Special level calculation for Gym/Elite Four/Champion battles
+            if is_special_battle:
                 try:
-                    level = random.randint((mainpokemon_level - (random.randint(0, var_level))), (mainpokemon_level + (random.randint(0, var_level))))  # Random level between 1 and 100
-                    if mainpokemon_level == 100:
-                        level = 100
-                    if level < 0:
-                        level = 1
+                    # Get current round for scaling
+                    stats = _load_progression_stats()
+                    current_round = stats["lifetime"].get("current_round", 1)
+
+                    # Get base level based on battle type
+                    conf = _ankimon_get_col_conf()
+                    base_level = 10  # Fallback
+
+                    if _ankimon_is_gym_active() and conf:
+                        # Get gym leader key and Pokemon index
+                        leader_key = conf.get("ankimon_gym_leader_key", "")
+                        pokemon_idx = int(conf.get("ankimon_gym_enemy_index", 0))
+                        base_levels = _get_gym_base_levels().get(leader_key, [])
+                        base_level = base_levels[pokemon_idx] if pokemon_idx < len(base_levels) else 10 + (pokemon_idx * 5)
+
+                    elif _ankimon_is_elite_four_active() and conf:
+                        # Get Elite Four member key and Pokemon index
+                        member_key = conf.get("ankimon_elite_four_member_key", "")
+                        pokemon_idx = int(conf.get("ankimon_elite_four_pokemon_index", 0))
+                        base_levels = _get_elite_four_base_levels().get(member_key, [])
+                        base_level = base_levels[pokemon_idx] if pokemon_idx < len(base_levels) else 50 + (pokemon_idx * 2)
+
+                    elif _ankimon_is_champion_active() and conf:
+                        # Get Champion Pokemon index
+                        pokemon_idx = int(conf.get("ankimon_champion_pokemon_index", 0))
+                        base_levels = _get_champion_base_levels()
+                        base_level = base_levels[pokemon_idx] if pokemon_idx < len(base_levels) else 58 + (pokemon_idx * 2)
+
+                    # Apply scaling based on current round
+                    level = _get_scaled_level(base_level, current_round)
                 except Exception as e:
-                    showWarning(f"Error in generate random pokemon{e}")
-                    mainpokemon_level = 5
-                    level = 5
+                    print(f"Error calculating scaled level: {e}")
+                    level = mainpokemon_level if mainpokemon_level else 10
             else:
-                level = 5
-                min_level = 0
+                # Normal wild Pokemon - use player level
+                var_level = 3
+                if mainpokemon_level or mainpokemon_level != None:
+                    try:
+                        level = random.randint((mainpokemon_level - (random.randint(0, var_level))), (mainpokemon_level + (random.randint(0, var_level))))  # Random level between 1 and 100
+                        if mainpokemon_level == 100:
+                            level = 100
+                        if level < 0:
+                            level = 1
+                    except Exception as e:
+                        showWarning(f"Error in generate random pokemon{e}")
+                        mainpokemon_level = 5
+                        level = 5
+                else:
+                    level = 5
+                    min_level = 0
             if min_level is None or not min_level or mainpokemon_level is None or not mainpokemon_level:
                 level = 5
                 min_level = 0
@@ -6942,6 +6980,199 @@ def show_placement_tool():
     _placement_tool.raise_()
     _placement_tool.activateWindow()
 
+def show_progression_stats():
+    """Show the Progression Stats window"""
+    try:
+        stats = _load_progression_stats()
+
+        # Create dialog
+        dlg = QDialog(mw)
+        dlg.setWindowTitle("Progression Stats")
+        dlg.setMinimumWidth(500)
+        dlg.setMinimumHeight(600)
+
+        layout = QVBoxLayout()
+        dlg.setLayout(layout)
+
+        # Title
+        title = QLabel("📊 PROGRESSION STATS")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        font = title.font()
+        font.setPointSize(18)
+        font.setBold(True)
+        title.setFont(font)
+        title.setStyleSheet("color: #FFD700; padding: 10px;")
+        layout.addWidget(title)
+
+        # Create scroll area for stats
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout()
+        scroll_content.setLayout(scroll_layout)
+
+        # Lifetime Stats Section
+        lifetime_label = QLabel("🏆 LIFETIME STATS")
+        lifetime_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #00FFFF; padding: 5px;")
+        scroll_layout.addWidget(lifetime_label)
+
+        lifetime = stats.get("lifetime", {})
+        lifetime_stats = [
+            ("Total Cards Reviewed", lifetime.get("total_cards_reviewed", 0)),
+            ("Total Battles Won", lifetime.get("total_battles_won", 0)),
+            ("├─ Wild Battles", lifetime.get("total_wild_battles", 0)),
+            ("├─ Trainer Battles", lifetime.get("total_trainer_battles", 0)),
+            ("├─ Gym Battles", lifetime.get("total_gym_battles", 0)),
+            ("├─ Elite Four Battles", lifetime.get("total_elite_four_battles", 0)),
+            ("└─ Champion Battles", lifetime.get("total_champion_battles", 0)),
+            ("Pokemon Caught", lifetime.get("total_pokemon_caught", 0)),
+            ("Pokemon Evolved", lifetime.get("total_pokemon_evolved", 0)),
+            ("Badges Earned", lifetime.get("total_badges_earned", 0)),
+            ("Mega Evolutions", lifetime.get("total_mega_evolutions", 0)),
+            ("Current Round", lifetime.get("current_round", 1)),
+            ("Highest Level Reached", lifetime.get("highest_level_reached", 1)),
+            ("Legendary Encounters", lifetime.get("legendary_encounters", 0)),
+            ("Primal Battles Won", lifetime.get("primal_battles_won", 0)),
+        ]
+
+        for stat_name, stat_value in lifetime_stats:
+            stat_label = QLabel(f"{stat_name}: {stat_value:,}")
+            if stat_name.startswith("├") or stat_name.startswith("└"):
+                stat_label.setStyleSheet("padding-left: 20px; font-size: 11px;")
+            else:
+                stat_label.setStyleSheet("font-size: 12px; padding: 2px;")
+            scroll_layout.addWidget(stat_label)
+
+        # Current Round Section
+        scroll_layout.addSpacing(15)
+        current_round_label = QLabel(f"🎯 CURRENT ROUND (Round {stats['lifetime'].get('current_round', 1)})")
+        current_round_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #FF6B6B; padding: 5px;")
+        scroll_layout.addWidget(current_round_label)
+
+        current = stats.get("current_round", {})
+        current_stats = [
+            ("Cards Reviewed", current.get("cards_reviewed", 0)),
+            ("Battles Won", current.get("battles_won", 0)),
+            ("Gyms Defeated", f"{current.get('gyms_defeated', 0)}/8"),
+            ("Elite Four Defeated", f"{current.get('elite_four_defeated', 0)}/4"),
+            ("Champion Defeated", "✓" if current.get("champion_defeated", False) else "✗"),
+            ("Pokemon Caught", current.get("pokemon_caught", 0)),
+            ("Mega Evolutions Used", current.get("mega_evolutions_used", 0)),
+        ]
+
+        for stat_name, stat_value in current_stats:
+            stat_label = QLabel(f"{stat_name}: {stat_value}")
+            stat_label.setStyleSheet("font-size: 12px; padding: 2px;")
+            scroll_layout.addWidget(stat_label)
+
+        # Session Stats Section
+        scroll_layout.addSpacing(15)
+        session_label = QLabel("⚡ THIS SESSION")
+        session_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #90EE90; padding: 5px;")
+        scroll_layout.addWidget(session_label)
+
+        session = stats.get("session", {})
+        session_stats = [
+            ("Cards Reviewed", session.get("cards_reviewed", 0)),
+            ("Battles Won", session.get("battles_won", 0)),
+            ("XP Gained", session.get("xp_gained", 0)),
+            ("Pokemon Caught", session.get("pokemon_caught", 0)),
+        ]
+
+        for stat_name, stat_value in session_stats:
+            stat_label = QLabel(f"{stat_name}: {stat_value:,}")
+            stat_label.setStyleSheet("font-size: 12px; padding: 2px;")
+            scroll_layout.addWidget(stat_label)
+
+        # Legendary Captures Section
+        scroll_layout.addSpacing(15)
+        legendary_label = QLabel("⭐ LEGENDARY CAPTURES")
+        legendary_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #FFD700; padding: 5px;")
+        scroll_layout.addWidget(legendary_label)
+
+        legendary = stats.get("legendary_captures", {})
+        legendary_stats = [
+            ("Primal Groudon", "✓ Captured" if legendary.get("primal_groudon_captured", False) else f"✗ ({stats['lifetime'].get('total_cards_reviewed', 0)}/5000 cards)"),
+            ("Primal Kyogre", "✓ Captured" if legendary.get("primal_kyogre_captured", False) else f"✗ ({stats['lifetime'].get('total_cards_reviewed', 0)}/6000 cards)"),
+            ("Mega Rayquaza", "✓ Captured" if legendary.get("mega_rayquaza_captured", False) else f"✗ ({stats['lifetime'].get('total_cards_reviewed', 0)}/7000 cards)"),
+        ]
+
+        for stat_name, stat_value in legendary_stats:
+            stat_label = QLabel(f"{stat_name}: {stat_value}")
+            stat_label.setStyleSheet("font-size: 12px; padding: 2px;")
+            scroll_layout.addWidget(stat_label)
+
+        # Counter Info Section
+        scroll_layout.addSpacing(15)
+        counter_label = QLabel("📍 CURRENT PROGRESS")
+        counter_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #FFA500; padding: 5px;")
+        scroll_layout.addWidget(counter_label)
+
+        # Get current counters
+        try:
+            conf = _ankimon_get_col_conf()
+            if conf:
+                gym_counter = conf.get("ankimon_gym_counter", 0)
+                elite_counter = conf.get("ankimon_elite_four_counter", 0)
+                champion_counter = conf.get("ankimon_champion_counter", 0)
+
+                # Determine current objective
+                if not _ankimon_all_gym_badges_earned():
+                    objective = f"Next Gym: {gym_counter}/100 cards"
+                elif not _ankimon_all_elite_four_defeated():
+                    member_idx = conf.get("ankimon_elite_four_index", 0) % 4
+                    members = ["Aaron", "Bertha", "Flint", "Lucian"]
+                    objective = f"Elite Four {members[member_idx]}: {elite_counter}/150 cards"
+                else:
+                    objective = f"Champion: {champion_counter}/200 cards"
+
+                objective_label = QLabel(objective)
+                objective_label.setStyleSheet("font-size: 13px; font-weight: bold; padding: 2px; color: #00FF00;")
+                scroll_layout.addWidget(objective_label)
+        except Exception:
+            pass
+
+        # Mega Evolution Section
+        scroll_layout.addSpacing(15)
+        mega_label = QLabel("⚡ MEGA EVOLUTION")
+        mega_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #FF00FF; padding: 5px;")
+        scroll_layout.addWidget(mega_label)
+
+        try:
+            mega_state = _load_mega_state()
+            key_stone = "✓ Unlocked" if mega_state.get("key_stone_unlocked", False) else "✗ Locked (Defeat Champion first)"
+            energy = mega_state.get("mega_energy", 0)
+            stones_count = len([v for v in mega_state.get("mega_stones", {}).values() if v > 0])
+
+            mega_stats = [
+                ("Key Stone", key_stone),
+                ("Mega Energy", f"{energy}/20"),
+                ("Mega Stones Owned", stones_count),
+            ]
+
+            for stat_name, stat_value in mega_stats:
+                stat_label = QLabel(f"{stat_name}: {stat_value}")
+                stat_label.setStyleSheet("font-size: 12px; padding: 2px;")
+                scroll_layout.addWidget(stat_label)
+        except Exception:
+            pass
+
+        scroll_layout.addStretch()
+        scroll.setWidget(scroll_content)
+        layout.addWidget(scroll)
+
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dlg.close)
+        layout.addWidget(close_btn)
+
+        dlg.exec()
+
+    except Exception as e:
+        showWarning(f"Error displaying progression stats: {e}")
+        import traceback
+        traceback.print_exc()
+
 
 class TestWindow(QWidget):
     def __init__(self):
@@ -7050,6 +7281,24 @@ class TestWindow(QWidget):
         """)
         collection_btn.clicked.connect(lambda: pokecollection_win.show())
         button_layout.addWidget(collection_btn)
+
+        # Progression Stats button
+        progression_btn = QPushButton("📊 Progression")
+        progression_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #9b59b6;
+                color: white;
+                border-radius: 5px;
+                padding: 8px 12px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #8b49a6;
+            }
+        """)
+        progression_btn.clicked.connect(show_progression_stats)
+        button_layout.addWidget(progression_btn)
 
         # Reset Battle button
         reset_btn = QPushButton("🔄 Reset Battle")
@@ -10561,6 +10810,52 @@ def _ankimon_all_elite_four_defeated():
     except Exception:
         return False
 
+def _get_scaled_level(base_level, current_round):
+    """Calculate scaled Pokemon level based on current round
+
+    Args:
+        base_level: Base level from original game (e.g., 12 for Roark's Geodude)
+        current_round: Current progression round (1, 2, 3, etc.)
+
+    Returns:
+        Scaled level for this round
+    """
+    if current_round <= 1:
+        return base_level
+
+    # Scaling formula: add 20-25 levels per round
+    level_increase = (current_round - 1) * 22  # 22 levels per round average
+    scaled_level = base_level + level_increase
+
+    # Cap at level 100
+    return min(scaled_level, 100)
+
+def _get_gym_base_levels():
+    """Get base levels for gym leaders (Round 1 canonical levels)"""
+    return {
+        "roark": [12, 12, 14],  # Geodude, Onix, Cranidos
+        "gardenia": [19, 19, 22],  # Cherubi, Turtwig, Roserade
+        "maylene": [27, 27, 30],  # Meditite, Machoke, Lucario
+        "crasher_wake": [27, 29, 33],  # Gyarados, Quagsire, Floatzel
+        "fantina": [32, 34, 36],  # Duskull, Haunter, Mismagius
+        "byron": [36, 36, 39],  # Magneton, Steelix, Bastiodon
+        "candice": [38, 38, 40, 42],  # Snover, Sneasel, Medicham, Abomasnow
+        "volkner": [46, 46, 48, 50]  # Raichu, Ambipom, Octillery, Luxray (note: actual Volkner has different team)
+    }
+
+def _get_elite_four_base_levels():
+    """Get base levels for Elite Four members (Round 1 canonical levels)"""
+    return {
+        "aaron": [49, 49, 51, 53, 53],  # Dustox, Beautifly, Vespiquen, Heracross, Drapion
+        "bertha": [50, 52, 52, 53, 55],  # Whiscash, Sudowoodo, Golem, Hippowdon, Rhyperior
+        "flint": [52, 53, 53, 55, 57],  # Houndoom, Flareon, Rapidash, Infernape, Magmortar
+        "lucian": [53, 53, 54, 55, 59]  # Mr. Mime, Espeon, Bronzong, Alakazam, Gallade
+    }
+
+def _get_champion_base_levels():
+    """Get base levels for Champion Cynthia (Round 1 canonical levels)"""
+    return [58, 58, 58, 60, 60, 62]  # Spiritomb, Roserade, Togekiss, Lucario, Milotic, Garchomp
+
 def _ankimon_gym_overlay_html(count: int) -> str:
     pct = int((count / ANKIMON_GYM_TARGET) * 100)
     if pct < 0:
@@ -10628,6 +10923,37 @@ def _ankimon_show_gym_leader_dialog(leader: dict):
         title.setStyleSheet("font-weight: 700; font-size: 14px;")
         layout.addWidget(title)
 
+        # Get current round for level scaling
+        try:
+            stats = _load_progression_stats()
+            current_round = stats["lifetime"].get("current_round", 1)
+        except:
+            current_round = 1
+
+        # Display Pokemon team with names and levels
+        team_ids = leader.get("team", [])
+        base_levels = _get_gym_base_levels().get(leader.get("key", ""), [])
+
+        team_info = QLabel("Opponent Team:")
+        team_info.setStyleSheet("font-weight: bold; font-size: 12px; padding: 5px;")
+        layout.addWidget(team_info)
+
+        for i, pokemon_id in enumerate(team_ids):
+            try:
+                pokemon_name = search_pokedex_by_id(pokemon_id)
+                base_level = base_levels[i] if i < len(base_levels) else 10 + (i * 5)
+                scaled_level = _get_scaled_level(base_level, current_round)
+
+                # Mark the ace (last Pokemon) with a star
+                ace_marker = " ⭐" if i == len(team_ids) - 1 else ""
+                pokemon_label = QLabel(f"  • {pokemon_name} (Lv. {scaled_level}){ace_marker}")
+                pokemon_label.setStyleSheet("font-size: 11px; padding: 2px;")
+                layout.addWidget(pokemon_label)
+            except:
+                pass
+
+        layout.addSpacing(10)
+
         gif_label = QLabel()
         gif_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -10640,6 +10966,13 @@ def _ankimon_show_gym_leader_dialog(leader: dict):
         else:
             gif_label.setText(f"(Missing gym leader GIF for {leader.get('name','Gym')})\nPlace it in addon_sprites/gym_leaders/")
         layout.addWidget(gif_label)
+
+        # Show round info if not Round 1
+        if current_round > 1:
+            round_info = QLabel(f"⚠️ Round {current_round} - Pokemon levels scaled up!")
+            round_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            round_info.setStyleSheet("color: #FF6B6B; font-weight: bold; font-size: 11px; padding: 5px;")
+            layout.addWidget(round_info)
 
         btn_row = QHBoxLayout()
         start_btn = QPushButton("Start Gym Battle")
@@ -10841,10 +11174,44 @@ def _ankimon_elite_four_ready_popup():
         title.setFont(font)
         outer.addWidget(title)
 
-        # Team preview
-        team_label = QLabel(f"Team: {len(member['team'])} Pokemon")
-        team_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        outer.addWidget(team_label)
+        # Get current round for level scaling
+        try:
+            stats = _load_progression_stats()
+            current_round = stats["lifetime"].get("current_round", 1)
+        except:
+            current_round = 1
+
+        # Display Pokemon team with names and levels
+        team_ids = member.get("team", [])
+        base_levels = _get_elite_four_base_levels().get(member.get("key", ""), [])
+
+        team_info = QLabel("Opponent Team:")
+        team_info.setStyleSheet("font-weight: bold; font-size: 13px; padding: 5px;")
+        team_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        outer.addWidget(team_info)
+
+        for i, pokemon_id in enumerate(team_ids):
+            try:
+                pokemon_name = search_pokedex_by_id(pokemon_id)
+                base_level = base_levels[i] if i < len(base_levels) else 50 + (i * 2)
+                scaled_level = _get_scaled_level(base_level, current_round)
+
+                # Mark the ace (last Pokemon) with a star
+                ace_marker = " ⭐" if i == len(team_ids) - 1 else ""
+                pokemon_label = QLabel(f"  • {pokemon_name} (Lv. {scaled_level}){ace_marker}")
+                pokemon_label.setStyleSheet("font-size: 12px; padding: 2px;")
+                outer.addWidget(pokemon_label)
+            except:
+                pass
+
+        # Show round info if not Round 1
+        if current_round > 1:
+            round_info = QLabel(f"⚠️ Round {current_round} - Elite Four leveled up!")
+            round_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            round_info.setStyleSheet("color: #FF6B6B; font-weight: bold; font-size: 12px; padding: 10px;")
+            outer.addWidget(round_info)
+
+        outer.addSpacing(10)
 
         # Buttons
         btn_row = QHBoxLayout()
@@ -10909,15 +11276,48 @@ def _ankimon_champion_ready_popup():
         title.setFont(font)
         outer.addWidget(title)
 
-        # Team preview
-        team_label = QLabel(f"Team: {len(champion_team)} Pokemon")
-        team_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        outer.addWidget(team_label)
+        # Get current round for level scaling
+        try:
+            stats = _load_progression_stats()
+            current_round = stats["lifetime"].get("current_round", 1)
+        except:
+            current_round = 1
+
+        # Display Pokemon team with names and levels
+        base_levels = _get_champion_base_levels()
+
+        team_info = QLabel("Champion's Team:")
+        team_info.setStyleSheet("font-weight: bold; font-size: 13px; padding: 5px;")
+        team_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        outer.addWidget(team_info)
+
+        for i, pokemon_id in enumerate(champion_team):
+            try:
+                pokemon_name = search_pokedex_by_id(pokemon_id)
+                base_level = base_levels[i] if i < len(base_levels) else 58 + (i * 2)
+                scaled_level = _get_scaled_level(base_level, current_round)
+
+                # Mark the ace (Garchomp) with a star
+                ace_marker = " ⭐⭐" if i == len(champion_team) - 1 else ""
+                pokemon_label = QLabel(f"  • {pokemon_name} (Lv. {scaled_level}){ace_marker}")
+                pokemon_label.setStyleSheet("font-size: 12px; padding: 2px;")
+                outer.addWidget(pokemon_label)
+            except:
+                pass
 
         warning = QLabel("⚠️ This is the final challenge!")
         warning.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        warning.setStyleSheet("color: #FF6B6B; font-weight: bold;")
+        warning.setStyleSheet("color: #FF6B6B; font-weight: bold; font-size: 14px; padding: 10px;")
         outer.addWidget(warning)
+
+        # Show round info if not Round 1
+        if current_round > 1:
+            round_info = QLabel(f"🔥 Round {current_round} - Champion at peak strength!")
+            round_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            round_info.setStyleSheet("color: #FFD700; font-weight: bold; font-size: 12px; padding: 5px;")
+            outer.addWidget(round_info)
+
+        outer.addSpacing(10)
 
         # Buttons
         btn_row = QHBoxLayout()
