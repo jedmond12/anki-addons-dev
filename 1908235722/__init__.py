@@ -1415,6 +1415,12 @@ def kill_pokemon():
     except Exception:
         pass  # Don't break gameplay if energy tracking fails
 
+    # Reset mega battle state (battle ended)
+    try:
+        _reset_mega_battle_state()
+    except Exception:
+        pass
+
     # Check if gym battle is pending and start it now
     try:
         conf = _ankimon_get_col_conf()
@@ -2879,6 +2885,15 @@ def on_review_card(*args):
         if battle_sounds == True:
             if general_card_count_for_battle == 1:
                 play_sound()
+
+        # Try to trigger mega evolution at battle start (first card)
+        if general_card_count_for_battle == 1 and pokemon_encounter > 0:
+            try:
+                if _can_mega_evolve():
+                    _trigger_mega_evolution()
+            except Exception as e:
+                print(f"Error checking mega evolution: {e}")
+
         #test achievment system
         if card_counter == 100:
             check = check_for_badge(achievements,1)
@@ -2961,6 +2976,14 @@ def on_review_card(*args):
                                     def_stat = mainpokemon_stats["def"]
                                     atk_stat = stats["atk"]
                                 enemy_dmg = int(calc_atk_dmg(level,(multiplier * 2),enemy_move["basePower"], atk_stat, def_stat, type, enemy_move["type"],mainpokemon_type, critRatio))
+
+                                # Apply mega evolution damage reduction (0.85x taken)
+                                try:
+                                    if _is_mega_active():
+                                        enemy_dmg = int(enemy_dmg * 0.85)
+                                except Exception:
+                                    pass
+
                                 if enemy_dmg == 0:
                                     enemy_dmg = 1
                                 mainpokemon_hp -= enemy_dmg
@@ -2987,6 +3010,14 @@ def on_review_card(*args):
                             def_stat = mainpokemon_stats["def"]
                             atk_stat = stats["atk"]                        
                         enemy_dmg = int(calc_atk_dmg(level,(multiplier * 2),random.randint(60, 100), atk_stat, def_stat, type, "Normal", mainpokemon_type, critRatio))
+
+                        # Apply mega evolution damage reduction (0.85x taken)
+                        try:
+                            if _is_mega_active():
+                                enemy_dmg = int(enemy_dmg * 0.85)
+                        except Exception:
+                            pass
+
                         if enemy_dmg == 0:
                             enemy_dmg = 1
                         mainpokemon_hp -= enemy_dmg
@@ -3051,6 +3082,14 @@ def on_review_card(*args):
                                     def_stat = stats["def"]
                                     atk_stat = mainpokemon_stats["atk"]
                                 dmg = int(calc_atk_dmg(mainpokemon_level, multiplier,move["basePower"], atk_stat, def_stat, mainpokemon_type, move["type"],type, critRatio))
+
+                                # Apply mega evolution damage boost (1.25x dealt)
+                                try:
+                                    if _is_mega_active():
+                                        dmg = int(dmg * 1.25)
+                                except Exception:
+                                    pass
+
                                 if dmg == 0:
                                     dmg = 1
                                 hp -= dmg
@@ -9598,6 +9637,118 @@ def _award_random_mega_stone():
         print(f"Error awarding mega stone: {e}")
         import traceback
         traceback.print_exc()
+        return False
+
+def _can_mega_evolve():
+    """Check if the slot 1 Pokemon can mega evolve"""
+    try:
+        # Check if key stone is unlocked
+        mega_state = _load_mega_state()
+        if not mega_state.get("key_stone_unlocked", False):
+            return False
+
+        # Check if enough energy
+        if mega_state.get("mega_energy", 0) < 20:
+            return False
+
+        # Check if already mega evolved this battle
+        if mega_state.get("mega_used_this_battle", False):
+            return False
+
+        # Get slot 1 Pokemon from party
+        party = _load_party()
+        slot_1_index = party.get("slots", [0])[0]
+
+        # Load Pokemon list
+        pokemon_list = _load_mypokemon_list()
+        if slot_1_index >= len(pokemon_list):
+            return False
+
+        slot_1_pokemon = pokemon_list[slot_1_index]
+        pokemon_id = slot_1_pokemon.get("id")
+
+        # Check if Pokemon can mega evolve
+        if pokemon_id not in _get_mega_capable_pokemon_ids():
+            return False
+
+        # Check if player has a mega stone for this Pokemon
+        mega_stones = mega_state.get("mega_stones", {})
+        if mega_stones.get(str(pokemon_id), 0) <= 0:
+            return False
+
+        return True
+    except Exception as e:
+        print(f"Error checking mega evolution: {e}")
+        return False
+
+def _trigger_mega_evolution():
+    """Trigger mega evolution for slot 1 Pokemon"""
+    try:
+        # Get slot 1 Pokemon
+        party = _load_party()
+        slot_1_index = party.get("slots", [0])[0]
+        pokemon_list = _load_mypokemon_list()
+
+        if slot_1_index >= len(pokemon_list):
+            return False
+
+        slot_1_pokemon = pokemon_list[slot_1_index]
+        pokemon_id = slot_1_pokemon.get("id")
+        pokemon_name = slot_1_pokemon.get("name", "Unknown")
+
+        # Update mega state
+        mega_state = _load_mega_state()
+
+        # Consume energy
+        mega_state["mega_energy"] = max(0, mega_state.get("mega_energy", 0) - 20)
+
+        # Consume mega stone
+        mega_stones = mega_state.get("mega_stones", {})
+        mega_stones[str(pokemon_id)] = max(0, mega_stones.get(str(pokemon_id), 0) - 1)
+        mega_state["mega_stones"] = mega_stones
+
+        # Mark mega as active and used this battle
+        mega_state["mega_active"] = True
+        mega_state["mega_used_this_battle"] = True
+
+        _save_mega_state(mega_state)
+
+        # Track mega evolution usage
+        try:
+            stats_data = _load_progression_stats()
+            stats_data["lifetime"]["total_mega_evolutions"] += 1
+            stats_data["current_round"]["mega_evolutions_used"] += 1
+            _save_progression_stats(stats_data)
+        except:
+            pass
+
+        # Show mega evolution message
+        stone_name = _get_mega_stone_name(pokemon_id)
+        tooltipWithColour(f"⚡ {pokemon_name} Mega Evolved using {stone_name}! ⚡", "#FF00FF")
+
+        return True
+    except Exception as e:
+        print(f"Error triggering mega evolution: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def _reset_mega_battle_state():
+    """Reset mega evolution state at end of battle"""
+    try:
+        mega_state = _load_mega_state()
+        mega_state["mega_active"] = False
+        mega_state["mega_used_this_battle"] = False
+        _save_mega_state(mega_state)
+    except Exception as e:
+        print(f"Error resetting mega state: {e}")
+
+def _is_mega_active():
+    """Check if mega evolution is currently active"""
+    try:
+        mega_state = _load_mega_state()
+        return mega_state.get("mega_active", False)
+    except Exception:
         return False
 
 def _complete_legendary_capture(legendary_type):
