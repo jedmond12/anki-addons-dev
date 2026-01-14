@@ -1,0 +1,46 @@
+{
+  "lifetime": {
+    "total_cards_reviewed": 0,
+    "total_battles_won": 0,
+    "total_wild_battles": 0,
+    "total_trainer_battles": 0,
+    "total_gym_battles": 0,
+    "total_elite_four_battles": 0,
+    "total_champion_battles": 0,
+    "total_pokemon_caught": 0,
+    "total_pokemon_evolved": 0,
+    "total_badges_earned": 0,
+    "total_items_used": 0,
+    "total_mega_evolutions": 0,
+    "current_round": 1,
+    "highest_level_reached": 1,
+    "legendary_encounters": 0,
+    "primal_battles_won": 0
+  },
+  "current_round": {
+    "round_number": 1,
+    "cards_reviewed": 0,
+    "battles_won": 0,
+    "gyms_defeated": 0,
+    "elite_four_defeated": 0,
+    "champion_defeated": false,
+    "pokemon_caught": 0,
+    "items_obtained": 0,
+    "mega_evolutions_used": 0
+  },
+  "session": {
+    "cards_reviewed": 0,
+    "battles_won": 0,
+    "xp_gained": 0,
+    "pokemon_caught": 0
+  },
+  "legendary_captures": {
+    "primal_groudon_captured": false,
+    "primal_kyogre_captured": false,
+    "mega_rayquaza_captured": false,
+    "primal_groudon_battles": 0,
+    "primal_kyogre_battles": 0,
+    "mega_rayquaza_battles": 0
+  },
+  "cards_in_wild_enemy_battles": 0
+}
