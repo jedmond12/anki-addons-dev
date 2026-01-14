@@ -37,6 +37,20 @@ def _ankimon_is_gym_active():
     except Exception:
         return False
 
+def _ankimon_is_elite_four_active():
+    conf = _ankimon_get_col_conf()
+    try:
+        return bool(conf and conf.get("ankimon_elite_four_active", False))
+    except Exception:
+        return False
+
+def _ankimon_is_champion_active():
+    conf = _ankimon_get_col_conf()
+    try:
+        return bool(conf and conf.get("ankimon_champion_active", False))
+    except Exception:
+        return False
+
 def _ankimon_get_gym_enemy_ids():
     conf = _ankimon_get_col_conf()
     try:
@@ -52,6 +66,39 @@ def _ankimon_get_gym_enemy_index():
         return int(idx) if idx is not None else 0
     except Exception:
         return 0
+
+def _ankimon_get_elite_four_enemy_ids():
+    conf = _ankimon_get_col_conf()
+    try:
+        ids = conf.get("ankimon_elite_four_enemy_ids", []) if conf else []
+        return ids if isinstance(ids, list) else []
+    except Exception:
+        return []
+
+def _ankimon_get_elite_four_pokemon_index():
+    conf = _ankimon_get_col_conf()
+    try:
+        idx = conf.get("ankimon_elite_four_pokemon_index", 0) if conf else 0
+        return int(idx) if idx is not None else 0
+    except Exception:
+        return 0
+
+def _ankimon_get_champion_enemy_ids():
+    conf = _ankimon_get_col_conf()
+    try:
+        ids = conf.get("ankimon_champion_enemy_ids", []) if conf else []
+        return ids if isinstance(ids, list) else []
+    except Exception:
+        return []
+
+def _ankimon_get_champion_pokemon_index():
+    conf = _ankimon_get_col_conf()
+    try:
+        idx = conf.get("ankimon_champion_pokemon_index", 0) if conf else 0
+        return int(idx) if idx is not None else 0
+    except Exception:
+        return 0
+
 from aqt.qt import QDialog, QGridLayout, QLabel, QPixmap, QPainter, QFont, Qt, QVBoxLayout, QWidget, QAction
 import random
 import csv
@@ -1251,6 +1298,38 @@ if database_complete != False:
                 else:
                     # Gym is active but no IDs - this shouldn't happen, fall back to random
                     id, pokemon_species = choose_random_pkmn_from_tier()
+            # If Elite Four battle is active, lock the opponent to the current member's team
+            elif _ankimon_is_elite_four_active():
+                _ids = _ankimon_get_elite_four_enemy_ids()
+                _idx = _ankimon_get_elite_four_pokemon_index()
+                if _ids and len(_ids) > 0:
+                    if _idx < 0:
+                        _idx = 0
+                    if _idx >= len(_ids):
+                        _idx = len(_ids) - 1
+                    try:
+                        id = int(_ids[_idx])
+                        pokemon_species = None
+                    except (ValueError, IndexError, TypeError):
+                        id, pokemon_species = choose_random_pkmn_from_tier()
+                else:
+                    id, pokemon_species = choose_random_pkmn_from_tier()
+            # If Champion battle is active, lock the opponent to Champion's team
+            elif _ankimon_is_champion_active():
+                _ids = _ankimon_get_champion_enemy_ids()
+                _idx = _ankimon_get_champion_pokemon_index()
+                if _ids and len(_ids) > 0:
+                    if _idx < 0:
+                        _idx = 0
+                    if _idx >= len(_ids):
+                        _idx = len(_ids) - 1
+                    try:
+                        id = int(_ids[_idx])
+                        pokemon_species = None
+                    except (ValueError, IndexError, TypeError):
+                        id, pokemon_species = choose_random_pkmn_from_tier()
+                else:
+                    id, pokemon_species = choose_random_pkmn_from_tier()
             else:
                 id, pokemon_species = choose_random_pkmn_from_tier()
 
@@ -1264,11 +1343,11 @@ if database_complete != False:
             if name is list:
                 name = name[0]
 
-            # CRITICAL FIX: For gym pokemon, skip min_level check (it causes RecursionError for some pokemon like Steelix)
-            is_gym_pokemon = _ankimon_is_gym_active()
-            if is_gym_pokemon:
-                # Gym pokemon: skip min_level check, always generate at appropriate level
-                min_level = 0  # Bypass evolution level requirements for gym pokemon
+            # CRITICAL FIX: For gym/Elite Four/Champion pokemon, skip min_level check (it causes RecursionError for some pokemon like Steelix)
+            is_special_battle = _ankimon_is_gym_active() or _ankimon_is_elite_four_active() or _ankimon_is_champion_active()
+            if is_special_battle:
+                # Special battle pokemon: skip min_level check, always generate at appropriate level
+                min_level = 0  # Bypass evolution level requirements
             else:
                 # Wild pokemon: do normal min_level check
                 try:
@@ -1436,6 +1515,45 @@ def kill_pokemon():
                 pass
             if pkmn_window is True:
                 new_pokemon()  # Spawn first gym pokemon
+            return
+    except Exception:
+        pass
+
+    # Check if Elite Four battle is pending and start it now
+    try:
+        conf = _ankimon_get_col_conf()
+        if conf and conf.get("ankimon_elite_four_pending"):
+            # Start the Elite Four battle now that wild pokemon is defeated
+            conf["ankimon_elite_four_active"] = True
+            conf["ankimon_elite_four_pending"] = False
+            conf["ankimon_elite_four_pokemon_index"] = 0
+            mw.col.setMod()
+            try:
+                member_name = conf.get("ankimon_elite_four_member_name", "Elite Four")
+                tooltipWithColour(f"⚔️ Elite Four {member_name} Battle Starting!", "#FFD700")
+            except:
+                pass
+            if pkmn_window is True:
+                new_pokemon()  # Spawn first Elite Four pokemon
+            return
+    except Exception:
+        pass
+
+    # Check if Champion battle is pending and start it now
+    try:
+        conf = _ankimon_get_col_conf()
+        if conf and conf.get("ankimon_champion_pending"):
+            # Start the Champion battle now that wild pokemon is defeated
+            conf["ankimon_champion_active"] = True
+            conf["ankimon_champion_pending"] = False
+            conf["ankimon_champion_pokemon_index"] = 0
+            mw.col.setMod()
+            try:
+                tooltipWithColour("👑 Champion Cynthia Battle Starting!", "#FFD700")
+            except:
+                pass
+            if pkmn_window is True:
+                new_pokemon()  # Spawn first Champion pokemon
             return
     except Exception:
         pass
@@ -2063,11 +2181,23 @@ def calc_experience(base_experience, enemy_level):
     return exp
 
 def catch_pokemon(nickname):
-    # --- Gym battles: you cannot catch leader Pokémon; prevent this action ---
+    # --- Special battles: you cannot catch leader/Elite Four/Champion Pokémon; prevent this action ---
     try:
         if _ankimon_is_gym_active():
             try:
                 showInfo("Gym battle: you can't catch a leader's Pokémon. The battle will continue automatically.")
+            except:
+                pass
+            return
+        elif _ankimon_is_elite_four_active():
+            try:
+                showInfo("Elite Four battle: you can't catch an Elite Four member's Pokémon. The battle will continue automatically.")
+            except:
+                pass
+            return
+        elif _ankimon_is_champion_active():
+            try:
+                showInfo("Champion battle: you can't catch the Champion's Pokémon. The battle will continue automatically.")
             except Exception:
                 pass
             return
@@ -2513,6 +2643,228 @@ def complete_gym_battle():
     except Exception as e:
         error_msg = f"Error in complete_gym_battle: {str(e)}"
         tooltipWithColour(error_msg, "#FF0000")
+        import traceback
+        traceback.print_exc()
+
+def complete_elite_four_member():
+    """Handler for completing one Elite Four member - advances to next member or completes Elite Four"""
+    global test_window, pkmn_window
+    try:
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            tooltipWithColour("Config not available", "#FF0000")
+            return
+
+        # Get current member info
+        member_index = int(conf.get("ankimon_elite_four_index", 0))
+        member_name = conf.get("ankimon_elite_four_member_name", "Elite Four")
+
+        # Clear Elite Four state
+        conf["ankimon_elite_four_active"] = False
+        conf["ankimon_elite_four_enemy_ids"] = []
+        conf["ankimon_elite_four_pokemon_index"] = 0
+
+        # Increment member index
+        conf["ankimon_elite_four_index"] = member_index + 1
+
+        # Reset card counter for next member
+        conf["ankimon_elite_four_counter"] = 0
+
+        mw.col.setMod()
+
+        # Track Elite Four member completion
+        try:
+            stats_data = _load_progression_stats()
+            stats_data["lifetime"]["total_elite_four_battles"] += 1
+            current_defeated = stats_data["current_round"].get("elite_four_defeated", 0)
+            stats_data["current_round"]["elite_four_defeated"] = current_defeated + 1
+            _save_progression_stats(stats_data)
+        except Exception:
+            pass
+
+        # Show completion message
+        try:
+            if (member_index + 1) >= 4:
+                tooltipWithColour(f"🏆 Elite Four {member_name} defeated! All Elite Four members conquered!", "#FFD700")
+            else:
+                tooltipWithColour(f"🏆 Elite Four {member_name} defeated! Collect 150 more cards for the next member.", "#FFD700")
+        except:
+            pass
+
+        # Spawn new wild pokemon
+        try:
+            new_pokemon()
+            if test_window is not None and pkmn_window is True:
+                from aqt.qt import QTimer
+                def _update_window():
+                    try:
+                        test_window.display_first_encounter()
+                        test_window.show()
+                        test_window.raise_()
+                        test_window.activateWindow()
+                        test_window.update()
+                        test_window.repaint()
+                    except Exception as e:
+                        tooltipWithColour(f"Window update error: {str(e)}", "#FF0000")
+                _update_window()
+                QTimer.singleShot(100, _update_window)
+        except Exception as e:
+            error_msg = f"Error spawning pokemon after Elite Four: {str(e)}"
+            tooltipWithColour(error_msg, "#FF0000")
+            import traceback
+            traceback.print_exc()
+    except Exception as e:
+        error_msg = f"Error in complete_elite_four_member: {str(e)}"
+        tooltipWithColour(error_msg, "#FF0000")
+        import traceback
+        traceback.print_exc()
+
+def complete_champion_battle():
+    """Handler for completing Champion battle - unlocks Key Stone, triggers round progression"""
+    global test_window, pkmn_window
+    try:
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            tooltipWithColour("Config not available", "#FF0000")
+            return
+
+        # Clear Champion state
+        conf["ankimon_champion_active"] = False
+        conf["ankimon_champion_enemy_ids"] = []
+        conf["ankimon_champion_pokemon_index"] = 0
+        conf["ankimon_champion_counter"] = 0
+
+        mw.col.setMod()
+
+        # Track Champion battle completion
+        try:
+            stats_data = _load_progression_stats()
+            stats_data["lifetime"]["total_champion_battles"] += 1
+            stats_data["current_round"]["champion_defeated"] = True
+
+            # Check if first time defeating Champion
+            is_first_time = stats_data["lifetime"]["current_round"] == 1
+
+            _save_progression_stats(stats_data)
+        except Exception:
+            is_first_time = False
+
+        # Award Key Stone on first completion
+        if is_first_time:
+            try:
+                mega_state = _load_mega_state()
+                mega_state["key_stone_unlocked"] = True
+                _save_mega_state(mega_state)
+                tooltipWithColour("🔑 You obtained the Key Stone! Mega Evolution is now unlocked!", "#FF00FF")
+            except Exception as e:
+                print(f"Error unlocking Key Stone: {e}")
+
+        # Award Lucarionite on second completion
+        elif stats_data["lifetime"]["current_round"] == 2:
+            try:
+                mega_state = _load_mega_state()
+                mega_state["mega_stones"]["448"] = mega_state["mega_stones"].get("448", 0) + 1
+                _save_mega_state(mega_state)
+                tooltipWithColour("✨ You obtained Lucarionite! (Lucario's Mega Stone)", "#FF00FF")
+            except Exception as e:
+                print(f"Error awarding Lucarionite: {e}")
+
+        # Show completion message
+        try:
+            tooltipWithColour("👑 Champion Cynthia defeated! You are the new Champion!", "#FFD700")
+        except:
+            pass
+
+        # Trigger round progression (will be implemented next)
+        try:
+            _trigger_round_progression()
+        except Exception as e:
+            print(f"Error triggering round progression: {e}")
+
+        # Spawn new wild pokemon
+        try:
+            new_pokemon()
+            if test_window is not None and pkmn_window is True:
+                from aqt.qt import QTimer
+                def _update_window():
+                    try:
+                        test_window.display_first_encounter()
+                        test_window.show()
+                        test_window.raise_()
+                        test_window.activateWindow()
+                        test_window.update()
+                        test_window.repaint()
+                    except Exception as e:
+                        tooltipWithColour(f"Window update error: {str(e)}", "#FF0000")
+                _update_window()
+                QTimer.singleShot(100, _update_window)
+        except Exception as e:
+            error_msg = f"Error spawning pokemon after Champion: {str(e)}"
+            tooltipWithColour(error_msg, "#FF0000")
+            import traceback
+            traceback.print_exc()
+    except Exception as e:
+        error_msg = f"Error in complete_champion_battle: {str(e)}"
+        tooltipWithColour(error_msg, "#FF0000")
+        import traceback
+        traceback.print_exc()
+
+def _trigger_round_progression():
+    """Trigger new round progression - reset badges, increment round, scale difficulty"""
+    try:
+        stats_data = _load_progression_stats()
+        current_round = stats_data["lifetime"]["current_round"]
+        new_round = current_round + 1
+
+        # Update round number
+        stats_data["lifetime"]["current_round"] = new_round
+        stats_data["current_round"]["round_number"] = new_round
+
+        # Reset current round progress
+        stats_data["current_round"]["cards_reviewed"] = 0
+        stats_data["current_round"]["battles_won"] = 0
+        stats_data["current_round"]["gyms_defeated"] = 0
+        stats_data["current_round"]["elite_four_defeated"] = 0
+        stats_data["current_round"]["champion_defeated"] = False
+        stats_data["current_round"]["pokemon_caught"] = 0
+        stats_data["current_round"]["items_obtained"] = 0
+        stats_data["current_round"]["mega_evolutions_used"] = 0
+
+        _save_progression_stats(stats_data)
+
+        # Remove all gym badges from inventory
+        try:
+            global achievements
+            # Gym badges are IDs 25-32
+            for badge_id in range(25, 33):
+                # Remove badge from achievements (implementation may vary)
+                try:
+                    if check_for_badge(achievements, badge_id):
+                        # Badge removal would need to be implemented
+                        pass
+                except:
+                    pass
+        except Exception as e:
+            print(f"Error removing badges: {e}")
+
+        # Reset gym/Elite Four/Champion counters
+        try:
+            conf = _ankimon_get_col_conf()
+            if conf:
+                conf["ankimon_gym_index"] = 0
+                conf["ankimon_gym_counter"] = 0
+                conf["ankimon_elite_four_index"] = 0
+                conf["ankimon_elite_four_counter"] = 0
+                conf["ankimon_champion_counter"] = 0
+                mw.col.setMod()
+        except Exception as e:
+            print(f"Error resetting counters: {e}")
+
+        # Show round progression message
+        tooltipWithColour(f"🎊 Round {new_round} begins! Gyms will be stronger now!", "#00FFFF")
+
+    except Exception as e:
+        print(f"Error in round progression: {e}")
         import traceback
         traceback.print_exc()
 
@@ -3169,6 +3521,83 @@ def on_review_card(*args):
                                 if _ankimon_is_gym_active():
                                     try:
                                         error_msg = f"Gym battle error: {str(e)}"
+                                        tooltipWithColour(error_msg, "#FF0000")
+                                        import traceback
+                                        traceback.print_exc()
+                                    except:
+                                        pass
+                                    return
+                                pass
+
+                            # --- Elite Four battles: show fainted display with Next Pokemon button ---
+                            try:
+                                if _ankimon_is_elite_four_active():
+                                    conf = _ankimon_get_col_conf()
+                                    if conf:
+                                        enemy_ids = conf.get("ankimon_elite_four_enemy_ids") or []
+                                        pokemon_idx = int(conf.get("ankimon_elite_four_pokemon_index", 0))
+
+                                        # Check if this was the last Pokemon
+                                        if pokemon_idx >= len(enemy_ids) - 1:
+                                            # Last Pokemon defeated - complete this Elite Four member
+                                            complete_elite_four_member()
+                                            return
+                                        else:
+                                            # More Pokemon remain - increment index and spawn next
+                                            conf["ankimon_elite_four_pokemon_index"] = pokemon_idx + 1
+                                            mw.col.setMod()
+                                            try:
+                                                member_name = conf.get("ankimon_elite_four_member_name", "Elite Four")
+                                                remaining = len(enemy_ids) - (pokemon_idx + 1)
+                                                tooltipWithColour(f"⚔️ {member_name} has {remaining} Pokemon remaining!", "#FFD700")
+                                            except:
+                                                pass
+                                            new_pokemon()
+                                            if test_window is not None and pkmn_window is True:
+                                                test_window.display_first_encounter()
+                                            return
+                            except Exception as e:
+                                if _ankimon_is_elite_four_active():
+                                    try:
+                                        error_msg = f"Elite Four battle error: {str(e)}"
+                                        tooltipWithColour(error_msg, "#FF0000")
+                                        import traceback
+                                        traceback.print_exc()
+                                    except:
+                                        pass
+                                    return
+                                pass
+
+                            # --- Champion battles: show fainted display with Next Pokemon button ---
+                            try:
+                                if _ankimon_is_champion_active():
+                                    conf = _ankimon_get_col_conf()
+                                    if conf:
+                                        enemy_ids = conf.get("ankimon_champion_enemy_ids") or []
+                                        pokemon_idx = int(conf.get("ankimon_champion_pokemon_index", 0))
+
+                                        # Check if this was the last Pokemon
+                                        if pokemon_idx >= len(enemy_ids) - 1:
+                                            # Last Pokemon defeated - complete Champion battle
+                                            complete_champion_battle()
+                                            return
+                                        else:
+                                            # More Pokemon remain - increment index and spawn next
+                                            conf["ankimon_champion_pokemon_index"] = pokemon_idx + 1
+                                            mw.col.setMod()
+                                            try:
+                                                remaining = len(enemy_ids) - (pokemon_idx + 1)
+                                                tooltipWithColour(f"👑 Champion Cynthia has {remaining} Pokemon remaining!", "#FFD700")
+                                            except:
+                                                pass
+                                            new_pokemon()
+                                            if test_window is not None and pkmn_window is True:
+                                                test_window.display_first_encounter()
+                                            return
+                            except Exception as e:
+                                if _ankimon_is_champion_active():
+                                    try:
+                                        error_msg = f"Champion battle error: {str(e)}"
                                         tooltipWithColour(error_msg, "#FF0000")
                                         import traceback
                                         traceback.print_exc()
@@ -10066,6 +10495,8 @@ from aqt import gui_hooks
 import json
 
 ANKIMON_GYM_TARGET = 100
+ANKIMON_ELITE_FOUR_TARGET = 150
+ANKIMON_CHAMPION_TARGET = 200
 
 def _ankimon_gym_state():
     """Get the current gym card counter from persistent storage."""
@@ -10080,6 +10511,55 @@ def _ankimon_set_gym_state(val: int):
     if conf is not None:
         conf["ankimon_gym_counter"] = int(val)
         mw.col.setMod()
+
+def _ankimon_elite_four_state():
+    """Get the current Elite Four card counter from persistent storage."""
+    conf = _ankimon_get_col_conf()
+    if conf is None:
+        return 0
+    return int(conf.get("ankimon_elite_four_counter", 0))
+
+def _ankimon_set_elite_four_state(val: int):
+    """Set the Elite Four card counter in persistent storage."""
+    conf = _ankimon_get_col_conf()
+    if conf is not None:
+        conf["ankimon_elite_four_counter"] = int(val)
+        mw.col.setMod()
+
+def _ankimon_champion_state():
+    """Get the current Champion card counter from persistent storage."""
+    conf = _ankimon_get_col_conf()
+    if conf is None:
+        return 0
+    return int(conf.get("ankimon_champion_counter", 0))
+
+def _ankimon_set_champion_state(val: int):
+    """Set the Champion card counter in persistent storage."""
+    conf = _ankimon_get_col_conf()
+    if conf is not None:
+        conf["ankimon_champion_counter"] = int(val)
+        mw.col.setMod()
+
+def _ankimon_all_gym_badges_earned():
+    """Check if all 8 gym badges have been earned"""
+    try:
+        global achievements
+        # Gym badges are IDs 25-32
+        for badge_id in range(25, 33):
+            if not check_for_badge(achievements, badge_id):
+                return False
+        return True
+    except Exception:
+        return False
+
+def _ankimon_all_elite_four_defeated():
+    """Check if all 4 Elite Four members have been defeated this round"""
+    try:
+        stats = _load_progression_stats()
+        # Check if all 4 members defeated in current round
+        return stats["current_round"].get("elite_four_defeated", 0) >= 4
+    except Exception:
+        return False
 
 def _ankimon_gym_overlay_html(count: int) -> str:
     pct = int((count / ANKIMON_GYM_TARGET) * 100)
@@ -10325,14 +10805,178 @@ def _ankimon_gym_ready_popup():
             QMessageBox.information(mw, "Gym Battle Ready!", "Gym Battle Ready! You reached 100 reviewed cards.")
         except Exception:
             pass
+def _ankimon_elite_four_ready_popup():
+    """Prompt when Elite Four battle is ready"""
+    try:
+        # Elite Four members (Sinnoh)
+        members = [
+            {"key": "aaron", "name": "Aaron", "type": "Bug", "team": [269, 212, 416, 214, 452]},  # Dustox, Scizor, Vespiquen, Heracross, Drapion
+            {"key": "bertha", "name": "Bertha", "type": "Ground", "team": [450, 195, 340, 450, 31]},  # Hippowdon, Quagsire, Whiscash, Hippowdon, Nidoqueen
+            {"key": "flint", "name": "Flint", "type": "Fire", "team": [392, 229, 78, 136, 467]},  # Infernape, Houndoom, Rapidash, Flareon, Magmortar
+            {"key": "lucian", "name": "Lucian", "type": "Psychic", "team": [122, 437, 178, 561, 475]}  # Mr. Mime, Bronzong, Xatu, Sigilyph, Gallade
+        ]
+
+        conf = _ankimon_get_col_conf()
+        if conf is None:
+            QMessageBox.information(mw, "Elite Four Ready!", "Elite Four Battle Ready!")
+            return
+
+        # Determine which member is next (0-3)
+        member_index = int(conf.get("ankimon_elite_four_index", 0)) % 4
+        member = members[member_index]
+
+        # Create dialog
+        dlg = QDialog(mw)
+        dlg.setWindowTitle(f"Elite Four - {member['name']}")
+        dlg.setMinimumWidth(400)
+        outer = QVBoxLayout()
+        dlg.setLayout(outer)
+
+        # Title
+        title = QLabel(f"Elite Four {member['name']} ({member['type']} Type)")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        font = title.font()
+        font.setPointSize(16)
+        font.setBold(True)
+        title.setFont(font)
+        outer.addWidget(title)
+
+        # Team preview
+        team_label = QLabel(f"Team: {len(member['team'])} Pokemon")
+        team_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        outer.addWidget(team_label)
+
+        # Buttons
+        btn_row = QHBoxLayout()
+        start_btn = QPushButton("Start Elite Four Battle")
+        later_btn = QPushButton("Later")
+        btn_row.addWidget(start_btn)
+        btn_row.addWidget(later_btn)
+        outer.addLayout(btn_row)
+
+        def _start():
+            conf["ankimon_elite_four_pending"] = True
+            conf["ankimon_elite_four_member_key"] = member["key"]
+            conf["ankimon_elite_four_member_name"] = member["name"]
+            conf["ankimon_elite_four_member_type"] = member["type"]
+            conf["ankimon_elite_four_index"] = member_index
+            conf["ankimon_elite_four_enemy_ids"] = member.get("team", [])
+            mw.col.setMod()
+            dlg.accept()
+            try:
+                tooltipWithColour("⏳ Elite Four battle will begin after current match", "#FFD700")
+            except Exception:
+                pass
+
+        def _later():
+            dlg.reject()
+
+        start_btn.clicked.connect(_start)
+        later_btn.clicked.connect(_later)
+        dlg.exec()
+
+    except Exception as e:
+        print(f"Error in Elite Four popup: {e}")
+        try:
+            QMessageBox.information(mw, "Elite Four Ready!", "Elite Four Battle Ready!")
+        except Exception:
+            pass
+
+def _ankimon_champion_ready_popup():
+    """Prompt when Champion battle is ready"""
+    try:
+        conf = _ankimon_get_col_conf()
+        if conf is None:
+            QMessageBox.information(mw, "Champion Ready!", "Champion Battle Ready!")
+            return
+
+        # Champion Cynthia team
+        champion_team = [442, 407, 350, 445, 59, 448]  # Spiritomb, Roserade, Milotic, Garchomp, Arcanine, Lucario
+
+        # Create dialog
+        dlg = QDialog(mw)
+        dlg.setWindowTitle("Champion Cynthia")
+        dlg.setMinimumWidth(400)
+        outer = QVBoxLayout()
+        dlg.setLayout(outer)
+
+        # Title
+        title = QLabel("Champion Cynthia")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        font = title.font()
+        font.setPointSize(18)
+        font.setBold(True)
+        title.setFont(font)
+        outer.addWidget(title)
+
+        # Team preview
+        team_label = QLabel(f"Team: {len(champion_team)} Pokemon")
+        team_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        outer.addWidget(team_label)
+
+        warning = QLabel("⚠️ This is the final challenge!")
+        warning.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        warning.setStyleSheet("color: #FF6B6B; font-weight: bold;")
+        outer.addWidget(warning)
+
+        # Buttons
+        btn_row = QHBoxLayout()
+        start_btn = QPushButton("Challenge Champion")
+        later_btn = QPushButton("Later")
+        btn_row.addWidget(start_btn)
+        btn_row.addWidget(later_btn)
+        outer.addLayout(btn_row)
+
+        def _start():
+            conf["ankimon_champion_pending"] = True
+            conf["ankimon_champion_enemy_ids"] = champion_team
+            mw.col.setMod()
+            dlg.accept()
+            try:
+                tooltipWithColour("⏳ Champion battle will begin after current match", "#FFD700")
+            except Exception:
+                pass
+
+        def _later():
+            dlg.reject()
+
+        start_btn.clicked.connect(_start)
+        later_btn.clicked.connect(_later)
+        dlg.exec()
+
+    except Exception as e:
+        print(f"Error in Champion popup: {e}")
+        try:
+            QMessageBox.information(mw, "Champion Ready!", "Champion Battle Ready!")
+        except Exception:
+            pass
+
 def _ankimon_gym_on_answer(*args):
     try:
-        c = _ankimon_gym_state() + 1
-        if c >= ANKIMON_GYM_TARGET:
-            _ankimon_set_gym_state(0)
-            _ankimon_gym_ready_popup()
-        else:
-            _ankimon_set_gym_state(c)
+        # Only increment gym counter if all gyms haven't been completed yet
+        if not _ankimon_all_gym_badges_earned():
+            c = _ankimon_gym_state() + 1
+            if c >= ANKIMON_GYM_TARGET:
+                _ankimon_set_gym_state(0)
+                _ankimon_gym_ready_popup()
+            else:
+                _ankimon_set_gym_state(c)
+        # After all gyms, check Elite Four
+        elif _ankimon_all_gym_badges_earned() and not _ankimon_all_elite_four_defeated():
+            e = _ankimon_elite_four_state() + 1
+            if e >= ANKIMON_ELITE_FOUR_TARGET:
+                _ankimon_set_elite_four_state(0)
+                _ankimon_elite_four_ready_popup()
+            else:
+                _ankimon_set_elite_four_state(e)
+        # After Elite Four, check Champion
+        elif _ankimon_all_elite_four_defeated():
+            ch = _ankimon_champion_state() + 1
+            if ch >= ANKIMON_CHAMPION_TARGET:
+                _ankimon_set_champion_state(0)
+                _ankimon_champion_ready_popup()
+            else:
+                _ankimon_set_champion_state(ch)
     except Exception:
         pass
     _ankimon_render_gym_overlay(mw.reviewer)
