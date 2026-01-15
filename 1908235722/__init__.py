@@ -7334,8 +7334,18 @@ class TestWindow(QWidget):
         button_layout = QHBoxLayout()
         button_layout.setSpacing(5)
 
-        # Pokedex button
-        pokedex_btn = QPushButton("Pokédex")
+        # Load icons from icons/ folder
+        try:
+            icons_path_dir = addon_dir / "addon_sprites" / "icons"
+            pokedex_icon = QIcon(str(icons_path_dir / "smaller pokedex.gif"))
+            pokeball_icon = QIcon(str(icons_path_dir / "poke.png"))
+        except Exception as e:
+            print(f"Could not load button icons: {e}")
+            pokedex_icon = QIcon()
+            pokeball_icon = QIcon()
+
+        # Pokedex button (with icon)
+        pokedex_btn = QPushButton(pokedex_icon, "Pokédex")
         pokedex_btn.setStyleSheet("""
             QPushButton {
                 background-color: #5a9fd4;
@@ -7410,8 +7420,8 @@ class TestWindow(QWidget):
         party_btn.setMenu(self.party_menu)
         button_layout.addWidget(party_btn)
 
-        # Pokemon Collection button (combined)
-        collection_btn = QPushButton("Pokémon Collection")
+        # Pokemon Collection button (with icon)
+        collection_btn = QPushButton(pokeball_icon, "Pokémon Collection")
         collection_btn.setStyleSheet("""
             QPushButton {
                 background-color: #5a9fd4;
@@ -10335,9 +10345,9 @@ def _save_party(party: dict):
         json.dump(party, f, indent=2)
 
 def _remove_pokemon_held_item(pkmn_name):
-    """Remove held item from a specific Pokemon and show confirmation"""
+    """Remove held item from a specific Pokemon and return it to inventory"""
     try:
-        global mypokemon_path
+        global mypokemon_path, itembag_path
         with open(mypokemon_path, 'r') as file:
             pokemon_list = json.load(file)
 
@@ -10348,12 +10358,34 @@ def _remove_pokemon_held_item(pkmn_name):
                 pokemon['held_item'] = None
                 break
 
+        # Save updated Pokemon data
         with open(mypokemon_path, 'w') as file:
             json.dump(pokemon_list, file, indent=2)
 
         if item_removed:
-            item_display = item_removed.replace('_', ' ').replace('-', ' ').title()
-            showInfo(f"Removed {item_display} from {pkmn_name.capitalize()}")
+            # Return item to inventory (EXP Share is reusable!)
+            try:
+                # Load current inventory
+                if os.path.exists(itembag_path):
+                    with open(itembag_path, 'r') as file:
+                        itembag_list = json.load(file)
+                else:
+                    itembag_list = []
+
+                # Add item back to inventory
+                itembag_list.append(item_removed)
+
+                # Save updated inventory
+                with open(itembag_path, 'w') as file:
+                    json.dump(itembag_list, file)
+
+                item_display = item_removed.replace('_', ' ').replace('-', ' ').title()
+                showInfo(f"{item_display} returned to inventory")
+                print(f"[ItemBag] {item_removed} returned to inventory from {pkmn_name}")
+            except Exception as e:
+                print(f"Error returning item to inventory: {e}")
+                item_display = item_removed.replace('_', ' ').replace('-', ' ').title()
+                showInfo(f"Removed {item_display} from {pkmn_name.capitalize()}")
         else:
             showInfo(f"{pkmn_name.capitalize()} was not holding any item")
 
@@ -10949,12 +10981,17 @@ def _can_mega_evolve():
 
         # Check if player has a mega stone for this Pokemon
         mega_stones = mega_state.get("mega_stones", {})
+        # Safety check: mega_stones might be None
+        if not isinstance(mega_stones, dict):
+            mega_stones = {}
         if mega_stones.get(str(pokemon_id), 0) <= 0:
             return False
 
         return True
     except Exception as e:
         print(f"Error checking mega evolution: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def _trigger_mega_evolution():
@@ -10980,6 +11017,9 @@ def _trigger_mega_evolution():
 
         # Consume mega stone
         mega_stones = mega_state.get("mega_stones", {})
+        # Safety check: mega_stones might be None
+        if not isinstance(mega_stones, dict):
+            mega_stones = {}
         mega_stones[str(pokemon_id)] = max(0, mega_stones.get(str(pokemon_id), 0) - 1)
         mega_state["mega_stones"] = mega_stones
 
@@ -11132,7 +11172,9 @@ def _set_active_from_party_slot(slot_index: int):
 
     party["active_slot"] = slot_index
     _save_party(party)
-    showInfo(f"Active Party Slot set to {slot_index+1}: {p.get('name','Unknown')}")
+    # Changed from "Active Party Slot set to X:" to "Go! (name)"
+    pokemon_display_name = nickname if nickname and nickname.strip() else p.get('name','Unknown')
+    showInfo(f"Go! {pokemon_display_name.capitalize()}!")
 
 def _cycle_party(direction: int = 1):
     party = _load_party()
@@ -11179,24 +11221,10 @@ def _update_party_menu_text():
         pass
 
 def _register_party_actions():
-    """Adds menu items + hotkeys to switch active party slot."""
+    """Adds hotkeys to switch active party slot (no menu items - those were removed per request)."""
     try:
-        global _party_slot_actions
-
-        # Menu actions (under Ankimon menu)
-        slot1 = QAction("Party: Use Slot 1", mw); slot1.triggered.connect(lambda: _set_active_from_party_slot(0)); mw.pokemenu.addAction(slot1)
-        slot2 = QAction("Party: Use Slot 2", mw); slot2.triggered.connect(lambda: _set_active_from_party_slot(1)); mw.pokemenu.addAction(slot2)
-        slot3 = QAction("Party: Use Slot 3", mw); slot3.triggered.connect(lambda: _set_active_from_party_slot(2)); mw.pokemenu.addAction(slot3)
-        slot4 = QAction("Party: Use Slot 4", mw); slot4.triggered.connect(lambda: _set_active_from_party_slot(3)); mw.pokemenu.addAction(slot4)
-
-        # Store action references for updating text later
-        _party_slot_actions = [slot1, slot2, slot3, slot4]
-
-        # Update menu text with current party pokemon names
-        _update_party_menu_text()
-
-        # Hotkeys (global while Anki is focused)
-        # macOS: Cmd = Ctrl in Qt's naming; this should work cross-platform.
+        # Hotkeys only (global while Anki is focused)
+        # Menu items removed - party switching now only via hotkeys or Pokemon Collection UI
         global _party_shortcuts
         def _mk(seq, fn):
             sc = QShortcut(QKeySequence(seq), mw)
@@ -11212,7 +11240,7 @@ def _register_party_actions():
     except Exception as e:
         # Don't crash the addon if shortcuts fail
         try:
-            showInfo(f"Party hotkeys/menu could not be registered: {e}")
+            showInfo(f"Party hotkeys could not be registered: {e}")
         except Exception:
             pass
 
@@ -11224,38 +11252,64 @@ except Exception:
 # ---------------------------------------------------------
 
 if database_complete != False:
-    pokecol_action = QAction("Show Pokemon Collection", mw)
-    # set it to call testFunction when it's clicked
-    mw.pokemenu.addAction(pokecol_action)
-    qconnect(pokecol_action.triggered, pokecollection_win.show)
+    # Load icons from icons/ folder
+    try:
+        icons_path_dir = addon_dir / "addon_sprites" / "icons"
+        gameboy_icon = QIcon(str(icons_path_dir / "game-boy.png"))
+        pokedex_icon = QIcon(str(icons_path_dir / "smaller pokedex.gif"))
+        pokeball_icon = QIcon(str(icons_path_dir / "poke.png"))
+    except Exception as e:
+        print(f"Could not load menu icons: {e}")
+        gameboy_icon = QIcon()
+        pokedex_icon = QIcon()
+        pokeball_icon = QIcon()
 
-    # Complete Pokédex with force encounter feature
-    complete_pokedex_action = QAction("Pokédex", mw)
-    mw.pokemenu.addAction(complete_pokedex_action)
-    qconnect(complete_pokedex_action.triggered, complete_pokedex.show_complete_pokedex)
-    # Make new PokeAnki menu under tools
-
-    test_action10 = QAction("Open Ankimon Window", mw)
-    #test_action10.triggered.connect(test_window.open_dynamic_window)
-    mw.pokemenu.addAction(test_action10)
+    # REORGANIZED MENU STRUCTURE per request
+    # 1. Open Ankimon Window (with game-boy icon)
+    test_action10 = QAction(gameboy_icon, "Open Ankimon Window", mw)
     qconnect(test_action10.triggered, test_window.open_dynamic_window)
+    mw.pokemenu.addAction(test_action10)
 
-    # Add Reset Battle option
+    # 2. Pokédex (with Pokédex icon)
+    complete_pokedex_action = QAction(pokedex_icon, "Pokédex", mw)
+    qconnect(complete_pokedex_action.triggered, complete_pokedex.show_complete_pokedex)
+    mw.pokemenu.addAction(complete_pokedex_action)
+
+    # 3. Show Pokémon Collection (with Pokéball icon)
+    pokecol_action = QAction(pokeball_icon, "Show Pokémon Collection", mw)
+    qconnect(pokecol_action.triggered, pokecollection_win.show)
+    mw.pokemenu.addAction(pokecol_action)
+
+    # 4. Settings submenu
+    settings_menu = QMenu("Settings", mw)
+    mw.pokemenu.addMenu(settings_menu)
+
+    # Settings submenu items
     reset_battle_action = QAction("🔄 Reset Battle", mw)
     qconnect(reset_battle_action.triggered, reset_battle)
-    mw.pokemenu.addAction(reset_battle_action)
+    settings_menu.addAction(reset_battle_action)
 
-    # Add Pokemon Placement Tool
     placement_tool_action = QAction("Pokémon Placement Tool", mw)
     qconnect(placement_tool_action.triggered, show_placement_tool)
-    mw.pokemenu.addAction(placement_tool_action)
+    settings_menu.addAction(placement_tool_action)
 
+    # Add Ankimon Configure Menu shortcut to Settings submenu
+    try:
+        configure_action = QAction("Ankimon Configure Menu", mw)
+        qconnect(configure_action.triggered, lambda: mw.addonManager.onConfig("1908235722"))
+        settings_menu.addAction(configure_action)
+    except Exception:
+        pass
+
+    # 5. Separator
     mw.pokemenu.addSeparator()
 
+    # 6. Itembag
     test_action15 = QAction("Itembag", mw)
     test_action15.triggered.connect(item_window.show_window)
     mw.pokemenu.addAction(test_action15)
 
+    # 7. Achievements
     achievement_bag_action = QAction("Achievements", mw)
     achievement_bag_action.triggered.connect(achievement_bag.show_window)
     mw.pokemenu.addAction(achievement_bag_action)
