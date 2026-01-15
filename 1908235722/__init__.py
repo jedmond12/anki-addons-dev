@@ -7337,7 +7337,7 @@ class TestWindow(QWidget):
         # Load icons from icons/ folder
         try:
             icons_path_dir = addon_dir / "addon_sprites" / "icons"
-            pokedex_icon = QIcon(str(icons_path_dir / "smaller pokedex.gif"))
+            pokedex_icon = QIcon(str(icons_path_dir / "pokedex.gif"))  # Changed from "smaller pokedex.gif" to larger version
             pokeball_icon = QIcon(str(icons_path_dir / "poke.png"))
         except Exception as e:
             print(f"Could not load button icons: {e}")
@@ -9921,30 +9921,51 @@ class ItemWindow(QWidget):
 
             # Check if it's a mega stone (formatted as 80px-Bag_{Name}_ZA_Sprite)
             if "80px-Bag_" in item_name and "ZA_Sprite" in item_name:
-                # Extract stone name (e.g., "Ampharosite" from "80px-Bag_Ampharosite_ZA_Sprite")
-                stone_name = item_name.replace("80px-Bag_", "").replace("_ZA_Sprite", "")
+                try:
+                    # Extract stone name (e.g., "Ampharosite" from "80px-Bag_Ampharosite_ZA_Sprite")
+                    stone_name = item_name.replace("80px-Bag_", "").replace("_ZA_Sprite", "")
+                    print(f"[Mega] Equipping mega stone: {stone_name} to {pkmn_name}")
 
-                # Get Pokemon ID and check if it matches the stone
-                pokemon_id = search_pokedex(pkmn_name.lower(), "num")
-                expected_stone = _get_mega_stone_name(pokemon_id)
+                    # Get Pokemon ID and check if it matches the stone
+                    pokemon_id = search_pokedex(pkmn_name.lower(), "num")
+                    if pokemon_id is None:
+                        showWarning(f"Item equip failed: Could not find Pokemon ID for {pkmn_name}")
+                        print(f"[Mega] ERROR: pokemon_id is None for {pkmn_name}")
+                        return
 
-                if stone_name == expected_stone:
-                    # Check if another Pokemon already holds this stone
-                    conflict_pokemon = self.check_item_holder(item_name)
-                    if conflict_pokemon and conflict_pokemon.lower() != pkmn_name.lower():
-                        from aqt.utils import askUser
-                        move_item = askUser(f"{stone_name} is currently held by {conflict_pokemon}.\nMove it to {pkmn_name.capitalize()}?")
-                        if not move_item:
-                            return
-                        self.remove_held_item_from(conflict_pokemon)
+                    expected_stone = _get_mega_stone_name(pokemon_id)
+                    if expected_stone is None:
+                        showWarning(f"Item equip failed: Could not determine mega stone for {pkmn_name}")
+                        print(f"[Mega] ERROR: expected_stone is None for pokemon_id {pokemon_id}")
+                        return
 
-                    # Assign mega stone to Pokemon
-                    self.assign_held_item(pkmn_name, item_name)
-                    self.delete_item(item_name)
-                    showInfo(f"{stone_name} has been given to {pkmn_name.capitalize()}!\n{pkmn_name.capitalize()} can now Mega Evolve in battle!")
-                else:
-                    showInfo(f"{pkmn_name.capitalize()} cannot use {stone_name}.\nThis stone is for a different Pokemon.")
-                return
+                    print(f"[Mega] Pokemon ID: {pokemon_id}, Expected stone: {expected_stone}, Actual stone: {stone_name}")
+
+                    if stone_name == expected_stone:
+                        # Check if another Pokemon already holds this stone
+                        conflict_pokemon = self.check_item_holder(item_name)
+                        if conflict_pokemon and conflict_pokemon.lower() != pkmn_name.lower():
+                            from aqt.utils import askUser
+                            move_item = askUser(f"{stone_name} is currently held by {conflict_pokemon}.\nMove it to {pkmn_name.capitalize()}?")
+                            if not move_item:
+                                return
+                            self.remove_held_item_from(conflict_pokemon)
+
+                        # Assign mega stone to Pokemon
+                        self.assign_held_item(pkmn_name, item_name)
+                        self.delete_item(item_name)
+                        print(f"[Mega] Successfully equipped {stone_name} to {pkmn_name}")
+                        showInfo(f"{stone_name} has been given to {pkmn_name.capitalize()}!\n{pkmn_name.capitalize()} can now Mega Evolve in battle!")
+                    else:
+                        showInfo(f"{pkmn_name.capitalize()} cannot use {stone_name}.\nThis stone is for a different Pokemon.")
+                    return
+                except Exception as e:
+                    error_msg = f"Item equip failed: {str(e)}"
+                    showWarning(error_msg)
+                    print(f"[Mega] ERROR during mega stone equip: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    return
 
             # Handle evolution items
             evoName = search_pokedex(pkmn_name.lower(), "evos")
@@ -10947,80 +10968,142 @@ def _award_random_mega_stone():
         return False
 
 def _can_mega_evolve():
-    """Check if the slot 1 Pokemon can mega evolve"""
+    """Check if the active party Pokemon can mega evolve"""
     try:
+        print("[Mega] Checking if can mega evolve...")
+
         # Check if key stone is unlocked
         mega_state = _load_mega_state()
+        if mega_state is None:
+            print("[Mega] FAIL: mega_state is None")
+            return False
+
         if not mega_state.get("key_stone_unlocked", False):
+            print("[Mega] FAIL: Key stone not unlocked")
             return False
 
         # Check if enough energy
-        if mega_state.get("mega_energy", 0) < 20:
+        current_energy = mega_state.get("mega_energy", 0)
+        if current_energy < 20:
+            print(f"[Mega] FAIL: Not enough energy ({current_energy}/20)")
             return False
 
         # Check if already mega evolved this battle
         if mega_state.get("mega_used_this_battle", False):
+            print("[Mega] FAIL: Already mega evolved this battle")
             return False
 
-        # Get slot 1 Pokemon from party
+        # Get active Pokemon from party
         party = _load_party()
-        slot_1_index = party.get("slots", [0])[0]
+        if party is None:
+            print("[Mega] FAIL: party is None")
+            return False
+
+        active_slot = party.get("active_slot", 0)
+        party_slots = party.get("slots", [None, None, None, None])
+
+        if active_slot >= len(party_slots):
+            print(f"[Mega] FAIL: active_slot {active_slot} >= party_slots length {len(party_slots)}")
+            return False
+
+        active_pokemon_index = party_slots[active_slot]
+        if active_pokemon_index is None:
+            print(f"[Mega] FAIL: No Pokemon in active slot {active_slot}")
+            return False
 
         # Load Pokemon list
         pokemon_list = _load_mypokemon_list()
-        if slot_1_index >= len(pokemon_list):
+        if pokemon_list is None:
+            print("[Mega] FAIL: pokemon_list is None")
             return False
 
-        slot_1_pokemon = pokemon_list[slot_1_index]
-        pokemon_id = slot_1_pokemon.get("id")
+        if active_pokemon_index >= len(pokemon_list):
+            print(f"[Mega] FAIL: active_pokemon_index {active_pokemon_index} >= pokemon_list length {len(pokemon_list)}")
+            return False
+
+        active_pokemon = pokemon_list[active_pokemon_index]
+        if active_pokemon is None:
+            print("[Mega] FAIL: active_pokemon is None")
+            return False
+
+        pokemon_id = active_pokemon.get("id")
+        pokemon_name = active_pokemon.get("name", "Unknown")
+        held_item = active_pokemon.get("held_item")
+
+        print(f"[Mega] Active Pokemon: {pokemon_name} (ID: {pokemon_id}), Held item: {held_item}")
 
         # Check if Pokemon can mega evolve
         if pokemon_id not in _get_mega_capable_pokemon_ids():
+            print(f"[Mega] FAIL: {pokemon_name} (ID: {pokemon_id}) cannot mega evolve")
             return False
 
-        # Check if player has a mega stone for this Pokemon
-        mega_stones = mega_state.get("mega_stones", {})
-        # Safety check: mega_stones might be None
-        if not isinstance(mega_stones, dict):
-            mega_stones = {}
-        if mega_stones.get(str(pokemon_id), 0) <= 0:
+        # CRITICAL FIX: Check if Pokemon is HOLDING the correct mega stone
+        expected_stone_name = _get_mega_stone_name(pokemon_id)
+        expected_item_format = f"80px-Bag_{expected_stone_name}_ZA_Sprite"
+
+        if held_item != expected_item_format:
+            print(f"[Mega] FAIL: {pokemon_name} not holding {expected_stone_name}")
+            print(f"[Mega]   Expected: {expected_item_format}")
+            print(f"[Mega]   Actual: {held_item}")
             return False
 
+        print(f"[Mega] SUCCESS: {pokemon_name} can mega evolve with {expected_stone_name}!")
         return True
     except Exception as e:
-        print(f"Error checking mega evolution: {e}")
+        print(f"[Mega] ERROR checking mega evolution: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def _trigger_mega_evolution():
-    """Trigger mega evolution for slot 1 Pokemon"""
+    """Trigger mega evolution for active party Pokemon"""
     try:
-        # Get slot 1 Pokemon
-        party = _load_party()
-        slot_1_index = party.get("slots", [0])[0]
-        pokemon_list = _load_mypokemon_list()
+        print("[Mega] Triggering mega evolution...")
 
-        if slot_1_index >= len(pokemon_list):
+        # Get active Pokemon
+        party = _load_party()
+        if party is None:
+            print("[Mega] ERROR: party is None")
+            tooltipWithColour("Mega Evolution failed: Could not load party", "#FF0000")
             return False
 
-        slot_1_pokemon = pokemon_list[slot_1_index]
-        pokemon_id = slot_1_pokemon.get("id")
-        pokemon_name = slot_1_pokemon.get("name", "Unknown")
+        active_slot = party.get("active_slot", 0)
+        party_slots = party.get("slots", [None, None, None, None])
+
+        if active_slot >= len(party_slots):
+            print(f"[Mega] ERROR: active_slot {active_slot} out of range")
+            tooltipWithColour("Mega Evolution failed: Invalid party slot", "#FF0000")
+            return False
+
+        active_pokemon_index = party_slots[active_slot]
+        if active_pokemon_index is None:
+            print(f"[Mega] ERROR: No Pokemon in slot {active_slot}")
+            tooltipWithColour("Mega Evolution failed: No Pokemon in active slot", "#FF0000")
+            return False
+
+        pokemon_list = _load_mypokemon_list()
+        if pokemon_list is None or active_pokemon_index >= len(pokemon_list):
+            print("[Mega] ERROR: Invalid pokemon_list or index")
+            tooltipWithColour("Mega Evolution failed: Could not load Pokemon", "#FF0000")
+            return False
+
+        active_pokemon = pokemon_list[active_pokemon_index]
+        pokemon_id = active_pokemon.get("id")
+        pokemon_name = active_pokemon.get("name", "Unknown")
+
+        print(f"[Mega] Mega evolving {pokemon_name} (ID: {pokemon_id})")
 
         # Update mega state
         mega_state = _load_mega_state()
+        if mega_state is None:
+            print("[Mega] ERROR: mega_state is None")
+            tooltipWithColour("Mega Evolution failed: Could not load mega state", "#FF0000")
+            return False
 
         # Consume energy
-        mega_state["mega_energy"] = max(0, mega_state.get("mega_energy", 0) - 20)
-
-        # Consume mega stone
-        mega_stones = mega_state.get("mega_stones", {})
-        # Safety check: mega_stones might be None
-        if not isinstance(mega_stones, dict):
-            mega_stones = {}
-        mega_stones[str(pokemon_id)] = max(0, mega_stones.get(str(pokemon_id), 0) - 1)
-        mega_state["mega_stones"] = mega_stones
+        old_energy = mega_state.get("mega_energy", 0)
+        mega_state["mega_energy"] = max(0, old_energy - 20)
+        print(f"[Mega] Energy: {old_energy} -> {mega_state['mega_energy']}")
 
         # Mark mega as active and used this battle
         mega_state["mega_active"] = True
@@ -11031,21 +11114,25 @@ def _trigger_mega_evolution():
         # Track mega evolution usage
         try:
             stats_data = _load_progression_stats()
-            stats_data["lifetime"]["total_mega_evolutions"] += 1
-            stats_data["current_round"]["mega_evolutions_used"] += 1
-            _save_progression_stats(stats_data)
-        except:
+            if stats_data:
+                stats_data["lifetime"]["total_mega_evolutions"] += 1
+                stats_data["current_round"]["mega_evolutions_used"] += 1
+                _save_progression_stats(stats_data)
+        except Exception as e:
+            print(f"[Mega] Warning: Could not update stats: {e}")
             pass
 
         # Show mega evolution message
         stone_name = _get_mega_stone_name(pokemon_id)
         tooltipWithColour(f"⚡ {pokemon_name} Mega Evolved using {stone_name}!", "#FF00FF")
+        print(f"[Mega] SUCCESS: {pokemon_name} mega evolved!")
 
         return True
     except Exception as e:
-        print(f"Error triggering mega evolution: {e}")
+        print(f"[Mega] ERROR triggering mega evolution: {e}")
         import traceback
         traceback.print_exc()
+        tooltipWithColour(f"Mega Evolution failed: {str(e)}", "#FF0000")
         return False
 
 def _reset_mega_battle_state():
@@ -11255,7 +11342,7 @@ if database_complete != False:
     try:
         icons_path_dir = addon_dir / "addon_sprites" / "icons"
         gameboy_icon = QIcon(str(icons_path_dir / "game-boy.png"))
-        pokedex_icon = QIcon(str(icons_path_dir / "smaller pokedex.gif"))
+        pokedex_icon = QIcon(str(icons_path_dir / "pokedex.gif"))  # Changed from "smaller pokedex.gif" to larger version
         pokeball_icon = QIcon(str(icons_path_dir / "poke.png"))
     except Exception as e:
         print(f"Could not load menu icons: {e}")
