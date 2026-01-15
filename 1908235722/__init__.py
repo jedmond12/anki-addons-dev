@@ -4205,15 +4205,32 @@ class PokemonCollectionDialog(QDialog):
                         ability_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
                         ability_label.setFont(fontpkmnspec)
 
-                        # Held Item
+                        # Held Item with Remove button
                         pokemon_held_item = pokemon.get('held_item', None)
+                        held_item_container = QHBoxLayout()
                         if pokemon_held_item:
                             held_item_txt = f" Held Item: {pokemon_held_item.replace('_', ' ').replace('-', ' ').title()}"
+                            held_item_label = QLabel(held_item_txt)
+                            held_item_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+                            held_item_label.setFont(fontpkmnspec)
+                            held_item_container.addWidget(held_item_label)
+
+                            # Add Remove button
+                            remove_item_btn = QPushButton("Remove")
+                            remove_item_btn.setFixedWidth(60)
+                            remove_item_btn.setStyleSheet("font-size: 8px; padding: 2px;")
+                            def _remove_held_item(*, _poke_name=pokemon_name):
+                                _remove_pokemon_held_item(_poke_name)
+                                self.refresh_pokemon_collection()
+                            remove_item_btn.clicked.connect(_remove_held_item)
+                            held_item_container.addWidget(remove_item_btn)
                         else:
                             held_item_txt = " Held Item: None"
-                        held_item_label = QLabel(held_item_txt)
-                        held_item_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-                        held_item_label.setFont(fontpkmnspec)
+                            held_item_label = QLabel(held_item_txt)
+                            held_item_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+                            held_item_label.setFont(fontpkmnspec)
+                            held_item_container.addWidget(held_item_label)
+                        held_item_container.addStretch()
 
                         image_label.setPixmap(pixmap)
 
@@ -4283,14 +4300,13 @@ class PokemonCollectionDialog(QDialog):
                         container_layout.addWidget(level_label)
                         container_layout.addWidget(type_label)
                         container_layout.addWidget(ability_label)
-                        container_layout.addWidget(held_item_label)
+                        container_layout.addLayout(held_item_container)
                         container_layout.addWidget(pokemon_button)
                         container_layout.addWidget(slot_combo)
                         type_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         level_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         ability_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                        held_item_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
                         pokemon_container.setLayout(container_layout)
                         self.scroll_layout.addWidget(pokemon_container, row, column)
@@ -4423,15 +4439,32 @@ class PokemonCollectionDialog(QDialog):
                             ability_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
                             ability_label.setFont(fontpkmnspec)
 
-                            # Held Item
+                            # Held Item with Remove button
                             pokemon_held_item = pokemon.get('held_item', None)
+                            held_item_container = QHBoxLayout()
                             if pokemon_held_item:
                                 held_item_txt = f" Held Item: {pokemon_held_item.replace('_', ' ').replace('-', ' ').title()}"
+                                held_item_label = QLabel(held_item_txt)
+                                held_item_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+                                held_item_label.setFont(fontpkmnspec)
+                                held_item_container.addWidget(held_item_label)
+
+                                # Add Remove button
+                                remove_item_btn = QPushButton("Remove")
+                                remove_item_btn.setFixedWidth(60)
+                                remove_item_btn.setStyleSheet("font-size: 8px; padding: 2px;")
+                                def _remove_held_item(*, _poke_name=pokemon_name):
+                                    _remove_pokemon_held_item(_poke_name)
+                                    self.refresh_pokemon_collection()
+                                remove_item_btn.clicked.connect(_remove_held_item)
+                                held_item_container.addWidget(remove_item_btn)
                             else:
                                 held_item_txt = " Held Item: None"
-                            held_item_label = QLabel(held_item_txt)
-                            held_item_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-                            held_item_label.setFont(fontpkmnspec)
+                                held_item_label = QLabel(held_item_txt)
+                                held_item_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+                                held_item_label.setFont(fontpkmnspec)
+                                held_item_container.addWidget(held_item_label)
+                            held_item_container.addStretch()
 
                             image_label.setPixmap(pixmap)
 
@@ -4501,14 +4534,13 @@ class PokemonCollectionDialog(QDialog):
                             container_layout.addWidget(level_label)
                             container_layout.addWidget(type_label)
                             container_layout.addWidget(ability_label)
-                            container_layout.addWidget(held_item_label)
+                            container_layout.addLayout(held_item_container)
                             container_layout.addWidget(pokemon_button)
                             container_layout.addWidget(slot_combo)
                             type_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                             name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                             level_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                             ability_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                            held_item_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
                             pokemon_container.setLayout(container_layout)
                             self.scroll_layout.addWidget(pokemon_container, row, column)
@@ -9831,6 +9863,25 @@ class ItemWindow(QWidget):
 
     def Check_Evo_Item(self, pkmn_name, item_name):
         try:
+            # Check if it's EXP Share (held item, not evolution item)
+            if "exp" in item_name.lower() and "share" in item_name.lower():
+                # Check if another Pokemon already holds this item
+                conflict_pokemon = self.check_item_holder(item_name)
+                if conflict_pokemon and conflict_pokemon.lower() != pkmn_name.lower():
+                    # Prompt to move item
+                    from aqt.utils import askUser
+                    move_item = askUser(f"EXP Share is currently held by {conflict_pokemon}.\nMove it to {pkmn_name.capitalize()}?")
+                    if not move_item:
+                        return
+                    # Remove from previous holder
+                    self.remove_held_item_from(conflict_pokemon)
+
+                # Assign EXP Share to Pokemon
+                self.assign_held_item(pkmn_name, item_name)
+                self.delete_item(item_name)
+                showInfo(f"{pkmn_name.capitalize()} is now holding EXP Share!\n{pkmn_name.capitalize()} will gain EXP when other Pokémon battle.")
+                return
+
             # Check if it's a mega stone (formatted as 80px-Bag_{Name}_ZA_Sprite)
             if "80px-Bag_" in item_name and "ZA_Sprite" in item_name:
                 # Extract stone name (e.g., "Ampharosite" from "80px-Bag_Ampharosite_ZA_Sprite")
@@ -9841,6 +9892,15 @@ class ItemWindow(QWidget):
                 expected_stone = _get_mega_stone_name(pokemon_id)
 
                 if stone_name == expected_stone:
+                    # Check if another Pokemon already holds this stone
+                    conflict_pokemon = self.check_item_holder(item_name)
+                    if conflict_pokemon and conflict_pokemon.lower() != pkmn_name.lower():
+                        from aqt.utils import askUser
+                        move_item = askUser(f"{stone_name} is currently held by {conflict_pokemon}.\nMove it to {pkmn_name.capitalize()}?")
+                        if not move_item:
+                            return
+                        self.remove_held_item_from(conflict_pokemon)
+
                     # Assign mega stone to Pokemon
                     self.assign_held_item(pkmn_name, item_name)
                     self.delete_item(item_name)
@@ -9864,6 +9924,38 @@ class ItemWindow(QWidget):
         except Exception as e:
             showWarning(f"{e}")
     
+    def check_item_holder(self, item_name):
+        """Check if any Pokemon is currently holding this item"""
+        try:
+            global mypokemon_path
+            with open(mypokemon_path, 'r') as file:
+                pokemon_list = json.load(file)
+
+            for pokemon in pokemon_list:
+                if pokemon.get('held_item', '') == item_name:
+                    return pokemon.get('name', 'Unknown')
+            return None
+        except Exception:
+            return None
+
+    def remove_held_item_from(self, pkmn_name):
+        """Remove held item from a specific Pokemon"""
+        try:
+            global mypokemon_path
+            with open(mypokemon_path, 'r') as file:
+                pokemon_list = json.load(file)
+
+            for pokemon in pokemon_list:
+                if pokemon['name'].lower() == pkmn_name.lower():
+                    pokemon['held_item'] = None
+                    break
+
+            with open(mypokemon_path, 'w') as file:
+                json.dump(pokemon_list, file, indent=2)
+
+        except Exception as e:
+            print(f"Error removing held item: {e}")
+
     def assign_held_item(self, pkmn_name, item_name):
         """Assign a held item to a Pokemon"""
         try:
@@ -9883,13 +9975,8 @@ class ItemWindow(QWidget):
             with open(mypokemon_path, 'w') as file:
                 json.dump(pokemon_list, file, indent=2)
 
-            # Show confirmation message for specific items
+            # Refresh Pokemon collection dialog if it's open
             if pokemon_found:
-                item_display_name = item_name.replace('_', ' ').replace('-', ' ').title()
-                if 'exp' in item_name.lower() and 'share' in item_name.lower():
-                    showInfo(f"{pkmn_name.capitalize()} is now holding {item_display_name}!\n{pkmn_name.capitalize()} will gain EXP when other Pokémon battle.")
-
-                # Refresh Pokemon collection dialog if it's open
                 try:
                     if pokecollection_win and pokecollection_win.isVisible():
                         pokecollection_win.refresh_pokemon_collection()
@@ -10209,8 +10296,35 @@ def _save_party(party: dict):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(party, f, indent=2)
 
+def _remove_pokemon_held_item(pkmn_name):
+    """Remove held item from a specific Pokemon and show confirmation"""
+    try:
+        global mypokemon_path
+        with open(mypokemon_path, 'r') as file:
+            pokemon_list = json.load(file)
+
+        item_removed = None
+        for pokemon in pokemon_list:
+            if pokemon['name'].lower() == pkmn_name.lower():
+                item_removed = pokemon.get('held_item')
+                pokemon['held_item'] = None
+                break
+
+        with open(mypokemon_path, 'w') as file:
+            json.dump(pokemon_list, file, indent=2)
+
+        if item_removed:
+            item_display = item_removed.replace('_', ' ').replace('-', ' ').title()
+            showInfo(f"Removed {item_display} from {pkmn_name.capitalize()}")
+        else:
+            showInfo(f"{pkmn_name.capitalize()} was not holding any item")
+
+    except Exception as e:
+        print(f"Error removing held item: {e}")
+        showWarning(f"Failed to remove held item from {pkmn_name}")
+
 def _distribute_exp_share(exp_earned):
-    """Distribute 50% of earned EXP to all Pokemon holding EXP Share"""
+    """Distribute 50% of earned EXP to party Pokemon holding EXP Share (party-only, not entire collection)"""
     global mypokemon_path, mainpokemon_name
     try:
         # Calculate shared EXP (50% of earned EXP)
@@ -10218,6 +10332,11 @@ def _distribute_exp_share(exp_earned):
 
         if shared_exp <= 0:
             return
+
+        # Load party data to get the 4 active party members
+        party = _load_party()
+        party_slots = party.get("slots", [None, None, None, None])
+        active_slot = party.get("active_slot", 0)
 
         # Load all caught Pokemon
         if not mypokemon_path.is_file():
@@ -10229,20 +10348,29 @@ def _distribute_exp_share(exp_earned):
         if not isinstance(pokemon_list, list):
             return
 
-        # Find Pokemon holding EXP Share (excluding the active Pokemon)
+        # Find Pokemon holding EXP Share (ONLY in party, excluding the active Pokemon)
         exp_share_recipients = []
-        for i, pokemon in enumerate(pokemon_list):
-            if not isinstance(pokemon, dict):
+        for slot_idx, pokemon_idx in enumerate(party_slots):
+            # Skip if not a valid party slot
+            if pokemon_idx is None:
                 continue
 
-            # Skip the active Pokemon
-            if pokemon.get('name', '').lower() == mainpokemon_name.lower():
+            # Skip the active slot (the one currently battling)
+            if slot_idx == active_slot:
+                continue
+
+            # Get the Pokemon from the list
+            if pokemon_idx < 0 or pokemon_idx >= len(pokemon_list):
+                continue
+
+            pokemon = pokemon_list[pokemon_idx]
+            if not isinstance(pokemon, dict):
                 continue
 
             # Check if holding EXP Share
             held_item = pokemon.get('held_item', '')
             if held_item and ('exp' in held_item.lower() and 'share' in held_item.lower()):
-                exp_share_recipients.append((i, pokemon))
+                exp_share_recipients.append((pokemon_idx, pokemon))
 
         if not exp_share_recipients:
             return
