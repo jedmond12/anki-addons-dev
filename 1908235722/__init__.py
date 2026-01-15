@@ -9808,11 +9808,36 @@ class ItemWindow(QWidget):
             use_item_button = QPushButton(f"Evolve Fossil to {fossil_pokemon_name.capitalize()}")
             use_item_button.clicked.connect(lambda: self.Evolve_Fossil(item_name, fossil_id, fossil_pokemon_name))
         else:
-            use_item_button = QPushButton("Evolve Pokemon")
-            use_item_button.clicked.connect(lambda: self.Check_Evo_Item(comboBox.currentText(), item_name))
+            # Create comboBox FIRST (before referencing it in lambda)
             comboBox = QComboBox()
+            comboBox.addItem("Select Pokemon...", None)  # Default/placeholder
             self.PokemonList(comboBox)
             item_frame.addWidget(comboBox)
+
+            # Determine button text based on item type
+            is_exp_share = 'exp' in item_name and 'share' in item_name
+            is_mega_stone = '80px-bag_' in item_name and 'za_sprite' in item_name
+
+            if is_exp_share:
+                button_text = "Assign EXP Share"
+            elif is_mega_stone:
+                button_text = "Assign Mega Stone"
+            else:
+                button_text = "Use Item"
+
+            use_item_button = QPushButton(button_text)
+
+            # Connect button with proper closure
+            def _assign_item(*, _combo=comboBox, _item=item_name):
+                selected_pokemon = _combo.currentText()
+                if selected_pokemon == "Select Pokemon..." or not selected_pokemon:
+                    showInfo("Please select a Pokemon first!")
+                    return
+                self.Check_Evo_Item(selected_pokemon, _item)
+                # Refresh the ItemBag after assignment
+                self.renewWidgets()
+
+            use_item_button.clicked.connect(_assign_item)
         item_frame.addWidget(use_item_button)
         item_frame.addWidget(info_item_button)
         item_frame_widget = QWidget()
@@ -9863,6 +9888,9 @@ class ItemWindow(QWidget):
 
     def Check_Evo_Item(self, pkmn_name, item_name):
         try:
+            # Debug logging
+            print(f"[ItemBag] Check_Evo_Item called: pkmn_name={pkmn_name}, item_name={item_name}")
+
             # Check if it's EXP Share (held item, not evolution item)
             if "exp" in item_name.lower() and "share" in item_name.lower():
                 # Check if another Pokemon already holds this item
@@ -9960,6 +9988,8 @@ class ItemWindow(QWidget):
         """Assign a held item to a Pokemon"""
         try:
             global mypokemon_path, pokecollection_win
+            print(f"[ItemBag] assign_held_item called: pkmn_name={pkmn_name}, item_name={item_name}")
+
             with open(mypokemon_path, 'r') as file:
                 pokemon_list = json.load(file)
 
@@ -9967,19 +9997,27 @@ class ItemWindow(QWidget):
             pokemon_found = False
             for pokemon in pokemon_list:
                 if pokemon['name'].lower() == pkmn_name.lower():
+                    old_item = pokemon.get('held_item', 'None')
                     pokemon['held_item'] = item_name
                     pokemon_found = True
+                    print(f"[ItemBag] Updated {pkmn_name}: held_item changed from {old_item} to {item_name}")
                     break
+
+            if not pokemon_found:
+                print(f"[ItemBag] WARNING: Pokemon '{pkmn_name}' not found in collection!")
+                return
 
             # Save the updated Pokemon data
             with open(mypokemon_path, 'w') as file:
                 json.dump(pokemon_list, file, indent=2)
+            print(f"[ItemBag] Pokemon data saved to {mypokemon_path}")
 
             # Refresh Pokemon collection dialog if it's open
             if pokemon_found:
                 try:
                     if pokecollection_win and pokecollection_win.isVisible():
                         pokecollection_win.refresh_pokemon_collection()
+                        print(f"[ItemBag] Refreshed Pokemon collection dialog")
                 except Exception:
                     pass
 
