@@ -4144,7 +4144,14 @@ class PokemonCollectionDialog(QDialog):
                         pokemon_iv = pokemon['iv']
                         pokemon_description = search_pokeapi_db_by_id(pokemon_id, "description")
                         if gif_in_collection is True:
-                            pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
+                            # Check if Pokemon is in Mega form
+                            if pokemon.get('is_mega', False):
+                                pkmn_image_path = str(user_path_sprites / "front_mega_pokemon_gif" / f"{pokemon_id}.gif")
+                                # Fallback to normal if mega sprite doesn't exist
+                                if not os.path.exists(pkmn_image_path):
+                                    pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
+                            else:
+                                pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
                             splash_label = MovieSplashLabel(pkmn_image_path)
                         else:
                             pkmn_image_path = str(frontdefault / f"{pokemon_id}.png")
@@ -4378,7 +4385,14 @@ class PokemonCollectionDialog(QDialog):
                             pokemon_iv = pokemon['iv']
                             pokemon_description = search_pokeapi_db_by_id(pokemon_id, "description")
                             if gif_in_collection is True:
-                                pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
+                                # Check if Pokemon is in Mega form
+                                if pokemon.get('is_mega', False):
+                                    pkmn_image_path = str(user_path_sprites / "front_mega_pokemon_gif" / f"{pokemon_id}.gif")
+                                    # Fallback to normal if mega sprite doesn't exist
+                                    if not os.path.exists(pkmn_image_path):
+                                        pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
+                                else:
+                                    pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
                                 splash_label = MovieSplashLabel(pkmn_image_path)
                             else:
                                 pkmn_image_path = str(frontdefault / f"{pokemon_id}.png")
@@ -7344,8 +7358,11 @@ class TestWindow(QWidget):
             pokedex_icon = QIcon()
             pokeball_icon = QIcon()
 
-        # Pokedex button (with icon)
+        # Pokedex button (with icon - explicitly sized)
         pokedex_btn = QPushButton(pokedex_icon, "Pokédex")
+        # Set explicit icon size for larger visibility
+        from PyQt6.QtCore import QSize
+        pokedex_btn.setIconSize(QSize(32, 32))  # Larger icon
         pokedex_btn.setStyleSheet("""
             QPushButton {
                 background-color: #5a9fd4;
@@ -7708,7 +7725,29 @@ class TestWindow(QWidget):
         player_pkmn_label = QLabel(container)
         player_pkmn_label.setStyleSheet("background: transparent;")
         player_pkmn_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
+
+        # Check if player Pokemon is Mega (load from mypokemon.json)
+        player_is_mega = False
+        try:
+            party = _load_party()
+            active_slot = party.get("active_slot", 0)
+            party_slots = party.get("slots", [0, 1, 2, 3])
+            active_pokemon_index = party_slots[active_slot]
+            pokemon_list = _load_mypokemon_list()
+            if active_pokemon_index < len(pokemon_list):
+                active_pokemon = pokemon_list[active_pokemon_index]
+                player_is_mega = active_pokemon.get('is_mega', False)
+        except Exception as e:
+            print(f"[Mega] Could not check if player Pokemon is mega: {e}")
+
+        # Use mega sprite if Pokemon is in Mega form
+        if player_is_mega:
+            player_gif_path = user_path_sprites / "back_mega_pokemon_gif" / f"{mainpokemon_id}.gif"
+            if not player_gif_path.exists():
+                player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
+        else:
+            player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
+
         if player_gif_path.exists():
             player_movie = QMovie(str(player_gif_path))
             player_movie.setScaledSize(QSize(player_size, player_size))
@@ -10015,7 +10054,7 @@ class ItemWindow(QWidget):
             print(f"Error removing held item: {e}")
 
     def assign_held_item(self, pkmn_name, item_name):
-        """Assign a held item to a Pokemon"""
+        """Assign a held item to a Pokemon and trigger Mega if it's a mega stone"""
         try:
             global mypokemon_path, pokecollection_win
             print(f"[ItemBag] assign_held_item called: pkmn_name={pkmn_name}, item_name={item_name}")
@@ -10025,12 +10064,24 @@ class ItemWindow(QWidget):
 
             # Find the Pokemon and assign the item
             pokemon_found = False
+            pokemon_obj = None
             for pokemon in pokemon_list:
                 if pokemon['name'].lower() == pkmn_name.lower():
                     old_item = pokemon.get('held_item', 'None')
                     pokemon['held_item'] = item_name
+                    pokemon_obj = pokemon
                     pokemon_found = True
                     print(f"[ItemBag] Updated {pkmn_name}: held_item changed from {old_item} to {item_name}")
+
+                    # Check if this is a mega stone - if so, trigger mega form
+                    if item_name and "80px-Bag_" in item_name and "ZA_Sprite" in item_name:
+                        pokemon_id = pokemon.get('id')
+                        if pokemon_id and pokemon_id in _get_mega_capable_pokemon_ids():
+                            pokemon['is_mega'] = True
+                            print(f"[Mega] {pkmn_name} transformed into Mega form!")
+                            tooltipWithColour(f"⚡ {pkmn_name} transformed into Mega {pkmn_name}!", "#FF00FF")
+                        else:
+                            pokemon['is_mega'] = False
                     break
 
             if not pokemon_found:
@@ -10365,17 +10416,26 @@ def _save_party(party: dict):
         json.dump(party, f, indent=2)
 
 def _remove_pokemon_held_item(pkmn_name):
-    """Remove held item from a specific Pokemon and return it to inventory"""
+    """Remove held item from a specific Pokemon, revert Mega form, and return item to inventory"""
     try:
         global mypokemon_path, itembag_path
         with open(mypokemon_path, 'r') as file:
             pokemon_list = json.load(file)
 
         item_removed = None
+        was_mega = False
         for pokemon in pokemon_list:
             if pokemon['name'].lower() == pkmn_name.lower():
                 item_removed = pokemon.get('held_item')
                 pokemon['held_item'] = None
+
+                # If this was a mega stone, revert mega form
+                if item_removed and "80px-Bag_" in item_removed and "ZA_Sprite" in item_removed:
+                    if pokemon.get('is_mega', False):
+                        pokemon['is_mega'] = False
+                        was_mega = True
+                        print(f"[Mega] {pkmn_name} reverted from Mega form!")
+                        tooltipWithColour(f"{pkmn_name} reverted to normal form", "#888888")
                 break
 
         # Save updated Pokemon data
@@ -11356,10 +11416,16 @@ if database_complete != False:
     qconnect(test_action10.triggered, test_window.open_dynamic_window)
     mw.pokemenu.addAction(test_action10)
 
-    # 2. Pokédex (with Pokédex icon)
+    # 2. Pokédex (with Pokédex icon - explicitly sized)
     complete_pokedex_action = QAction(pokedex_icon, "Pokédex", mw)
     qconnect(complete_pokedex_action.triggered, complete_pokedex.show_complete_pokedex)
     mw.pokemenu.addAction(complete_pokedex_action)
+    # Set explicit icon size for Pokédex in menu
+    try:
+        from PyQt6.QtCore import QSize
+        mw.pokemenu.setIconSize(QSize(24, 24))  # Larger icon size
+    except Exception:
+        pass
 
     # 3. Show Pokémon Collection (with Pokéball icon)
     pokecol_action = QAction(pokeball_icon, "Show Pokémon Collection", mw)
@@ -11382,10 +11448,22 @@ if database_complete != False:
     # Add Ankimon Configure Menu shortcut to Settings submenu
     try:
         configure_action = QAction("Ankimon Configure Menu", mw)
-        qconnect(configure_action.triggered, lambda: mw.addonManager.onConfig("1908235722"))
+        def open_config():
+            try:
+                # Try modern Anki 24.11 API
+                mw.addonManager.showConfigWindow("1908235722")
+            except AttributeError:
+                try:
+                    # Fallback: open addons dialog
+                    from aqt.addons import AddonsDialog
+                    dialog = AddonsDialog(mw.addonManager)
+                    dialog.exec()
+                except Exception as e2:
+                    showInfo(f"Please open config via: Tools → Add-ons → Ankimon → Config\n(Error: {e2})")
+        qconnect(configure_action.triggered, open_config)
         settings_menu.addAction(configure_action)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Could not add config menu item: {e}")
 
     # 5. Separator
     mw.pokemenu.addSeparator()
