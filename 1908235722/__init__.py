@@ -7501,7 +7501,6 @@ class TestWindow(QWidget):
         layout.addWidget(self.content_widget)
 
         # Add initial logo
-        global addon_dir
         image_file = f"ankimon_logo.png"
         image_path = str(addon_dir) + "/" + image_file
         image_label = QLabel()
