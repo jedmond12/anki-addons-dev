@@ -3445,6 +3445,14 @@ def on_review_card(*args):
                                 color = "#D2B4DE"
                             if enemy_move["basePower"] == 0:
                                 enemy_dmg = bP_none_moves(enemy_move)
+
+                                # Apply mega evolution damage reduction (0.85x taken)
+                                try:
+                                    if _is_mega_active():
+                                        enemy_dmg = int(enemy_dmg * 0.85)
+                                except Exception:
+                                    pass
+
                                 mainpokemon_hp -= int(enemy_dmg)
                                 if enemy_dmg == 0:
                                     msg += "\n Move has missed !"
@@ -3550,6 +3558,14 @@ def on_review_card(*args):
                                 color = "#D2B4DE"
                             if move["basePower"] == 0:
                                 dmg = bP_none_moves(move)
+
+                                # Apply mega evolution damage boost (1.25x dealt)
+                                try:
+                                    if _is_mega_active():
+                                        dmg = int(dmg * 1.25)
+                                except Exception:
+                                    pass
+
                                 hp -= dmg
                                 if dmg == 0:
                                     msg += "\n Move has missed !"
@@ -3592,6 +3608,14 @@ def on_review_card(*args):
                                 def_stat = stats["def"]
                                 atk_stat = mainpokemon_stats["atk"]
                             dmg = int(calc_atk_dmg(mainpokemon_level, multiplier,random.randint(60, 100), atk_stat, def_stat, mainpokemon_type, "Normal",type, critRatio))
+
+                            # Apply mega evolution damage boost (1.25x dealt)
+                            try:
+                                if _is_mega_active():
+                                    dmg = int(dmg * 1.25)
+                            except Exception:
+                                pass
+
                             hp -= dmg
                         if hp <= 0:
                             hp = 0
@@ -11206,11 +11230,39 @@ def _reset_mega_battle_state():
         print(f"Error resetting mega state: {e}")
 
 def _is_mega_active():
-    """Check if mega evolution is currently active"""
+    """Check if active Pokemon is in Mega form - CRASH-PROOF"""
     try:
-        mega_state = _load_mega_state()
-        return mega_state.get("mega_active", False)
-    except Exception:
+        # Load party safely
+        party = _load_party()
+        if not party or not isinstance(party, dict):
+            return False
+
+        active_slot = party.get("active_slot", 0)
+        party_slots = party.get("slots", [0, 1, 2, 3])
+
+        if not isinstance(party_slots, list) or active_slot >= len(party_slots):
+            return False
+
+        active_pokemon_index = party_slots[active_slot]
+        if active_pokemon_index is None:
+            return False
+
+        # Load Pokemon list safely
+        pokemon_list = _load_mypokemon_list()
+        if not pokemon_list or not isinstance(pokemon_list, list):
+            return False
+
+        if active_pokemon_index >= len(pokemon_list):
+            return False
+
+        active_pokemon = pokemon_list[active_pokemon_index]
+        if not active_pokemon or not isinstance(active_pokemon, dict):
+            return False
+
+        # Check is_mega flag
+        return active_pokemon.get('is_mega', False)
+    except Exception as e:
+        print(f"[Mega] Error checking is_mega_active: {e}")
         return False
 
 def _complete_legendary_capture(legendary_type):
@@ -11397,6 +11449,88 @@ except Exception:
     pass
 # ---------------------------------------------------------
 
+# DEVELOPER MODE: MEGA TOGGLE (NO CRASHES GUARANTEED)
+def _dev_toggle_mega_for_active():
+    """Toggle Mega form for active Pokemon - CRASH-PROOF"""
+    try:
+        print("[DevMega] Toggle Mega called")
+
+        # Load party safely
+        party = _load_party()
+        if not party or not isinstance(party, dict):
+            showInfo("Failed to load party data")
+            return
+
+        active_slot = party.get("active_slot", 0)
+        party_slots = party.get("slots", [0, 1, 2, 3])
+
+        if not isinstance(party_slots, list) or active_slot >= len(party_slots):
+            showInfo(f"Invalid party slot: {active_slot}")
+            return
+
+        active_pokemon_index = party_slots[active_slot]
+        if active_pokemon_index is None:
+            showInfo("No Pokemon in active slot")
+            return
+
+        # Load Pokemon list safely
+        pokemon_list = _load_mypokemon_list()
+        if not pokemon_list or not isinstance(pokemon_list, list):
+            showInfo("Failed to load Pokemon list")
+            return
+
+        if active_pokemon_index >= len(pokemon_list):
+            showInfo(f"Invalid Pokemon index: {active_pokemon_index}")
+            return
+
+        active_pokemon = pokemon_list[active_pokemon_index]
+        if not active_pokemon or not isinstance(active_pokemon, dict):
+            showInfo("Invalid Pokemon data")
+            return
+
+        # Get Pokemon info
+        pokemon_name = active_pokemon.get('name', 'Unknown')
+        pokemon_id = active_pokemon.get('id', 0)
+        current_mega_state = active_pokemon.get('is_mega', False)
+
+        # Toggle Mega
+        new_mega_state = not current_mega_state
+        active_pokemon['is_mega'] = new_mega_state
+
+        # Save safely
+        try:
+            global mypokemon_path
+            with open(mypokemon_path, 'w') as file:
+                json.dump(pokemon_list, file, indent=2)
+            print(f"[DevMega] Saved {pokemon_name} is_mega={new_mega_state}")
+        except Exception as e:
+            showInfo(f"Failed to save: {e}")
+            return
+
+        # Show result
+        if new_mega_state:
+            tooltipWithColour(f"⚡ {pokemon_name} is now MEGA! (ID: {pokemon_id})", "#FF00FF")
+            showInfo(f"✓ {pokemon_name} transformed to Mega form!\n\nStats boosted:\n• Outgoing damage: +25%\n• Incoming damage: -15%")
+        else:
+            tooltipWithColour(f"{pokemon_name} reverted to normal form", "#888888")
+            showInfo(f"✓ {pokemon_name} reverted to normal form")
+
+        # Refresh collection window if open
+        try:
+            global pokecollection_win
+            if pokecollection_win and pokecollection_win.isVisible():
+                pokecollection_win.refresh_pokemon_collection()
+        except Exception:
+            pass
+
+    except Exception as e:
+        print(f"[DevMega] ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        showInfo(f"Mega toggle failed: {e}")
+
+# ---------------------------------------------------------
+
 if database_complete != False:
     # Load icons from icons/ folder
     try:
@@ -11464,6 +11598,18 @@ if database_complete != False:
         settings_menu.addAction(configure_action)
     except Exception as e:
         print(f"Could not add config menu item: {e}")
+
+    # 4b. Developer Mode submenu
+    developer_menu = QMenu("Developer Mode", mw)
+    mw.pokemenu.addMenu(developer_menu)
+
+    # Developer Mode: Toggle Mega for Active Pokemon
+    try:
+        toggle_mega_action = QAction("⚡ Toggle Mega for Active Pokémon", mw)
+        qconnect(toggle_mega_action.triggered, _dev_toggle_mega_for_active)
+        developer_menu.addAction(toggle_mega_action)
+    except Exception as e:
+        print(f"Could not add developer mega toggle: {e}")
 
     # 5. Separator
     mw.pokemenu.addSeparator()
