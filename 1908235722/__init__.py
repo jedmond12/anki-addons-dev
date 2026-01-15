@@ -1231,7 +1231,7 @@ if database_complete != False:
                     traceback.print_exc()
 
                 # Return a basic fallback to prevent crash, but gym is now reset
-                tooltipWithColour("⚠️ Gym battle reset due to pokemon generation error", "#FF0000")
+                tooltipWithColour("Gym battle reset due to pokemon generation error", "#FF0000")
 
                 # Calculate proper HP for fallback Pikachu (level 5)
                 pikachu_base_hp = 35
@@ -1243,7 +1243,7 @@ if database_complete != False:
             else:
                 # Wild pokemon - fallback to Pikachu is OK
                 try:
-                    tooltipWithColour("⚠️ Pokemon generation failed, using fallback", "#FF0000")
+                    tooltipWithColour("Pokemon generation failed, using fallback", "#FF0000")
                 except:
                     pass
 
@@ -1277,7 +1277,7 @@ if database_complete != False:
                 forced_next_pokemon_id = None
                 pokemon_species = None
                 try:
-                    tooltipWithColour(f"🎯 Forced encounter activated!", "#00FF00")
+                    tooltipWithColour(f"Forced encounter activated!", "#00FF00")
                 except:
                     pass
             # If a gym battle is active, lock the opponent to the current gym team.
@@ -1355,7 +1355,7 @@ if database_complete != False:
                 except Exception as e:
                     # Log the error for debugging
                     try:
-                        tooltipWithColour(f"⚠️ Error checking min level for {name}: {str(e)[:50]}", "#FF0000")
+                        tooltipWithColour(f"Error checking min level for {name}: {str(e)[:50]}", "#FF0000")
                     except:
                         pass
                     # Recursive call with depth tracking
@@ -1498,6 +1498,12 @@ def kill_pokemon():
     exp = int(calc_experience(base_experience, level))
     mainpokemon_level = save_main_pokemon_progress(mainpokemon_path, mainpokemon_level, mainpokemon_name, mainpokemon_base_experience, mainpokemon_growth_rate, exp)
 
+    # Distribute EXP to Pokemon holding EXP Share (50% of earned EXP)
+    try:
+        _distribute_exp_share(exp)
+    except Exception as e:
+        print(f"Error distributing EXP Share: {e}")
+
     # Track battle wins in progression stats
     try:
         stats_data = _load_progression_stats()
@@ -1540,7 +1546,7 @@ def kill_pokemon():
             try:
                 current_energy = mega_state["mega_energy"]
                 if current_energy % 5 == 0:  # Show message every 5 energy
-                    tooltipWithColour(f"⚡ Mega Energy: {current_energy}/20", "#00FFFF")
+                    tooltipWithColour(f"Mega Energy: {current_energy}/20", "#00FFFF")
             except:
                 pass
     except Exception:
@@ -1562,7 +1568,7 @@ def kill_pokemon():
             conf["ankimon_gym_enemy_index"] = 0
             mw.col.setMod()
             try:
-                tooltipWithColour("🏟 Gym Battle Starting!", "#FFD700")
+                tooltipWithColour("Gym Battle Starting!", "#FFD700")
             except:
                 pass
             if pkmn_window is True:
@@ -1582,7 +1588,7 @@ def kill_pokemon():
             mw.col.setMod()
             try:
                 member_name = conf.get("ankimon_elite_four_member_name", "Elite Four")
-                tooltipWithColour(f"⚔️ Elite Four {member_name} Battle Starting!", "#FFD700")
+                tooltipWithColour(f"Elite Four {member_name} Battle Starting!", "#FFD700")
             except:
                 pass
             if pkmn_window is True:
@@ -1601,7 +1607,7 @@ def kill_pokemon():
             conf["ankimon_champion_pokemon_index"] = 0
             mw.col.setMod()
             try:
-                tooltipWithColour("👑 Champion Cynthia Battle Starting!", "#FFD700")
+                tooltipWithColour("Champion Cynthia Battle Starting!", "#FFD700")
             except:
                 pass
             if pkmn_window is True:
@@ -1891,9 +1897,19 @@ def save_main_pokemon_progress(mainpokemon_path, mainpokemon_level, mainpokemon_
         if mainpokemon_evolution:
             for pokemon in mainpokemon_evolution:
                 min_level = search_pokedex(pokemon.lower(), "evoLevel")
-                if min_level == mainpokemon_level:
+                evo_type = search_pokedex(pokemon.lower(), "evoType")
+                evo_item = search_pokedex(pokemon.lower(), "evoItem")
+
+                # Trigger evolution if:
+                # 1. Current level >= evolution level (handles over-leveled captures)
+                # 2. It's a level-based evolution (no item required)
+                if (min_level and mainpokemon_level >= min_level and
+                    (evo_type is None or evo_type == "levelUp") and
+                    (evo_item is None or evo_item == "None")):
                     msg = ""
-                    msg += f"{mainpokemon_name} is about to evolve to {pokemon} at level {min_level}"
+                    msg += f"{mainpokemon_name} is about to evolve to {pokemon} at level {mainpokemon_level}"
+                    if mainpokemon_level > min_level:
+                        msg += f" (evolution level: {min_level})"
                     showInfo(f"{msg}")
                     color = "#6A4DAC"
                     try:
@@ -2284,11 +2300,19 @@ def catch_pokemon(nickname):
                 conf["ankimon_gym_enemy_index"] = 0
                 mw.col.setMod()
                 try:
-                    tooltipWithColour("🏟 Gym Battle Starting!", "#FFD700")
+                    tooltipWithColour("Gym Battle Starting!", "#FFD700")
                 except:
                     pass
                 new_pokemon()  # Spawn first gym pokemon
                 return
+        except Exception:
+            pass
+
+        # Refresh captured Pokemon collection dialog if it's open
+        try:
+            global pokecollection_win
+            if pokecollection_win and pokecollection_win.isVisible():
+                pokecollection_win.refresh_pokemon_collection()
         except Exception:
             pass
 
@@ -2669,7 +2693,7 @@ def complete_gym_battle():
 
         # Show completion message
         try:
-            completion_msg = f"🏆 Gym {gym_number} battle complete! Collect 100 more cards for the next gym."
+            completion_msg = f"Gym {gym_number} battle complete! Collect 100 more cards for the next gym."
             tooltipWithColour(completion_msg, "#FFD700")
         except:
             pass
@@ -2743,9 +2767,9 @@ def complete_elite_four_member():
         # Show completion message
         try:
             if (member_index + 1) >= 4:
-                tooltipWithColour(f"🏆 Elite Four {member_name} defeated! All Elite Four members conquered!", "#FFD700")
+                tooltipWithColour(f"Elite Four {member_name} defeated! All Elite Four members conquered!", "#FFD700")
             else:
-                tooltipWithColour(f"🏆 Elite Four {member_name} defeated! Collect 150 more cards for the next member.", "#FFD700")
+                tooltipWithColour(f"Elite Four {member_name} defeated! Collect 150 more cards for the next member.", "#FFD700")
         except:
             pass
 
@@ -2835,7 +2859,7 @@ def complete_champion_battle():
                 except Exception as e:
                     print(f"Error displaying Key Stone: {e}")
 
-                tooltipWithColour("🔑 You obtained the Key Stone! Mega Evolution is now unlocked!", "#FF00FF")
+                tooltipWithColour("You obtained the Key Stone! Mega Evolution is now unlocked!", "#FF00FF")
             except Exception as e:
                 print(f"Error unlocking Key Stone: {e}")
 
@@ -2847,13 +2871,13 @@ def complete_champion_battle():
                     mega_state["mega_stones"] = {}
                 mega_state["mega_stones"]["448"] = mega_state["mega_stones"].get("448", 0) + 1
                 _save_mega_state(mega_state)
-                tooltipWithColour("✨ You obtained Lucarionite! (Lucario's Mega Stone)", "#FF00FF")
+                tooltipWithColour("You obtained Lucarionite! (Lucario's Mega Stone)", "#FF00FF")
             except Exception as e:
                 print(f"Error awarding Lucarionite: {e}")
 
         # Show completion message
         try:
-            tooltipWithColour("👑 Champion Cynthia defeated! You are the new Champion!", "#FFD700")
+            tooltipWithColour("Champion Cynthia defeated! You are the new Champion!", "#FFD700")
         except:
             pass
 
@@ -2965,7 +2989,7 @@ def _trigger_round_progression():
             print(f"Error resetting counters: {e}")
 
         # Show round progression message
-        tooltipWithColour(f"🎊 Round {new_round} begins! Gyms will be stronger now!", "#00FFFF")
+        tooltipWithColour(f"Round {new_round} begins! Gyms will be stronger now!", "#00FFFF")
 
     except Exception as e:
         print(f"Error in round progression: {e}")
@@ -3653,7 +3677,7 @@ def on_review_card(*args):
                                             try:
                                                 member_name = conf.get("ankimon_elite_four_member_name", "Elite Four")
                                                 remaining = len(enemy_ids) - (pokemon_idx + 1)
-                                                tooltipWithColour(f"⚔️ {member_name} has {remaining} Pokemon remaining!", "#FFD700")
+                                                tooltipWithColour(f"{member_name} has {remaining} Pokemon remaining!", "#FFD700")
                                             except:
                                                 pass
                                             new_pokemon()
@@ -3691,7 +3715,7 @@ def on_review_card(*args):
                                             mw.col.setMod()
                                             try:
                                                 remaining = len(enemy_ids) - (pokemon_idx + 1)
-                                                tooltipWithColour(f"👑 Champion Cynthia has {remaining} Pokemon remaining!", "#FFD700")
+                                                tooltipWithColour(f"Champion Cynthia has {remaining} Pokemon remaining!", "#FFD700")
                                             except:
                                                 pass
                                             new_pokemon()
@@ -4181,6 +4205,16 @@ class PokemonCollectionDialog(QDialog):
                         ability_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
                         ability_label.setFont(fontpkmnspec)
 
+                        # Held Item
+                        pokemon_held_item = pokemon.get('held_item', None)
+                        if pokemon_held_item:
+                            held_item_txt = f" Held Item: {pokemon_held_item.replace('_', ' ').replace('-', ' ').title()}"
+                        else:
+                            held_item_txt = " Held Item: None"
+                        held_item_label = QLabel(held_item_txt)
+                        held_item_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+                        held_item_label.setFont(fontpkmnspec)
+
                         image_label.setPixmap(pixmap)
 
                         pokemon_button = QPushButton("Show me Details")
@@ -4249,12 +4283,14 @@ class PokemonCollectionDialog(QDialog):
                         container_layout.addWidget(level_label)
                         container_layout.addWidget(type_label)
                         container_layout.addWidget(ability_label)
+                        container_layout.addWidget(held_item_label)
                         container_layout.addWidget(pokemon_button)
                         container_layout.addWidget(slot_combo)
                         type_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         level_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         ability_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        held_item_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
                         pokemon_container.setLayout(container_layout)
                         self.scroll_layout.addWidget(pokemon_container, row, column)
@@ -4387,6 +4423,16 @@ class PokemonCollectionDialog(QDialog):
                             ability_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
                             ability_label.setFont(fontpkmnspec)
 
+                            # Held Item
+                            pokemon_held_item = pokemon.get('held_item', None)
+                            if pokemon_held_item:
+                                held_item_txt = f" Held Item: {pokemon_held_item.replace('_', ' ').replace('-', ' ').title()}"
+                            else:
+                                held_item_txt = " Held Item: None"
+                            held_item_label = QLabel(held_item_txt)
+                            held_item_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+                            held_item_label.setFont(fontpkmnspec)
+
                             image_label.setPixmap(pixmap)
 
                             pokemon_button = QPushButton("Show me Details")
@@ -4455,12 +4501,14 @@ class PokemonCollectionDialog(QDialog):
                             container_layout.addWidget(level_label)
                             container_layout.addWidget(type_label)
                             container_layout.addWidget(ability_label)
+                            container_layout.addWidget(held_item_label)
                             container_layout.addWidget(pokemon_button)
                             container_layout.addWidget(slot_combo)
                             type_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                             name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                             level_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                             ability_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                            held_item_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
                             pokemon_container.setLayout(container_layout)
                             self.scroll_layout.addWidget(pokemon_container, row, column)
@@ -7061,7 +7109,7 @@ def show_progression_stats():
         dlg.setLayout(layout)
 
         # Title
-        title = QLabel("📊 PROGRESSION STATS")
+        title = QLabel("PROGRESSION STATS")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         font = title.font()
         font.setPointSize(18)
@@ -7078,7 +7126,7 @@ def show_progression_stats():
         scroll_content.setLayout(scroll_layout)
 
         # Lifetime Stats Section
-        lifetime_label = QLabel("🏆 LIFETIME STATS")
+        lifetime_label = QLabel("LIFETIME STATS")
         lifetime_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #00FFFF; padding: 5px;")
         scroll_layout.addWidget(lifetime_label)
 
@@ -7111,7 +7159,7 @@ def show_progression_stats():
 
         # Current Round Section
         scroll_layout.addSpacing(15)
-        current_round_label = QLabel(f"🎯 CURRENT ROUND (Round {stats['lifetime'].get('current_round', 1)})")
+        current_round_label = QLabel(f"CURRENT ROUND (Round {stats['lifetime'].get('current_round', 1)})")
         current_round_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #FF6B6B; padding: 5px;")
         scroll_layout.addWidget(current_round_label)
 
@@ -7152,7 +7200,7 @@ def show_progression_stats():
 
         # Legendary Captures Section
         scroll_layout.addSpacing(15)
-        legendary_label = QLabel("⭐ LEGENDARY CAPTURES")
+        legendary_label = QLabel("LEGENDARY CAPTURES")
         legendary_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #FFD700; padding: 5px;")
         scroll_layout.addWidget(legendary_label)
 
@@ -7349,7 +7397,7 @@ class TestWindow(QWidget):
         button_layout.addWidget(collection_btn)
 
         # Progression Stats button
-        progression_btn = QPushButton("📊 Progression")
+        progression_btn = QPushButton("Progression")
         progression_btn.setStyleSheet("""
             QPushButton {
                 background-color: #9b59b6;
@@ -8091,7 +8139,7 @@ class TestWindow(QWidget):
                 gym_names = ["Roark", "Gardenia", "Maylene", "Crasher Wake", "Fantina", "Byron", "Candice", "Volkner"]
                 gym_name = gym_names[gym_index]
                 pct = int((gym_counter / ANKIMON_GYM_TARGET) * 100)
-                self.progress_label.setText(f"🏟 Next Gym ({gym_name}): {gym_counter}/{ANKIMON_GYM_TARGET} cards ({pct}%)")
+                self.progress_label.setText(f"Next Gym ({gym_name}): {gym_counter}/{ANKIMON_GYM_TARGET} cards ({pct}%)")
                 self.progress_label.setVisible(True)
             elif not _ankimon_all_elite_four_defeated():
                 # Working on Elite Four
@@ -8100,13 +8148,13 @@ class TestWindow(QWidget):
                 members = ["Aaron", "Bertha", "Flint", "Lucian"]
                 member_name = members[member_idx]
                 pct = int((elite_counter / ANKIMON_ELITE_FOUR_TARGET) * 100)
-                self.progress_label.setText(f"⚔️ Elite Four ({member_name}): {elite_counter}/{ANKIMON_ELITE_FOUR_TARGET} cards ({pct}%)")
+                self.progress_label.setText(f"Elite Four ({member_name}): {elite_counter}/{ANKIMON_ELITE_FOUR_TARGET} cards ({pct}%)")
                 self.progress_label.setVisible(True)
             else:
                 # Working on Champion
                 champion_counter = conf.get("ankimon_champion_counter", 0)
                 pct = int((champion_counter / ANKIMON_CHAMPION_TARGET) * 100)
-                self.progress_label.setText(f"👑 Champion (Cynthia): {champion_counter}/{ANKIMON_CHAMPION_TARGET} cards ({pct}%)")
+                self.progress_label.setText(f"Champion (Cynthia): {champion_counter}/{ANKIMON_CHAMPION_TARGET} cards ({pct}%)")
                 self.progress_label.setVisible(True)
         except Exception as e:
             print(f"Error updating progress label: {e}")
@@ -8288,7 +8336,7 @@ class TestWindow(QWidget):
             button_layout.addWidget(next_button)
         else:
             # Gym Complete button
-            complete_button = QPushButton("🏆 Gym Complete!")
+            complete_button = QPushButton("Gym Complete!")
             complete_button.setFixedSize(200, 40)
             complete_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
             complete_button.setStyleSheet("""
@@ -9329,7 +9377,7 @@ class CompletePokedex(QWidget):
                 abilities = pokemon.get('abilities', {})
                 if abilities:
                     ability_text = " / ".join([v for k, v in abilities.items() if k in ['0', '1', 'H']][:2])
-                    ability_label = QLabel(f"⭐ {ability_text}")
+                    ability_label = QLabel(f"{ability_text}")
                     ability_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     ability_label.setStyleSheet("color: #ffd700; font-size: 10px;")
                     ability_label.setWordWrap(True)
@@ -9339,13 +9387,13 @@ class CompletePokedex(QWidget):
                 height = pokemon.get('heightm')
                 weight = pokemon.get('weightkg')
                 if height and weight:
-                    hw_label = QLabel(f"📏 {height}m | ⚖ {weight}kg")
+                    hw_label = QLabel(f"{height}m | {weight}kg")
                     hw_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     hw_label.setStyleSheet("color: #90c090; font-size: 10px;")
                     card_layout.addWidget(hw_label)
 
                 # Force Encounter button
-                encounter_btn = QPushButton("⚡ Force Encounter")
+                encounter_btn = QPushButton("Force Encounter")
                 encounter_btn.setStyleSheet("""
                     QPushButton {
                         background-color: #5a9fd4;
@@ -9401,11 +9449,18 @@ class CompletePokedex(QWidget):
     def force_encounter(self, pokemon_id, pokemon_name):
         """Set the next wild encounter to be this specific pokemon"""
         global forced_next_pokemon_id
-        forced_next_pokemon_id = pokemon_id
 
-        from aqt.utils import showInfo
-        showInfo(f"Next wild encounter will be: {pokemon_name.capitalize()} (#{pokemon_id})\n\nAnswer a card to trigger the encounter!")
-        self.close()
+        # Ensure pokemon_id is an integer
+        try:
+            forced_next_pokemon_id = int(pokemon_id)
+        except (ValueError, TypeError):
+            forced_next_pokemon_id = pokemon_id
+
+        # Use tooltip instead of dialog to avoid interruption
+        tooltipWithColour(f"Force Encounter set: {pokemon_name.capitalize()} (#{forced_next_pokemon_id})\nAnswer a card to trigger!", "#00FF00")
+
+        # Keep Pokédex open for easier testing/iteration
+        # self.close()  # Removed to keep Pokédex open
 
     def show_complete_pokedex(self):
         self.load_all_pokemon()
@@ -9789,7 +9844,7 @@ class ItemWindow(QWidget):
                     # Assign mega stone to Pokemon
                     self.assign_held_item(pkmn_name, item_name)
                     self.delete_item(item_name)
-                    showInfo(f"✨ {stone_name} has been given to {pkmn_name.capitalize()}!\n{pkmn_name.capitalize()} can now Mega Evolve in battle!")
+                    showInfo(f"{stone_name} has been given to {pkmn_name.capitalize()}!\n{pkmn_name.capitalize()} can now Mega Evolve in battle!")
                 else:
                     showInfo(f"{pkmn_name.capitalize()} cannot use {stone_name}.\nThis stone is for a different Pokemon.")
                 return
@@ -9812,19 +9867,34 @@ class ItemWindow(QWidget):
     def assign_held_item(self, pkmn_name, item_name):
         """Assign a held item to a Pokemon"""
         try:
-            global mypokemon_path
+            global mypokemon_path, pokecollection_win
             with open(mypokemon_path, 'r') as file:
                 pokemon_list = json.load(file)
 
             # Find the Pokemon and assign the item
+            pokemon_found = False
             for pokemon in pokemon_list:
                 if pokemon['name'].lower() == pkmn_name.lower():
                     pokemon['held_item'] = item_name
+                    pokemon_found = True
                     break
 
             # Save the updated Pokemon data
             with open(mypokemon_path, 'w') as file:
                 json.dump(pokemon_list, file, indent=2)
+
+            # Show confirmation message for specific items
+            if pokemon_found:
+                item_display_name = item_name.replace('_', ' ').replace('-', ' ').title()
+                if 'exp' in item_name.lower() and 'share' in item_name.lower():
+                    showInfo(f"{pkmn_name.capitalize()} is now holding {item_display_name}!\n{pkmn_name.capitalize()} will gain EXP when other Pokémon battle.")
+
+                # Refresh Pokemon collection dialog if it's open
+                try:
+                    if pokecollection_win and pokecollection_win.isVisible():
+                        pokecollection_win.refresh_pokemon_collection()
+                except Exception:
+                    pass
 
         except Exception as e:
             print(f"Error assigning held item: {e}")
@@ -10139,6 +10209,129 @@ def _save_party(party: dict):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(party, f, indent=2)
 
+def _distribute_exp_share(exp_earned):
+    """Distribute 50% of earned EXP to all Pokemon holding EXP Share"""
+    global mypokemon_path, mainpokemon_name
+    try:
+        # Calculate shared EXP (50% of earned EXP)
+        shared_exp = int(exp_earned * 0.5)
+
+        if shared_exp <= 0:
+            return
+
+        # Load all caught Pokemon
+        if not mypokemon_path.is_file():
+            return
+
+        with open(mypokemon_path, 'r') as file:
+            pokemon_list = json.load(file)
+
+        if not isinstance(pokemon_list, list):
+            return
+
+        # Find Pokemon holding EXP Share (excluding the active Pokemon)
+        exp_share_recipients = []
+        for i, pokemon in enumerate(pokemon_list):
+            if not isinstance(pokemon, dict):
+                continue
+
+            # Skip the active Pokemon
+            if pokemon.get('name', '').lower() == mainpokemon_name.lower():
+                continue
+
+            # Check if holding EXP Share
+            held_item = pokemon.get('held_item', '')
+            if held_item and ('exp' in held_item.lower() and 'share' in held_item.lower()):
+                exp_share_recipients.append((i, pokemon))
+
+        if not exp_share_recipients:
+            return
+
+        # Distribute EXP to each recipient
+        pokemon_leveled_up = []
+        for idx, pokemon in exp_share_recipients:
+            pkmn_name = pokemon.get('name', 'Unknown')
+            original_level = pokemon.get('level', 1)
+            pkmn_level = original_level
+            pkmn_growth_rate = pokemon.get('growth_rate', 'medium')
+            pkmn_xp = pokemon.get('stats', {}).get('xp', 0)
+
+            # Add EXP
+            if pkmn_level < 100:
+                new_xp = pkmn_xp + shared_exp
+                pokemon['stats']['xp'] = new_xp
+
+                # Check for level-up
+                while pkmn_level < 100:
+                    exp_needed = find_experience_for_level(pkmn_growth_rate, pkmn_level)
+                    if new_xp >= exp_needed:
+                        pkmn_level += 1
+                        new_xp -= exp_needed
+                        pokemon['level'] = pkmn_level
+                        pokemon['stats']['xp'] = new_xp
+
+                        # Check for level-based evolution (for over-leveled captures)
+                        try:
+                            evos = search_pokedex(pkmn_name.lower(), "evos")
+                            if evos and isinstance(evos, list):
+                                for evo_name in evos:
+                                    evo_level = search_pokedex(evo_name.lower(), "evoLevel")
+                                    evo_type = search_pokedex(evo_name.lower(), "evoType")
+                                    # Only trigger evolution if:
+                                    # 1. It's a level-based evolution (evoType is None or "levelUp")
+                                    # 2. Current level is >= evolution level
+                                    # 3. No item is required
+                                    evo_item = search_pokedex(evo_name.lower(), "evoItem")
+                                    if (evo_level and pkmn_level >= evo_level and
+                                        (evo_type is None or evo_type == "levelUp") and
+                                        (evo_item is None or evo_item == "None")):
+                                        # Mark Pokemon for evolution notification
+                                        # (Full evolution handling would require UI interaction)
+                                        tooltipWithColour(f"{pkmn_name} can evolve to {evo_name}! (Level {pkmn_level} >= {evo_level})", "#FF00FF")
+                                        break
+                        except Exception:
+                            pass
+
+                        # Learn new moves at this level
+                        try:
+                            new_moves = get_levelup_move_for_pokemon(pkmn_name.lower(), pkmn_level)
+                            if new_moves:
+                                attacks = pokemon.get('attacks', [])
+                                for move in new_moves:
+                                    if len(attacks) < 4 and move not in attacks:
+                                        attacks.append(move)
+                                pokemon['attacks'] = attacks
+                        except Exception:
+                            pass
+                    else:
+                        break
+
+                # Update the pokemon in the list
+                pokemon_list[idx] = pokemon
+
+                # Track for notification
+                if pkmn_level > original_level:
+                    pokemon_leveled_up.append((pkmn_name, pkmn_level))
+
+        # Save updated Pokemon data
+        with open(mypokemon_path, 'w') as file:
+            json.dump(pokemon_list, file, indent=2)
+
+        # Show notification for EXP Share recipients
+        if exp_share_recipients:
+            recipient_count = len(exp_share_recipients)
+            if pokemon_leveled_up:
+                level_up_msgs = [f"{name} reached level {lvl}!" for name, lvl in pokemon_leveled_up]
+                msg = f"EXP Share: {shared_exp} EXP distributed to {recipient_count} Pokemon\n" + "\n".join(level_up_msgs)
+            else:
+                msg = f"EXP Share: {shared_exp} EXP distributed to {recipient_count} Pokemon"
+            tooltipWithColour(msg, "#FFD700")
+
+    except Exception as e:
+        print(f"Error in _distribute_exp_share: {e}")
+        import traceback
+        traceback.print_exc()
+
 def _load_progression_stats():
     """Load progression stats from JSON file with defaults"""
     default_stats = {
@@ -10375,7 +10568,7 @@ def _trigger_legendary_battle(legendary_type):
         battle_status = None
 
         # Show legendary encounter message
-        tooltipWithColour(f"⚡ A Legendary {name} appears! ⚡", "#FFD700")
+        tooltipWithColour(f"A Legendary {name} appears!", "#FFD700")
 
         # Update battle window if active
         global test_window, pkmn_window
@@ -10548,7 +10741,7 @@ def _award_random_mega_stone():
         except Exception as e:
             print(f"Error displaying mega stone: {e}")
 
-        tooltipWithColour(f"✨ Received {stone_name} for {pokemon_name}! ✨", "#FFD700")
+        tooltipWithColour(f"Received {stone_name} for {pokemon_name}!", "#FFD700")
         return True
     except Exception as e:
         print(f"Error awarding mega stone: {e}")
@@ -10641,7 +10834,7 @@ def _trigger_mega_evolution():
 
         # Show mega evolution message
         stone_name = _get_mega_stone_name(pokemon_id)
-        tooltipWithColour(f"⚡ {pokemon_name} Mega Evolved using {stone_name}! ⚡", "#FF00FF")
+        tooltipWithColour(f"⚡ {pokemon_name} Mega Evolved using {stone_name}!", "#FF00FF")
 
         return True
     except Exception as e:
@@ -10695,11 +10888,11 @@ def _complete_legendary_capture(legendary_type):
     global name
     if is_first_capture:
         save_caught_pokemon(name)
-        tooltipWithColour(f"🎉 {name} was captured! 🎉", "#FFD700")
+        tooltipWithColour(f"{name} was captured!", "#FFD700")
     else:
         # Re-battle - award mega stone instead
         _award_random_mega_stone()
-        tooltipWithColour(f"🏆 {name} defeated! You received a Mega Stone!", "#FFD700")
+        tooltipWithColour(f"{name} defeated! You received a Mega Stone!", "#FFD700")
 
 def _load_mypokemon_list():
     global mypokemon_path
@@ -10871,7 +11064,7 @@ if database_complete != False:
     qconnect(pokecol_action.triggered, pokecollection_win.show)
 
     # Complete Pokédex with force encounter feature
-    complete_pokedex_action = QAction("📖 Pokédex", mw)
+    complete_pokedex_action = QAction("Pokédex", mw)
     mw.pokemenu.addAction(complete_pokedex_action)
     qconnect(complete_pokedex_action.triggered, complete_pokedex.show_complete_pokedex)
     # Make new PokeAnki menu under tools
@@ -10887,7 +11080,7 @@ if database_complete != False:
     mw.pokemenu.addAction(reset_battle_action)
 
     # Add Pokemon Placement Tool
-    placement_tool_action = QAction("🎯 Pokémon Placement Tool", mw)
+    placement_tool_action = QAction("Pokémon Placement Tool", mw)
     qconnect(placement_tool_action.triggered, show_placement_tool)
     mw.pokemenu.addAction(placement_tool_action)
 
@@ -11117,7 +11310,7 @@ def _ankimon_gym_overlay_html(count: int) -> str:
         min-width: 160px;
         ">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-        <div>🏟 Gym</div>
+        <div>Gym</div>
         <div style="opacity:0.95;">{count}/{ANKIMON_GYM_TARGET}</div>
       </div>
       <div style="margin-top:6px; height:6px; background: rgba(255,255,255,0.25); border-radius: 999px; overflow:hidden;">
@@ -11157,7 +11350,7 @@ def _ankimon_show_gym_leader_dialog(leader: dict):
 
         layout = QVBoxLayout(dlg)
 
-        title = QLabel(f"🏟 {leader.get('name','Gym')} Gym ({leader.get('type','')})")
+        title = QLabel(f"{leader.get('name','Gym')} Gym ({leader.get('type','')})")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("font-weight: 700; font-size: 14px;")
         layout.addWidget(title)
@@ -11184,7 +11377,7 @@ def _ankimon_show_gym_leader_dialog(leader: dict):
                 scaled_level = _get_scaled_level(base_level, current_round)
 
                 # Mark the ace (last Pokemon) with a star
-                ace_marker = " ⭐" if i == len(team_ids) - 1 else ""
+                ace_marker = " (ACE)" if i == len(team_ids) - 1 else ""
                 pokemon_label = QLabel(f"  • {pokemon_name} (Lv. {scaled_level}){ace_marker}")
                 pokemon_label.setStyleSheet("font-size: 11px; padding: 2px;")
                 layout.addWidget(pokemon_label)
@@ -11208,7 +11401,7 @@ def _ankimon_show_gym_leader_dialog(leader: dict):
 
         # Show round info if not Round 1
         if current_round > 1:
-            round_info = QLabel(f"⚠️ Round {current_round} - Pokemon levels scaled up!")
+            round_info = QLabel(f"Round {current_round} - Pokemon levels scaled up!")
             round_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
             round_info.setStyleSheet("color: #FF6B6B; font-weight: bold; font-size: 11px; padding: 5px;")
             layout.addWidget(round_info)
@@ -11308,7 +11501,7 @@ def _ankimon_gym_ready_popup():
         dlg.setWindowTitle("Gym Battle: %s" % leader["name"])
         outer = QVBoxLayout(dlg)
 
-        title = QLabel("🏟  %s Gym (%s)" % (leader["name"], leader["type"]))
+        title = QLabel(" %s Gym (%s)" % (leader["name"], leader["type"]))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         outer.addWidget(title)
 
@@ -11349,7 +11542,7 @@ def _ankimon_gym_ready_popup():
             dlg.accept()
             # Show message that gym will start after current match
             try:
-                tooltipWithColour("⏳ Gym battle will begin after current match", "#FFD700")
+                tooltipWithColour("Gym battle will begin after current match", "#FFD700")
             except Exception:
                 pass
 
@@ -11436,7 +11629,7 @@ def _ankimon_elite_four_ready_popup():
                 scaled_level = _get_scaled_level(base_level, current_round)
 
                 # Mark the ace (last Pokemon) with a star
-                ace_marker = " ⭐" if i == len(team_ids) - 1 else ""
+                ace_marker = " (ACE)" if i == len(team_ids) - 1 else ""
                 pokemon_label = QLabel(f"  • {pokemon_name} (Lv. {scaled_level}){ace_marker}")
                 pokemon_label.setStyleSheet("font-size: 12px; padding: 2px;")
                 outer.addWidget(pokemon_label)
@@ -11445,7 +11638,7 @@ def _ankimon_elite_four_ready_popup():
 
         # Show round info if not Round 1
         if current_round > 1:
-            round_info = QLabel(f"⚠️ Round {current_round} - Elite Four leveled up!")
+            round_info = QLabel(f"Round {current_round} - Elite Four leveled up!")
             round_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
             round_info.setStyleSheet("color: #FF6B6B; font-weight: bold; font-size: 12px; padding: 10px;")
             outer.addWidget(round_info)
@@ -11470,7 +11663,7 @@ def _ankimon_elite_four_ready_popup():
             mw.col.setMod()
             dlg.accept()
             try:
-                tooltipWithColour("⏳ Elite Four battle will begin after current match", "#FFD700")
+                tooltipWithColour("Elite Four battle will begin after current match", "#FFD700")
             except Exception:
                 pass
 
@@ -11537,21 +11730,21 @@ def _ankimon_champion_ready_popup():
                 scaled_level = _get_scaled_level(base_level, current_round)
 
                 # Mark the ace (Garchomp) with a star
-                ace_marker = " ⭐⭐" if i == len(champion_team) - 1 else ""
+                ace_marker = " (ACE)" if i == len(champion_team) - 1 else ""
                 pokemon_label = QLabel(f"  • {pokemon_name} (Lv. {scaled_level}){ace_marker}")
                 pokemon_label.setStyleSheet("font-size: 12px; padding: 2px;")
                 outer.addWidget(pokemon_label)
             except:
                 pass
 
-        warning = QLabel("⚠️ This is the final challenge!")
+        warning = QLabel("This is the final challenge!")
         warning.setAlignment(Qt.AlignmentFlag.AlignCenter)
         warning.setStyleSheet("color: #FF6B6B; font-weight: bold; font-size: 14px; padding: 10px;")
         outer.addWidget(warning)
 
         # Show round info if not Round 1
         if current_round > 1:
-            round_info = QLabel(f"🔥 Round {current_round} - Champion at peak strength!")
+            round_info = QLabel(f"Round {current_round} - Champion at peak strength!")
             round_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
             round_info.setStyleSheet("color: #FFD700; font-weight: bold; font-size: 12px; padding: 5px;")
             outer.addWidget(round_info)
@@ -11572,7 +11765,7 @@ def _ankimon_champion_ready_popup():
             mw.col.setMod()
             dlg.accept()
             try:
-                tooltipWithColour("⏳ Champion battle will begin after current match", "#FFD700")
+                tooltipWithColour("Champion battle will begin after current match", "#FFD700")
             except Exception:
                 pass
 
@@ -11678,13 +11871,13 @@ def _ankimon_check_incomplete_gym():
                     conf["ankimon_gym_pending"] = False
                     mw.col.setMod()
                     try:
-                        tooltipWithColour("🏟 Continuing Gym Battle!", "#FFD700")
+                        tooltipWithColour("Continuing Gym Battle!", "#FFD700")
                     except:
                         pass
                 else:
                     # Already active, just show message
                     try:
-                        tooltipWithColour(f"🏟 Gym Battle vs {leader_name} - {remaining} Pokémon left", "#FFD700")
+                        tooltipWithColour(f"Gym Battle vs {leader_name} - {remaining} Pokémon left", "#FFD700")
                     except:
                         pass
             else:
