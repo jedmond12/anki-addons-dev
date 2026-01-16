@@ -7571,7 +7571,6 @@ class TestWindow(QWidget):
 
         # Set icon for the button
         try:
-            from PyQt6.QtGui import QIcon
             icon_path = str(addon_dir / "addon_sprites" / "icons" / "travel-trunk.png")
             itembag_btn.setIcon(QIcon(icon_path))
         except Exception as e:
