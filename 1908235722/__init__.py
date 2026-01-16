@@ -7382,11 +7382,8 @@ class TestWindow(QWidget):
             pokedex_icon = QIcon()
             pokeball_icon = QIcon()
 
-        # Pokedex button (with icon - explicitly sized)
+        # Pokedex button (with icon)
         pokedex_btn = QPushButton(pokedex_icon, "Pokédex")
-        # Set explicit icon size for larger visibility
-        from PyQt6.QtCore import QSize
-        pokedex_btn.setIconSize(QSize(32, 32))  # Larger icon
         pokedex_btn.setStyleSheet("""
             QPushButton {
                 background-color: #5a9fd4;
@@ -11507,6 +11504,13 @@ def _dev_toggle_mega_for_active():
             showInfo(f"Failed to save: {e}")
             return
 
+        # Play transition animation if turning ON mega
+        if new_mega_state:
+            try:
+                _play_mega_transition_animation(pokemon_name, pokemon_id)
+            except Exception as e:
+                print(f"[DevMega] Transition animation failed: {e}")
+
         # Show result
         if new_mega_state:
             tooltipWithColour(f"⚡ {pokemon_name} is now MEGA! (ID: {pokemon_id})", "#FF00FF")
@@ -11515,19 +11519,75 @@ def _dev_toggle_mega_for_active():
             tooltipWithColour(f"{pokemon_name} reverted to normal form", "#888888")
             showInfo(f"✓ {pokemon_name} reverted to normal form")
 
-        # Refresh collection window if open
+        # Refresh all windows immediately
         try:
-            global pokecollection_win
+            global pokecollection_win, test_window
+            # Refresh collection window if open
             if pokecollection_win and pokecollection_win.isVisible():
                 pokecollection_win.refresh_pokemon_collection()
-        except Exception:
-            pass
+            # Refresh external Ankimon window if open
+            if test_window and test_window.isVisible():
+                test_window.display_first_encounter()
+        except Exception as e:
+            print(f"[DevMega] Window refresh failed: {e}")
 
     except Exception as e:
         print(f"[DevMega] ERROR: {e}")
         import traceback
         traceback.print_exc()
         showInfo(f"Mega toggle failed: {e}")
+
+def _play_mega_transition_animation(pokemon_name, pokemon_id):
+    """Play Mega Evolution transition animation"""
+    try:
+        global test_window, user_path_sprites
+        if not test_window or not test_window.isVisible():
+            return
+
+        # Check if transition GIF exists
+        transition_path = user_path_sprites / "mega_evolve_transition" / "mega_evolve_transition.gif"
+        if not transition_path.exists():
+            print(f"[DevMega] Transition GIF not found at {transition_path}")
+            return
+
+        # Create transition dialog
+        from PyQt6.QtWidgets import QDialog, QLabel, QVBoxLayout
+        from PyQt6.QtGui import QMovie
+        from PyQt6.QtCore import QTimer, QSize
+
+        transition_dialog = QDialog(test_window)
+        transition_dialog.setWindowTitle("Mega Evolution")
+        transition_dialog.setFixedSize(400, 400)
+        layout = QVBoxLayout()
+
+        # Add transition GIF
+        gif_label = QLabel()
+        movie = QMovie(str(transition_path))
+        movie.setScaledSize(QSize(350, 350))
+        gif_label.setMovie(movie)
+        layout.addWidget(gif_label)
+
+        # Add text
+        text_label = QLabel(f"⚡ {pokemon_name.capitalize()} is Mega Evolving! ⚡")
+        text_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #FF00FF; padding: 10px;")
+        text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(text_label)
+
+        transition_dialog.setLayout(layout)
+
+        # Start the movie
+        movie.start()
+
+        # Close dialog after one loop (~2 seconds)
+        QTimer.singleShot(2000, transition_dialog.close)
+
+        # Show dialog (non-blocking)
+        transition_dialog.show()
+
+    except Exception as e:
+        print(f"[DevMega] Animation error: {e}")
+        import traceback
+        traceback.print_exc()
 
 # ---------------------------------------------------------
 
