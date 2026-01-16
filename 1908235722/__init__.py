@@ -4174,8 +4174,10 @@ class PokemonCollectionDialog(QDialog):
                         pokemon_iv = pokemon['iv']
                         pokemon_description = search_pokeapi_db_by_id(pokemon_id, "description")
                         if gif_in_collection is True:
-                            # Check if Pokemon is in Mega form
-                            if pokemon.get('is_mega', False):
+                            # Check if Pokemon is in Mega form (with hard Key Stone gate)
+                            mega_state = _load_mega_state()
+                            is_mega_unlocked = mega_state and mega_state.get("key_stone_unlocked", False)
+                            if is_mega_unlocked and pokemon.get('is_mega', False):
                                 pkmn_image_path = str(user_path_sprites / "front_mega_pokemon_gif" / f"{pokemon_id}.gif")
                                 # Fallback to normal if mega sprite doesn't exist
                                 if not os.path.exists(pkmn_image_path):
@@ -4415,8 +4417,10 @@ class PokemonCollectionDialog(QDialog):
                             pokemon_iv = pokemon['iv']
                             pokemon_description = search_pokeapi_db_by_id(pokemon_id, "description")
                             if gif_in_collection is True:
-                                # Check if Pokemon is in Mega form
-                                if pokemon.get('is_mega', False):
+                                # Check if Pokemon is in Mega form (with hard Key Stone gate)
+                                mega_state = _load_mega_state()
+                                is_mega_unlocked = mega_state and mega_state.get("key_stone_unlocked", False)
+                                if is_mega_unlocked and pokemon.get('is_mega', False):
                                     pkmn_image_path = str(user_path_sprites / "front_mega_pokemon_gif" / f"{pokemon_id}.gif")
                                     # Fallback to normal if mega sprite doesn't exist
                                     if not os.path.exists(pkmn_image_path):
@@ -6067,22 +6071,8 @@ if database_complete != False and mainpokemon_empty is False:
             if show_mainpkmn_in_reviewer > 0:
                 main_pkmn_imagefile = f'{mainpokemon_id}.gif'
 
-                # Check if Pokemon is in Mega form
-                is_mega_active = False
-                try:
-                    party = _load_party()
-                    if party and isinstance(party, dict):
-                        active_slot = party.get("active_slot", 0)
-                        party_slots = party.get("slots", [0, 1, 2, 3])
-                        if active_slot < len(party_slots):
-                            active_pokemon_index = party_slots[active_slot]
-                            if active_pokemon_index is not None:
-                                pokemon_list = _load_mypokemon_list()
-                                if pokemon_list and active_pokemon_index < len(pokemon_list):
-                                    active_pokemon = pokemon_list[active_pokemon_index]
-                                    is_mega_active = active_pokemon.get('is_mega', False)
-                except Exception:
-                    pass
+                # Check if Pokemon is in Mega form (uses hard Key Stone gate)
+                is_mega_active = _is_mega_active()
 
                 # Choose sprite directory based on Mega state
                 if view_main_front == -1:
@@ -6500,22 +6490,8 @@ if database_complete != False and mainpokemon_empty is False:
             if show_mainpkmn_in_reviewer > 0:
                 main_pkmn_imagefile = f'{mainpokemon_id}.gif'
 
-                # Check if Pokemon is in Mega form
-                is_mega_active = False
-                try:
-                    party = _load_party()
-                    if party and isinstance(party, dict):
-                        active_slot = party.get("active_slot", 0)
-                        party_slots = party.get("slots", [0, 1, 2, 3])
-                        if active_slot < len(party_slots):
-                            active_pokemon_index = party_slots[active_slot]
-                            if active_pokemon_index is not None:
-                                pokemon_list = _load_mypokemon_list()
-                                if pokemon_list and active_pokemon_index < len(pokemon_list):
-                                    active_pokemon = pokemon_list[active_pokemon_index]
-                                    is_mega_active = active_pokemon.get('is_mega', False)
-                except Exception:
-                    pass
+                # Check if Pokemon is in Mega form (uses hard Key Stone gate)
+                is_mega_active = _is_mega_active()
 
                 # Choose sprite directory based on Mega state
                 if view_main_front == -1:
@@ -7832,18 +7808,8 @@ class TestWindow(QWidget):
         self.player_sprite_size = None  # Will be set below
 
         # Check if player Pokemon is Mega (load from mypokemon.json)
-        player_is_mega = False
-        try:
-            party = _load_party()
-            active_slot = party.get("active_slot", 0)
-            party_slots = party.get("slots", [0, 1, 2, 3])
-            active_pokemon_index = party_slots[active_slot]
-            pokemon_list = _load_mypokemon_list()
-            if active_pokemon_index < len(pokemon_list):
-                active_pokemon = pokemon_list[active_pokemon_index]
-                player_is_mega = active_pokemon.get('is_mega', False)
-        except Exception as e:
-            print(f"[Mega] Could not check if player Pokemon is mega: {e}")
+        # Check if Pokemon is in Mega form (uses hard Key Stone gate)
+        player_is_mega = _is_mega_active()
 
         # Use mega sprite if Pokemon is in Mega form
         if player_is_mega:
@@ -8181,7 +8147,8 @@ class TestWindow(QWidget):
 
         # custom font
         custom_font = load_custom_font(26)
-        message_box_text = f"You have received a item: {item.capitalize()} !"
+        item_display_name = item.replace("-", " ").replace("_", " ").capitalize()
+        message_box_text = f"You have received a item: {item_display_name} !"
         # Draw the text on top of the image
         # Adjust the font size as needed
         painter.setFont(custom_font)
@@ -9966,7 +9933,7 @@ class ItemWindow(QWidget):
         item_frame = QVBoxLayout() #itemframe
         info_item_button = QPushButton("More Info")
         info_item_button.clicked.connect(lambda: self.more_info_button_act(item_name))
-        item_name_for_label = item_name.replace("-", " ")   # Remove hyphens from item_name
+        item_name_for_label = item_name.replace("-", " ").replace("_", " ")   # Remove hyphens and underscores
         item_name_label = QLabel(f"{item_name_for_label.capitalize()}") #itemname
         item_name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         item_picture_pixmap = QPixmap(str(item_file_path))
@@ -11416,8 +11383,13 @@ def _reset_mega_battle_state():
         print(f"Error resetting mega state: {e}")
 
 def _is_mega_active():
-    """Check if active Pokemon is in Mega form - CRASH-PROOF"""
+    """Check if active Pokemon is in Mega form - CRASH-PROOF with hard Key Stone gate"""
     try:
+        # HARD GATE: Check if Mega Evolution is unlocked first
+        mega_state = _load_mega_state()
+        if not mega_state or not mega_state.get("key_stone_unlocked", False):
+            return False  # Mega is LOCKED - no mega functionality allowed
+
         # Load party safely
         party = _load_party()
         if not party or not isinstance(party, dict):
@@ -11803,8 +11775,122 @@ def _play_mega_transition_animation(pokemon_name, pokemon_id):
         traceback.print_exc()
 
 # ==========================================================================
-# MEGA SYSTEM: PURGE, SEED, AND SELF-TEST
+# MEGA SYSTEM: FRESH RESTART, PURGE, SEED, AND SELF-TEST
 # ==========================================================================
+
+def _fresh_mega_restart():
+    """Complete fresh restart: unequip all stones, remove from inventory, reset unlock"""
+    try:
+        from aqt.utils import askUser
+
+        # Confirm with user
+        confirm = askUser(
+            "FRESH MEGA RESTART\n\n"
+            "This will:\n"
+            "• Unequip ALL Mega Stones from all Pokémon\n"
+            "• Remove ALL Mega Stones from Itembag\n"
+            "• Remove Key Stone from Itembag\n"
+            "• Lock Mega Evolution (reset to pre-Champion state)\n"
+            "• Force all Pokémon to normal forms\n\n"
+            "This action cannot be undone.\n\n"
+            "Continue?"
+        )
+
+        if not confirm:
+            print("[Fresh Restart] Cancelled by user")
+            return False
+
+        print("[Fresh Restart] Starting complete Mega system reset...")
+
+        # 1. Unequip all Mega Stones and force is_mega = False for ALL Pokemon
+        global mypokemon_path
+        try:
+            with open(mypokemon_path, 'r') as f:
+                pokemon_list = json.load(f)
+
+            modified_count = 0
+            for pokemon in pokemon_list:
+                # Remove held item if it's a mega stone
+                held_item = pokemon.get('held_item', '')
+                if held_item and (held_item.lower().endswith('ite') or held_item == 'key_stone'):
+                    pokemon['held_item'] = None
+                    modified_count += 1
+
+                # Force is_mega = False
+                if pokemon.get('is_mega', False):
+                    pokemon['is_mega'] = False
+                    modified_count += 1
+
+            # Save updated Pokemon list
+            with open(mypokemon_path, 'w') as f:
+                json.dump(pokemon_list, f, indent=2)
+
+            print(f"[Fresh Restart] Unequipped stones and reset Mega state for {modified_count} changes")
+        except Exception as e:
+            print(f"[Fresh Restart] Error modifying Pokemon: {e}")
+
+        # 2. Remove ALL mega stones and Key Stone from Itembag
+        global itembag_path
+        try:
+            with open(itembag_path, 'r') as f:
+                itembag_list = json.load(f)
+
+            original_count = len(itembag_list)
+            # Remove all items ending in 'ite' (mega stones) and 'key_stone'
+            itembag_list = [item for item in itembag_list if not (item.lower().endswith('ite') or item == 'key_stone')]
+            removed_count = original_count - len(itembag_list)
+
+            # Save cleaned inventory
+            with open(itembag_path, 'w') as f:
+                json.dump(itembag_list, f, indent=2)
+
+            print(f"[Fresh Restart] Removed {removed_count} items from Itembag")
+        except Exception as e:
+            print(f"[Fresh Restart] Error cleaning Itembag: {e}")
+
+        # 3. Reset mega_state.json - lock Mega Evolution
+        try:
+            mega_state = {
+                "key_stone_unlocked": False,
+                "mega_active": False,
+                "mega_used_this_battle": False,
+                "mega_stones": {}
+            }
+            _save_mega_state(mega_state)
+            print("[Fresh Restart] Reset mega_state.json - Mega Evolution LOCKED")
+        except Exception as e:
+            print(f"[Fresh Restart] Error resetting mega_state: {e}")
+
+        # 4. Refresh all windows
+        try:
+            global pokecollection_win, test_window
+            if pokecollection_win and pokecollection_win.isVisible():
+                pokecollection_win.refresh_pokemon_collection()
+            if test_window and test_window.isVisible():
+                test_window.display_first_encounter()
+        except Exception as e:
+            print(f"[Fresh Restart] Error refreshing windows: {e}")
+
+        showInfo(
+            "✓ Fresh Mega Restart Complete!\n\n"
+            "• All Mega Stones unequipped\n"
+            "• All Mega Stones removed from Itembag\n"
+            "• Key Stone removed\n"
+            "• Mega Evolution LOCKED\n"
+            "• All Pokémon reverted to normal forms\n\n"
+            "Mega system reset to pre-Champion state."
+        )
+
+        print("[Fresh Restart] SUCCESS - Complete reset finished")
+        return True
+
+    except Exception as e:
+        error_msg = f"Fresh restart failed: {e}"
+        showWarning(error_msg)
+        print(f"[Fresh Restart] ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 def _purge_all_mega_stones():
     """Remove ALL mega stones from inventory and mega_state, keep Key Stone"""
@@ -12249,6 +12335,17 @@ if database_complete != False:
     # Add separator before mega evolution tools
     developer_menu.addSeparator()
 
+    # Developer Mode: Fresh Mega Restart
+    try:
+        fresh_restart_action = QAction("🔥 Fresh Mega Restart", mw)
+        qconnect(fresh_restart_action.triggered, _fresh_mega_restart)
+        developer_menu.addAction(fresh_restart_action)
+        print("[DevMenu] Added: Fresh Mega Restart")
+    except Exception as e:
+        print(f"[DevMenu] ERROR: Could not add fresh restart: {e}")
+        import traceback
+        traceback.print_exc()
+
     # Developer Mode: Toggle Mega for Active Pokemon
     try:
         toggle_mega_action = QAction("⚡ Toggle Mega for Active Pokémon", mw)
@@ -12303,18 +12400,24 @@ if database_complete != False:
         developer_menu.menuAction().setVisible(not current_visible)
         if not current_visible:
             tooltipWithColour("Developer Mode: Enabled", "#00FF00")
-            print("[DevMenu] Developer Mode menu shown")
+            print("[DevMode] toggled: True")
         else:
             tooltipWithColour("Developer Mode: Hidden", "#888888")
-            print("[DevMenu] Developer Mode menu hidden")
+            print("[DevMode] toggled: False")
 
-    from PyQt6.QtGui import QKeySequence
+    from PyQt6.QtGui import QKeySequence, QShortcut
     from PyQt6.QtCore import Qt
-    dev_mode_shortcut = QAction(mw)
-    dev_mode_shortcut.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Modifier.SHIFT | Qt.Key.Key_D))
-    qconnect(dev_mode_shortcut.triggered, toggle_developer_mode)
-    mw.addAction(dev_mode_shortcut)
-    print("[DevMenu] Keyboard shortcut registered: Ctrl+Shift+D / Cmd+Shift+D")
+    import platform
+
+    # Use Cmd on macOS, Ctrl on other platforms
+    if platform.system() == "Darwin":  # macOS
+        shortcut_key = QKeySequence("Cmd+Shift+D")
+    else:
+        shortcut_key = QKeySequence("Ctrl+Shift+D")
+
+    dev_mode_shortcut = QShortcut(shortcut_key, mw)
+    qconnect(dev_mode_shortcut.activated, toggle_developer_mode)
+    print(f"[DevMenu] Keyboard shortcut registered: {shortcut_key.toString()}")
 
     # 5. Separator
     mw.pokemenu.addSeparator()
