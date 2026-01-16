@@ -7589,7 +7589,7 @@ class TestWindow(QWidget):
                 background-color: #A0522D;
             }
         """)
-        itembag_btn.clicked.connect(open_itembag)
+        itembag_btn.clicked.connect(item_window.show_window)
         button_layout.addWidget(itembag_btn)
 
         layout.addLayout(button_layout)
