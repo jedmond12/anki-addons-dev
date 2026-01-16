@@ -1540,22 +1540,6 @@ def kill_pokemon():
     except Exception:
         pass  # Don't break gameplay if stats tracking fails
 
-    # Award mega energy for battle win (1 energy per battle)
-    try:
-        mega_state = _load_mega_state()
-        if mega_state.get("key_stone_unlocked", False):
-            # Only award energy if key stone is unlocked
-            mega_state["mega_energy"] = mega_state.get("mega_energy", 0) + 1
-            _save_mega_state(mega_state)
-            try:
-                current_energy = mega_state["mega_energy"]
-                if current_energy % 5 == 0:  # Show message every 5 energy
-                    tooltipWithColour(f"Mega Energy: {current_energy}/25", "#00FFFF")
-            except:
-                pass
-    except Exception:
-        pass  # Don't break gameplay if energy tracking fails
-
     # Reset mega battle state (battle ended)
     try:
         _reset_mega_battle_state()
@@ -7415,12 +7399,10 @@ def show_progression_stats():
         try:
             mega_state = _load_mega_state()
             key_stone = "✓ Unlocked" if mega_state.get("key_stone_unlocked", False) else "✗ Locked (Defeat Champion first)"
-            energy = mega_state.get("mega_energy", 0)
             stones_count = len([v for v in mega_state.get("mega_stones", {}).values() if v > 0])
 
             mega_stats = [
                 ("Key Stone", key_stone),
-                ("Mega Energy", f"{energy}/20"),
                 ("Mega Stones Owned", stones_count),
             ]
 
@@ -7584,11 +7566,20 @@ class TestWindow(QWidget):
         progression_btn.clicked.connect(show_progression_stats)
         button_layout.addWidget(progression_btn)
 
-        # Reset Battle button
-        reset_btn = QPushButton("🔄 Reset Battle")
-        reset_btn.setStyleSheet("""
+        # Itembag button
+        itembag_btn = QPushButton(" Itembag")
+
+        # Set icon for the button
+        try:
+            from PyQt6.QtGui import QIcon
+            icon_path = str(addon_dir / "addon_sprites" / "icons" / "travel-trunk.png")
+            itembag_btn.setIcon(QIcon(icon_path))
+        except Exception as e:
+            print(f"[UI] Failed to load itembag icon: {e}")
+
+        itembag_btn.setStyleSheet("""
             QPushButton {
-                background-color: #f08030;
+                background-color: #8B4513;
                 color: white;
                 border-radius: 5px;
                 padding: 8px 12px;
@@ -7596,11 +7587,11 @@ class TestWindow(QWidget):
                 font-size: 12px;
             }
             QPushButton:hover {
-                background-color: #e07020;
+                background-color: #A0522D;
             }
         """)
-        reset_btn.clicked.connect(reset_battle)
-        button_layout.addWidget(reset_btn)
+        itembag_btn.clicked.connect(open_itembag)
+        button_layout.addWidget(itembag_btn)
 
         layout.addLayout(button_layout)
 
@@ -10103,6 +10094,13 @@ class ItemWindow(QWidget):
             # Check if it's a mega stone (clean names like "Ampharosite")
             if item_name.lower().endswith('ite'):
                 try:
+                    # Check if Mega Evolution is unlocked
+                    mega_state = _load_mega_state()
+                    if not mega_state.get("key_stone_unlocked", False):
+                        showWarning("Mega Evolution is locked.\n\nDefeat the Champion to unlock the Key Stone and enable Mega Evolution!")
+                        print("[Mega ItemBag] BLOCKED: Mega Evolution not unlocked yet")
+                        return
+
                     # Stone name is just the item name
                     stone_name = item_name
                     print(f"[Mega ItemBag] Equipping mega stone: {stone_name} to {pkmn_name}")
@@ -10223,12 +10221,20 @@ class ItemWindow(QWidget):
                     pokemon_found = True
                     print(f"[ItemBag] Updated {pkmn_name}: held_item changed from {old_item} to {item_name}")
 
-                    # Check if this is a mega stone - if so, trigger mega form
+                    # Check if this is a mega stone - if so, trigger instant mega evolution
                     if item_name and item_name.lower().endswith('ite'):
                         pokemon_id = pokemon.get('id')
                         if pokemon_id and pokemon_id in _get_mega_capable_pokemon_ids():
+                            # Instant Mega Evolution (like dev toggle)
                             pokemon['is_mega'] = True
-                            print(f"[Mega] {pkmn_name} transformed into Mega form!")
+                            print(f"[Mega] {pkmn_name} instantly transformed into Mega form!")
+
+                            # Play transition animation
+                            try:
+                                _play_mega_transition_animation(pkmn_name, pokemon_id)
+                            except Exception as e:
+                                print(f"[Mega] Transition animation failed: {e}")
+
                             tooltipWithColour(f"⚡ {pkmn_name} transformed into Mega {pkmn_name}!", "#FF00FF")
                         else:
                             pokemon['is_mega'] = False
@@ -10246,11 +10252,16 @@ class ItemWindow(QWidget):
             # Refresh Pokemon collection dialog if it's open
             if pokemon_found:
                 try:
+                    global test_window
                     if pokecollection_win and pokecollection_win.isVisible():
                         pokecollection_win.refresh_pokemon_collection()
                         print(f"[ItemBag] Refreshed Pokemon collection dialog")
-                except Exception:
-                    pass
+                    # Refresh external Ankimon window if open
+                    if test_window and test_window.isVisible():
+                        test_window.display_first_encounter()
+                        print(f"[ItemBag] Refreshed external Ankimon window")
+                except Exception as e:
+                    print(f"[ItemBag] Window refresh error: {e}")
 
         except Exception as e:
             print(f"Error assigning held item: {e}")
@@ -10856,7 +10867,6 @@ def _load_mega_state():
     """Load mega evolution state from JSON file with defaults"""
     default_state = {
         "key_stone_unlocked": False,
-        "mega_energy": 0,
         "mega_active": False,
         "mega_used_this_battle": False,
         "mega_stones": {}  # {dex_id: count}
@@ -11200,12 +11210,6 @@ def _can_mega_evolve():
             print("[Mega] FAIL: Key stone not unlocked")
             return False
 
-        # Check if enough energy
-        current_energy = mega_state.get("mega_energy", 0)
-        if current_energy < 25:
-            print(f"[Mega] FAIL: Not enough energy ({current_energy}/25)")
-            return False
-
         # Check if already mega evolved this battle
         if mega_state.get("mega_used_this_battle", False):
             print("[Mega] FAIL: Already mega evolved this battle")
@@ -11316,11 +11320,6 @@ def _trigger_mega_evolution():
             print("[Mega] ERROR: mega_state is None")
             tooltipWithColour("Mega Evolution failed: Could not load mega state", "#FF0000")
             return False
-
-        # Consume energy (25 instead of 20)
-        old_energy = mega_state.get("mega_energy", 0)
-        mega_state["mega_energy"] = max(0, old_energy - 25)
-        print(f"[Mega] Energy: {old_energy} -> {mega_state['mega_energy']}")
 
         # Mark mega as active and used this battle
         mega_state["mega_active"] = True
@@ -12213,20 +12212,22 @@ if database_complete != False:
     qconnect(pokecol_action.triggered, pokecollection_win.show)
     mw.pokemenu.addAction(pokecol_action)
 
-    # 4. Settings submenu
-    settings_menu = QMenu("Settings", mw)
-    mw.pokemenu.addMenu(settings_menu)
+    # 4. Developer Mode submenu (hidden by default, toggle with Ctrl+Shift+D)
+    developer_menu = QMenu("Developer Mode", mw)
+    mw.pokemenu.addMenu(developer_menu)
+    developer_menu.menuAction().setVisible(False)  # Hidden by default
 
-    # Settings submenu items
+    # Developer Mode: Reset Battle
     reset_battle_action = QAction("🔄 Reset Battle", mw)
     qconnect(reset_battle_action.triggered, reset_battle)
-    settings_menu.addAction(reset_battle_action)
+    developer_menu.addAction(reset_battle_action)
 
+    # Developer Mode: Pokémon Placement Tool
     placement_tool_action = QAction("Pokémon Placement Tool", mw)
     qconnect(placement_tool_action.triggered, show_placement_tool)
-    settings_menu.addAction(placement_tool_action)
+    developer_menu.addAction(placement_tool_action)
 
-    # Add Ankimon Configure Menu shortcut to Settings submenu
+    # Developer Mode: Ankimon Configure Menu
     try:
         configure_action = QAction("Ankimon Configure Menu", mw)
         def open_config():
@@ -12242,13 +12243,12 @@ if database_complete != False:
                 except Exception as e2:
                     showInfo(f"Please open config via: Tools → Add-ons → Ankimon → Config\n(Error: {e2})")
         qconnect(configure_action.triggered, open_config)
-        settings_menu.addAction(configure_action)
+        developer_menu.addAction(configure_action)
     except Exception as e:
         print(f"Could not add config menu item: {e}")
 
-    # 4b. Developer Mode submenu
-    developer_menu = QMenu("Developer Mode", mw)
-    mw.pokemenu.addMenu(developer_menu)
+    # Add separator before mega evolution tools
+    developer_menu.addSeparator()
 
     # Developer Mode: Toggle Mega for Active Pokemon
     try:
@@ -12296,6 +12296,26 @@ if database_complete != False:
 
     # Confirmation log
     print("[DevMenu] Developer Mode actions added: purge/seed/self-test")
+
+    # Add keyboard shortcut to toggle Developer Mode visibility (Ctrl+Shift+D / Cmd+Shift+D)
+    def toggle_developer_mode():
+        """Toggle Developer Mode menu visibility"""
+        current_visible = developer_menu.menuAction().isVisible()
+        developer_menu.menuAction().setVisible(not current_visible)
+        if not current_visible:
+            tooltipWithColour("Developer Mode: Enabled", "#00FF00")
+            print("[DevMenu] Developer Mode menu shown")
+        else:
+            tooltipWithColour("Developer Mode: Hidden", "#888888")
+            print("[DevMenu] Developer Mode menu hidden")
+
+    from PyQt6.QtGui import QKeySequence
+    from PyQt6.QtCore import Qt
+    dev_mode_shortcut = QAction(mw)
+    dev_mode_shortcut.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Modifier.SHIFT | Qt.Key.Key_D))
+    qconnect(dev_mode_shortcut.triggered, toggle_developer_mode)
+    mw.addAction(dev_mode_shortcut)
+    print("[DevMenu] Keyboard shortcut registered: Ctrl+Shift+D / Cmd+Shift+D")
 
     # 5. Separator
     mw.pokemenu.addSeparator()
