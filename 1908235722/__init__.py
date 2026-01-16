@@ -4175,8 +4175,12 @@ class PokemonCollectionDialog(QDialog):
                         pokemon_description = search_pokeapi_db_by_id(pokemon_id, "description")
                         if gif_in_collection is True:
                             # Check if Pokemon is in Mega form (with hard Key Stone gate)
-                            mega_state = _load_mega_state()
-                            is_mega_unlocked = mega_state and mega_state.get("key_stone_unlocked", False)
+                            try:
+                                mega_state = _load_mega_state()
+                                is_mega_unlocked = mega_state and mega_state.get("key_stone_unlocked", False)
+                            except (NameError, Exception):
+                                is_mega_unlocked = False  # Default to locked if function not yet defined
+
                             if is_mega_unlocked and pokemon.get('is_mega', False):
                                 pkmn_image_path = str(user_path_sprites / "front_mega_pokemon_gif" / f"{pokemon_id}.gif")
                                 # Fallback to normal if mega sprite doesn't exist
@@ -4418,8 +4422,12 @@ class PokemonCollectionDialog(QDialog):
                             pokemon_description = search_pokeapi_db_by_id(pokemon_id, "description")
                             if gif_in_collection is True:
                                 # Check if Pokemon is in Mega form (with hard Key Stone gate)
-                                mega_state = _load_mega_state()
-                                is_mega_unlocked = mega_state and mega_state.get("key_stone_unlocked", False)
+                                try:
+                                    mega_state = _load_mega_state()
+                                    is_mega_unlocked = mega_state and mega_state.get("key_stone_unlocked", False)
+                                except (NameError, Exception):
+                                    is_mega_unlocked = False  # Default to locked if function not yet defined
+
                                 if is_mega_unlocked and pokemon.get('is_mega', False):
                                     pkmn_image_path = str(user_path_sprites / "front_mega_pokemon_gif" / f"{pokemon_id}.gif")
                                     # Fallback to normal if mega sprite doesn't exist
