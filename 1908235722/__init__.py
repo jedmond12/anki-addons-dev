@@ -12247,32 +12247,47 @@ if database_complete != False:
         toggle_mega_action = QAction("⚡ Toggle Mega for Active Pokémon", mw)
         qconnect(toggle_mega_action.triggered, _dev_toggle_mega_for_active)
         developer_menu.addAction(toggle_mega_action)
+        print("[DevMenu] Added: Toggle Mega for Active Pokémon")
     except Exception as e:
-        print(f"Could not add developer mega toggle: {e}")
+        print(f"[DevMenu] ERROR: Could not add developer mega toggle: {e}")
+        import traceback
+        traceback.print_exc()
 
     # Developer Mode: Purge All Mega Stones
     try:
         purge_stones_action = QAction("🧹 Purge All Mega Stones", mw)
         qconnect(purge_stones_action.triggered, _purge_all_mega_stones)
         developer_menu.addAction(purge_stones_action)
+        print("[DevMenu] Added: Purge All Mega Stones")
     except Exception as e:
-        print(f"Could not add purge stones action: {e}")
+        print(f"[DevMenu] ERROR: Could not add purge stones action: {e}")
+        import traceback
+        traceback.print_exc()
 
     # Developer Mode: Seed 3 Specific Mega Stones
     try:
         seed_stones_action = QAction("🌱 Seed 3 Test Mega Stones", mw)
         qconnect(seed_stones_action.triggered, _seed_specific_mega_stones)
         developer_menu.addAction(seed_stones_action)
+        print("[DevMenu] Added: Seed 3 Test Mega Stones")
     except Exception as e:
-        print(f"Could not add seed stones action: {e}")
+        print(f"[DevMenu] ERROR: Could not add seed stones action: {e}")
+        import traceback
+        traceback.print_exc()
 
     # Developer Mode: Run Mega System Self-Test
     try:
         self_test_action = QAction("🔬 Run Mega System Self-Test", mw)
         qconnect(self_test_action.triggered, _mega_system_self_test)
         developer_menu.addAction(self_test_action)
+        print("[DevMenu] Added: Run Mega System Self-Test")
     except Exception as e:
-        print(f"Could not add self-test action: {e}")
+        print(f"[DevMenu] ERROR: Could not add self-test action: {e}")
+        import traceback
+        traceback.print_exc()
+
+    # Confirmation log
+    print("[DevMenu] Developer Mode actions added: purge/seed/self-test")
 
     # 5. Separator
     mw.pokemenu.addSeparator()
