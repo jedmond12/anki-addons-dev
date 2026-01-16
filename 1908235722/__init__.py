@@ -12404,6 +12404,9 @@ if database_complete != False:
     # Add keyboard shortcut to toggle Developer Mode visibility (non-conflicting)
     def toggle_developer_mode():
         """Toggle Developer Mode menu visibility"""
+        print("[DevMode] activated")  # Debug: shortcut fired
+        showInfo("Developer Mode toggled")  # Immediate visual confirmation
+
         current_visible = developer_menu.menuAction().isVisible()
         developer_menu.menuAction().setVisible(not current_visible)
         if not current_visible:
@@ -12423,9 +12426,16 @@ if database_complete != False:
     else:
         shortcut_key = QKeySequence("Ctrl+Alt+Shift+D")
 
+    # Store globally to prevent garbage collection and set ApplicationShortcut context
     dev_mode_shortcut = QShortcut(shortcut_key, mw)
+    dev_mode_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)  # Works across all windows
     qconnect(dev_mode_shortcut.activated, toggle_developer_mode)
+
+    # Store in mw to prevent garbage collection
+    mw._ankimon_dev_mode_shortcut = dev_mode_shortcut
+
     print(f"[DevMode] Hotkey registered: {shortcut_key.toString()}")
+    print(f"[DevMode] Shortcut context: ApplicationShortcut (works in Deck Browser, Reviewer, Browser)")
 
     # 5. Separator
     mw.pokemenu.addSeparator()
