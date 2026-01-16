@@ -1546,7 +1546,7 @@ def kill_pokemon():
             try:
                 current_energy = mega_state["mega_energy"]
                 if current_energy % 5 == 0:  # Show message every 5 energy
-                    tooltipWithColour(f"Mega Energy: {current_energy}/20", "#00FFFF")
+                    tooltipWithColour(f"Mega Energy: {current_energy}/25", "#00FFFF")
             except:
                 pass
     except Exception:
@@ -2764,6 +2764,12 @@ def complete_elite_four_member():
         except Exception:
             pass
 
+        # Award Mega Stone for defeating Elite Four member
+        try:
+            _award_random_mega_stone()
+        except Exception as e:
+            print(f"Error awarding Mega Stone for Elite Four: {e}")
+
         # Show completion message
         try:
             if (member_index + 1) >= 4:
@@ -3395,6 +3401,14 @@ def on_review_card(*args):
                 if check is False:
                     receive_badge(4,achievements)
                     test_window.display_badge(4)
+
+        # Award Mega Stone every 500 cards
+        if card_counter > 0 and card_counter % 500 == 0:
+            try:
+                _award_random_mega_stone()
+            except Exception as e:
+                print(f"Error awarding Mega Stone at {card_counter} cards: {e}")
+
         if card_counter == item_receive_value:
             test_window.display_item()
             check = check_for_badge(achievements,6)
@@ -7747,6 +7761,10 @@ class TestWindow(QWidget):
         player_pkmn_label.setStyleSheet("background: transparent;")
         player_pkmn_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
+        # Store reference for transition animations
+        self.player_sprite_label = player_pkmn_label
+        self.player_sprite_size = None  # Will be set below
+
         # Check if player Pokemon is Mega (load from mypokemon.json)
         player_is_mega = False
         try:
@@ -7768,6 +7786,10 @@ class TestWindow(QWidget):
                 player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
         else:
             player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
+
+        # Store current sprite path and size for transition
+        self.player_sprite_path = player_gif_path
+        self.player_sprite_size = player_size
 
         if player_gif_path.exists():
             player_movie = QMovie(str(player_gif_path))
@@ -11065,8 +11087,8 @@ def _can_mega_evolve():
 
         # Check if enough energy
         current_energy = mega_state.get("mega_energy", 0)
-        if current_energy < 20:
-            print(f"[Mega] FAIL: Not enough energy ({current_energy}/20)")
+        if current_energy < 25:
+            print(f"[Mega] FAIL: Not enough energy ({current_energy}/25)")
             return False
 
         # Check if already mega evolved this battle
@@ -11181,9 +11203,9 @@ def _trigger_mega_evolution():
             tooltipWithColour("Mega Evolution failed: Could not load mega state", "#FF0000")
             return False
 
-        # Consume energy
+        # Consume energy (25 instead of 20)
         old_energy = mega_state.get("mega_energy", 0)
-        mega_state["mega_energy"] = max(0, old_energy - 20)
+        mega_state["mega_energy"] = max(0, old_energy - 25)
         print(f"[Mega] Energy: {old_energy} -> {mega_state['mega_energy']}")
 
         # Mark mega as active and used this battle
@@ -11191,6 +11213,16 @@ def _trigger_mega_evolution():
         mega_state["mega_used_this_battle"] = True
 
         _save_mega_state(mega_state)
+
+        # Set is_mega flag on the Pokemon
+        active_pokemon['is_mega'] = True
+        try:
+            global mypokemon_path
+            with open(mypokemon_path, 'w') as file:
+                json.dump(pokemon_list, file, indent=2)
+            print(f"[Mega] Set is_mega=True for {pokemon_name}")
+        except Exception as e:
+            print(f"[Mega] ERROR saving is_mega flag: {e}")
 
         # Track mega evolution usage
         try:
@@ -11202,6 +11234,20 @@ def _trigger_mega_evolution():
         except Exception as e:
             print(f"[Mega] Warning: Could not update stats: {e}")
             pass
+
+        # Play transition animation
+        try:
+            _play_mega_transition_animation(pokemon_name, pokemon_id)
+        except Exception as e:
+            print(f"[Mega] Transition animation failed: {e}")
+
+        # Refresh external window if open
+        try:
+            global test_window
+            if test_window and test_window.isVisible():
+                test_window.display_first_encounter()
+        except Exception as e:
+            print(f"[Mega] Window refresh failed: {e}")
 
         # Show mega evolution message
         stone_name = _get_mega_stone_name(pokemon_id)
@@ -11217,12 +11263,43 @@ def _trigger_mega_evolution():
         return False
 
 def _reset_mega_battle_state():
-    """Reset mega evolution state at end of battle"""
+    """Reset mega evolution state at end of battle and revert Pokemon to normal form"""
     try:
+        print("[Mega] Resetting battle state and reverting Mega form")
         mega_state = _load_mega_state()
         mega_state["mega_active"] = False
         mega_state["mega_used_this_battle"] = False
         _save_mega_state(mega_state)
+
+        # Revert is_mega flag on active Pokemon
+        try:
+            party = _load_party()
+            if party and isinstance(party, dict):
+                active_slot = party.get("active_slot", 0)
+                party_slots = party.get("slots", [0, 1, 2, 3])
+
+                if active_slot < len(party_slots):
+                    active_pokemon_index = party_slots[active_slot]
+
+                    if active_pokemon_index is not None:
+                        pokemon_list = _load_mypokemon_list()
+
+                        if pokemon_list and isinstance(pokemon_list, list) and active_pokemon_index < len(pokemon_list):
+                            active_pokemon = pokemon_list[active_pokemon_index]
+
+                            if active_pokemon and isinstance(active_pokemon, dict):
+                                if active_pokemon.get('is_mega', False):
+                                    active_pokemon['is_mega'] = False
+                                    pokemon_name = active_pokemon.get('name', 'Unknown')
+
+                                    global mypokemon_path
+                                    with open(mypokemon_path, 'w') as file:
+                                        json.dump(pokemon_list, file, indent=2)
+
+                                    print(f"[Mega] Reverted {pokemon_name} to normal form")
+        except Exception as e:
+            print(f"[Mega] Error reverting is_mega: {e}")
+
     except Exception as e:
         print(f"Error resetting mega state: {e}")
 
@@ -11538,51 +11615,61 @@ def _dev_toggle_mega_for_active():
         showInfo(f"Mega toggle failed: {e}")
 
 def _play_mega_transition_animation(pokemon_name, pokemon_id):
-    """Play Mega Evolution transition animation"""
+    """Play Mega Evolution transition animation IN-PLACE in the external window"""
     try:
-        global test_window, user_path_sprites
+        global test_window, user_path_sprites, backdefault_gif
         if not test_window or not test_window.isVisible():
+            print(f"[DevMega] Test window not visible, skipping transition")
+            return
+
+        # Check if sprite label exists
+        if not hasattr(test_window, 'player_sprite_label') or test_window.player_sprite_label is None:
+            print(f"[DevMega] Player sprite label not found, skipping transition")
             return
 
         # Check if transition GIF exists
         transition_path = user_path_sprites / "mega_evolve_transition" / "mega_evolve_transition.gif"
         if not transition_path.exists():
-            print(f"[DevMega] Transition GIF not found at {transition_path}")
+            print(f"[DevMega] Transition GIF not found at {transition_path}, skipping")
             return
 
-        # Create transition dialog
-        from PyQt6.QtWidgets import QDialog, QLabel, QVBoxLayout
         from PyQt6.QtGui import QMovie
         from PyQt6.QtCore import QTimer, QSize
 
-        transition_dialog = QDialog(test_window)
-        transition_dialog.setWindowTitle("Mega Evolution")
-        transition_dialog.setFixedSize(400, 400)
-        layout = QVBoxLayout()
+        # Get the sprite label
+        sprite_label = test_window.player_sprite_label
+        sprite_size = test_window.player_sprite_size if hasattr(test_window, 'player_sprite_size') else 80
 
-        # Add transition GIF
-        gif_label = QLabel()
-        movie = QMovie(str(transition_path))
-        movie.setScaledSize(QSize(350, 350))
-        gif_label.setMovie(movie)
-        layout.addWidget(gif_label)
+        print(f"[DevMega] Playing transition animation in-place for {pokemon_name}")
 
-        # Add text
-        text_label = QLabel(f"⚡ {pokemon_name.capitalize()} is Mega Evolving! ⚡")
-        text_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #FF00FF; padding: 10px;")
-        text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(text_label)
+        # Create and play transition movie
+        transition_movie = QMovie(str(transition_path))
+        transition_movie.setScaledSize(QSize(sprite_size, sprite_size))
+        sprite_label.setMovie(transition_movie)
+        transition_movie.start()
 
-        transition_dialog.setLayout(layout)
+        # After 2 seconds, swap to Mega sprite
+        def switch_to_mega_sprite():
+            try:
+                # Load Mega sprite
+                mega_sprite_path = user_path_sprites / "back_mega_pokemon_gif" / f"{pokemon_id}.gif"
+                if not mega_sprite_path.exists():
+                    # Fallback to normal sprite
+                    mega_sprite_path = backdefault_gif / f"{pokemon_id}.gif"
 
-        # Start the movie
-        movie.start()
+                if mega_sprite_path.exists():
+                    mega_movie = QMovie(str(mega_sprite_path))
+                    mega_movie.setScaledSize(QSize(sprite_size, sprite_size))
+                    sprite_label.setMovie(mega_movie)
+                    mega_movie.start()
+                    print(f"[DevMega] Switched to Mega sprite: {mega_sprite_path}")
+                else:
+                    print(f"[DevMega] Mega sprite not found: {mega_sprite_path}")
+            except Exception as e:
+                print(f"[DevMega] Error switching to Mega sprite: {e}")
 
-        # Close dialog after one loop (~2 seconds)
-        QTimer.singleShot(2000, transition_dialog.close)
-
-        # Show dialog (non-blocking)
-        transition_dialog.show()
+        # Schedule sprite swap after transition
+        QTimer.singleShot(2000, switch_to_mega_sprite)
 
     except Exception as e:
         print(f"[DevMega] Animation error: {e}")
