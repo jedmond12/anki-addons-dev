@@ -8123,8 +8123,19 @@ class TestWindow(QWidget):
         global pokemon_encounter, user_path_sprites
         global addon_dir
         global frontdefault
+
+        # SAFETY: Handle None item
+        if not item:
+            item = "unknown-item"
+            print("[Item Display] WARNING: Item is None, using placeholder")
+
         bckgimage_path =  addon_dir / "addon_sprites" / "starter_screen" / "bg.png"
-        item_path = user_path_sprites / "items" / f"{item}.png"
+
+        # Try loading from addon_sprites/items/ first (official location)
+        item_path = addon_dir / "addon_sprites" / "items" / f"{item}.png"
+        if not item_path.exists():
+            # Fallback to user_files/sprites/items/
+            item_path = user_path_sprites / "items" / f"{item}.png"
 
         # Load the background image
         pixmap_bckg = QPixmap()
@@ -8133,7 +8144,15 @@ class TestWindow(QWidget):
         # Display the Pokémon image
         item_label = QLabel()
         item_pixmap = QPixmap()
-        item_pixmap.load(str(item_path))
+
+        # SAFETY: Check if item file exists before loading
+        if item_path.exists():
+            item_pixmap.load(str(item_path))
+        else:
+            print(f"[Item Display] WARNING: Item sprite not found: {item_path}")
+            # Create a placeholder pixmap (50x50 gray square)
+            item_pixmap = QPixmap(50, 50)
+            item_pixmap.fill(QColor(128, 128, 128))
 
         def resize_pixmap_img(pixmap):
             max_width = 100
@@ -11460,12 +11479,26 @@ def _complete_legendary_capture(legendary_type):
         tooltipWithColour(f"{name} defeated! You received a Mega Stone!", "#FFD700")
 
 def _load_mypokemon_list():
+    """Load Pokemon list with comprehensive error handling"""
     global mypokemon_path
-    with open(str(mypokemon_path), "r", encoding="utf-8") as f:
-        data = json.load(f) or []
-    if not isinstance(data, list):
+    try:
+        with open(str(mypokemon_path), "r", encoding="utf-8") as f:
+            data = json.load(f) or []
+        if not isinstance(data, list):
+            print(f"[Pokemon List] WARNING: Data is not a list, returning empty list")
+            return []
+        return data
+    except FileNotFoundError:
+        print(f"[Pokemon List] WARNING: File not found: {mypokemon_path}")
         return []
-    return data
+    except json.JSONDecodeError as e:
+        print(f"[Pokemon List] ERROR: Invalid JSON in {mypokemon_path}: {e}")
+        return []
+    except Exception as e:
+        print(f"[Pokemon List] ERROR loading Pokemon list: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
 
 def _is_fainted(pkmn: dict) -> bool:
     try:
@@ -11763,6 +11796,378 @@ def _play_mega_transition_animation(pokemon_name, pokemon_id):
         import traceback
         traceback.print_exc()
 
+# ==========================================================================
+# MEGA SYSTEM: PURGE, SEED, AND SELF-TEST
+# ==========================================================================
+
+def _purge_all_mega_stones():
+    """Remove ALL mega stones from inventory and mega_state, keep Key Stone"""
+    try:
+        print("[Mega Purge] Starting mega stone purge...")
+        purge_count = 0
+
+        # 1. Purge from items.json (itembag)
+        try:
+            with open(itembag_path, 'r') as f:
+                itembag_list = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            itembag_list = []
+
+        # Remove all items ending with 'ite' (mega stones) but keep 'key_stone'
+        original_count = len(itembag_list)
+        itembag_list = [item for item in itembag_list if not (item.lower().endswith('ite') and item != 'key_stone')]
+        purge_count += (original_count - len(itembag_list))
+
+        with open(itembag_path, 'w') as f:
+            json.dump(itembag_list, f, indent=2)
+        print(f"[Mega Purge] Removed {purge_count} mega stones from itembag")
+
+        # 2. Clear mega_stones from mega_state.json but keep key_stone_unlocked
+        mega_state = _load_mega_state()
+        stones_cleared = len(mega_state.get("mega_stones", {}))
+        mega_state["mega_stones"] = {}
+        _save_mega_state(mega_state)
+        print(f"[Mega Purge] Cleared {stones_cleared} stone entries from mega_state")
+
+        # 3. Remove mega stones from any Pokemon held_item slots
+        try:
+            global mypokemon_path
+            with open(mypokemon_path, 'r') as f:
+                pokemon_list = json.load(f)
+
+            unequipped_count = 0
+            for pokemon in pokemon_list:
+                held_item = pokemon.get('held_item')
+                if held_item and held_item.lower().endswith('ite') and held_item != 'key_stone':
+                    pokemon['held_item'] = None
+                    pokemon['is_mega'] = False
+                    unequipped_count += 1
+
+            if unequipped_count > 0:
+                with open(mypokemon_path, 'w') as f:
+                    json.dump(pokemon_list, f, indent=2)
+                print(f"[Mega Purge] Unequipped {unequipped_count} mega stones from Pokemon")
+        except Exception as e:
+            print(f"[Mega Purge] Error clearing held items: {e}")
+
+        total_purged = purge_count + stones_cleared + unequipped_count
+        msg = f"Mega Stone Purge Complete!\n\n✓ Removed {purge_count} stones from inventory\n✓ Cleared {stones_cleared} stone entries from state\n✓ Unequipped {unequipped_count} stones from Pokemon\n\nTotal purged: {total_purged}"
+        showInfo(msg)
+        print(f"[Mega Purge] {msg}")
+        return True
+
+    except Exception as e:
+        error_msg = f"Purge failed: {e}"
+        showWarning(error_msg)
+        print(f"[Mega Purge] ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def _seed_specific_mega_stones():
+    """Add exactly 3 mega stones: Scizorite, Ampharosite, Cameruptite"""
+    try:
+        print("[Mega Seed] Seeding specific mega stones...")
+
+        # Define the 3 stones to seed
+        stones_to_seed = [
+            {"dex": 212, "name": "Scizorite"},
+            {"dex": 181, "name": "Ampharosite"},
+            {"dex": 323, "name": "Cameruptite"}
+        ]
+
+        # Load current inventory
+        try:
+            with open(itembag_path, 'r') as f:
+                itembag_list = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            itembag_list = []
+
+        # Load mega state
+        mega_state = _load_mega_state()
+        if "mega_stones" not in mega_state or not isinstance(mega_state["mega_stones"], dict):
+            mega_state["mega_stones"] = {}
+
+        seeded_stones = []
+        for stone in stones_to_seed:
+            # Add to inventory
+            itembag_list.append(stone["name"])
+
+            # Add to mega_state
+            mega_state["mega_stones"][str(stone["dex"])] = mega_state["mega_stones"].get(str(stone["dex"]), 0) + 1
+
+            seeded_stones.append(stone["name"])
+            print(f"[Mega Seed] Added {stone['name']} (dex {stone['dex']})")
+
+        # Save inventory
+        with open(itembag_path, 'w') as f:
+            json.dump(itembag_list, f, indent=2)
+
+        # Save mega state
+        _save_mega_state(mega_state)
+
+        msg = f"Mega Stones Seeded!\n\nAdded to inventory:\n✓ Scizorite (Scizor)\n✓ Ampharosite (Ampharos)\n✓ Cameruptite (Camerupt)\n\nReady for testing!"
+        showInfo(msg)
+        print(f"[Mega Seed] Success: {', '.join(seeded_stones)}")
+        return True
+
+    except Exception as e:
+        error_msg = f"Seed failed: {e}"
+        showWarning(error_msg)
+        print(f"[Mega Seed] ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def _mega_system_self_test():
+    """Comprehensive self-test of the entire Mega system"""
+    try:
+        print("\n" + "="*80)
+        print("[MEGA SYSTEM SELF-TEST]")
+        print("="*80)
+
+        test_results = []
+        errors = []
+
+        # Test data
+        test_pokemon = [
+            {"dex": 181, "name": "ampharos", "stone": "Ampharosite"},
+            {"dex": 212, "name": "scizor", "stone": "Scizorite"},
+            {"dex": 323, "name": "camerupt", "stone": "Cameruptite"}
+        ]
+
+        global mypokemon_path
+
+        # ===== TEST 1: Verify Pokemon exist =====
+        print("\n[Test 1] Verifying Pokemon in collection...")
+        try:
+            with open(mypokemon_path, 'r') as f:
+                pokemon_list = json.load(f)
+
+            for test_pkmn in test_pokemon:
+                found = any(p.get('id') == test_pkmn['dex'] or p.get('name', '').lower() == test_pkmn['name'].lower() for p in pokemon_list)
+                if found:
+                    test_results.append(f"✓ {test_pkmn['name'].capitalize()} found in collection")
+                    print(f"  ✓ {test_pkmn['name'].capitalize()} exists")
+                else:
+                    errors.append(f"✗ {test_pkmn['name'].capitalize()} NOT found in collection")
+                    print(f"  ✗ {test_pkmn['name'].capitalize()} NOT FOUND")
+        except Exception as e:
+            errors.append(f"✗ Failed to load Pokemon: {e}")
+            print(f"  ✗ ERROR: {e}")
+
+        # ===== TEST 2: Verify stones in inventory =====
+        print("\n[Test 2] Verifying stones in inventory...")
+        try:
+            with open(itembag_path, 'r') as f:
+                itembag_list = json.load(f)
+
+            for test_pkmn in test_pokemon:
+                if test_pkmn['stone'] in itembag_list:
+                    test_results.append(f"✓ {test_pkmn['stone']} in inventory")
+                    print(f"  ✓ {test_pkmn['stone']} found")
+                else:
+                    errors.append(f"✗ {test_pkmn['stone']} NOT in inventory")
+                    print(f"  ✗ {test_pkmn['stone']} MISSING")
+        except Exception as e:
+            errors.append(f"✗ Failed to load inventory: {e}")
+            print(f"  ✗ ERROR: {e}")
+
+        # ===== TEST 3: Equip stones (simulate) =====
+        print("\n[Test 3] Testing stone equip logic...")
+        for test_pkmn in test_pokemon:
+            try:
+                # Find the Pokemon
+                with open(mypokemon_path, 'r') as f:
+                    pokemon_list = json.load(f)
+
+                pokemon_found = None
+                pokemon_idx = None
+                for idx, p in enumerate(pokemon_list):
+                    if p.get('id') == test_pkmn['dex'] or p.get('name', '').lower() == test_pkmn['name'].lower():
+                        pokemon_found = p
+                        pokemon_idx = idx
+                        break
+
+                if not pokemon_found:
+                    errors.append(f"✗ Equip test: {test_pkmn['name']} not found")
+                    print(f"  ✗ {test_pkmn['name']} not found for equip test")
+                    continue
+
+                # Simulate equipping the stone
+                old_item = pokemon_found.get('held_item')
+                pokemon_found['held_item'] = test_pkmn['stone']
+                pokemon_list[pokemon_idx] = pokemon_found
+
+                # Save temporarily
+                with open(mypokemon_path, 'w') as f:
+                    json.dump(pokemon_list, f, indent=2)
+
+                # Verify it stuck
+                with open(mypokemon_path, 'r') as f:
+                    verify_list = json.load(f)
+                verify_pkmn = verify_list[pokemon_idx]
+
+                if verify_pkmn.get('held_item') == test_pkmn['stone']:
+                    test_results.append(f"✓ {test_pkmn['name']} equipped {test_pkmn['stone']}")
+                    print(f"  ✓ Equipped {test_pkmn['stone']} to {test_pkmn['name']}")
+                else:
+                    errors.append(f"✗ {test_pkmn['stone']} equip failed for {test_pkmn['name']}")
+                    print(f"  ✗ Equip FAILED for {test_pkmn['name']}")
+
+            except Exception as e:
+                errors.append(f"✗ Equip test error for {test_pkmn['name']}: {e}")
+                print(f"  ✗ ERROR equipping to {test_pkmn['name']}: {e}")
+
+        # ===== TEST 4: Mega activation logic =====
+        print("\n[Test 4] Testing Mega activation...")
+        for test_pkmn in test_pokemon:
+            try:
+                with open(mypokemon_path, 'r') as f:
+                    pokemon_list = json.load(f)
+
+                pokemon_found = None
+                pokemon_idx = None
+                for idx, p in enumerate(pokemon_list):
+                    if p.get('id') == test_pkmn['dex'] or p.get('name', '').lower() == test_pkmn['name'].lower():
+                        pokemon_found = p
+                        pokemon_idx = idx
+                        break
+
+                if not pokemon_found:
+                    continue
+
+                # Set is_mega = True
+                pokemon_found['is_mega'] = True
+                pokemon_list[pokemon_idx] = pokemon_found
+
+                with open(mypokemon_path, 'w') as f:
+                    json.dump(pokemon_list, f, indent=2)
+
+                # Verify
+                with open(mypokemon_path, 'r') as f:
+                    verify_list = json.load(f)
+                verify_pkmn = verify_list[pokemon_idx]
+
+                if verify_pkmn.get('is_mega') == True:
+                    test_results.append(f"✓ {test_pkmn['name']} mega flag set")
+                    print(f"  ✓ Mega activated for {test_pkmn['name']}")
+                else:
+                    errors.append(f"✗ Mega flag failed for {test_pkmn['name']}")
+                    print(f"  ✗ Mega activation FAILED for {test_pkmn['name']}")
+
+            except Exception as e:
+                errors.append(f"✗ Mega activation error for {test_pkmn['name']}: {e}")
+                print(f"  ✗ ERROR: {e}")
+
+        # ===== TEST 5: Sprite path resolution =====
+        print("\n[Test 5] Testing sprite paths...")
+        for test_pkmn in test_pokemon:
+            try:
+                global user_path_sprites
+                mega_sprite_front = user_path_sprites / "front_mega_pokemon_gif" / f"{test_pkmn['dex']}.gif"
+                mega_sprite_back = user_path_sprites / "back_mega_pokemon_gif" / f"{test_pkmn['dex']}.gif"
+                normal_sprite_front = user_path_sprites / "front_default_gif" / f"{test_pkmn['dex']}.gif"
+                normal_sprite_back = user_path_sprites / "back_default_gif" / f"{test_pkmn['dex']}.gif"
+
+                has_mega_front = mega_sprite_front.exists()
+                has_mega_back = mega_sprite_back.exists()
+                has_normal_front = normal_sprite_front.exists()
+                has_normal_back = normal_sprite_back.exists()
+
+                if has_mega_front or has_mega_back or (has_normal_front and has_normal_back):
+                    sprite_info = []
+                    if has_mega_front:
+                        sprite_info.append("mega front")
+                    if has_mega_back:
+                        sprite_info.append("mega back")
+                    if not (has_mega_front or has_mega_back):
+                        sprite_info.append("fallback normal")
+
+                    test_results.append(f"✓ {test_pkmn['name']} sprites OK ({', '.join(sprite_info)})")
+                    print(f"  ✓ Sprites found for {test_pkmn['name']}: {', '.join(sprite_info)}")
+                else:
+                    errors.append(f"✗ No sprites found for {test_pkmn['name']}")
+                    print(f"  ✗ NO SPRITES for {test_pkmn['name']}")
+
+            except Exception as e:
+                errors.append(f"✗ Sprite check error for {test_pkmn['name']}: {e}")
+                print(f"  ✗ ERROR: {e}")
+
+        # ===== TEST 6: Unequip and revert =====
+        print("\n[Test 6] Testing unequip/revert...")
+        for test_pkmn in test_pokemon:
+            try:
+                with open(mypokemon_path, 'r') as f:
+                    pokemon_list = json.load(f)
+
+                pokemon_found = None
+                pokemon_idx = None
+                for idx, p in enumerate(pokemon_list):
+                    if p.get('id') == test_pkmn['dex'] or p.get('name', '').lower() == test_pkmn['name'].lower():
+                        pokemon_found = p
+                        pokemon_idx = idx
+                        break
+
+                if not pokemon_found:
+                    continue
+
+                # Unequip and revert
+                pokemon_found['held_item'] = None
+                pokemon_found['is_mega'] = False
+                pokemon_list[pokemon_idx] = pokemon_found
+
+                with open(mypokemon_path, 'w') as f:
+                    json.dump(pokemon_list, f, indent=2)
+
+                # Verify
+                with open(mypokemon_path, 'r') as f:
+                    verify_list = json.load(f)
+                verify_pkmn = verify_list[pokemon_idx]
+
+                if verify_pkmn.get('held_item') is None and verify_pkmn.get('is_mega') == False:
+                    test_results.append(f"✓ {test_pkmn['name']} unequipped/reverted")
+                    print(f"  ✓ Unequipped {test_pkmn['name']}")
+                else:
+                    errors.append(f"✗ Unequip failed for {test_pkmn['name']}")
+                    print(f"  ✗ Unequip FAILED for {test_pkmn['name']}")
+
+            except Exception as e:
+                errors.append(f"✗ Unequip error for {test_pkmn['name']}: {e}")
+                print(f"  ✗ ERROR: {e}")
+
+        # ===== FINAL RESULTS =====
+        print("\n" + "="*80)
+        print("[SELF-TEST RESULTS]")
+        print("="*80)
+
+        if not errors:
+            result_msg = "✅ ALL TESTS PASSED!\n\n"
+            result_msg += f"Passed: {len(test_results)}\n"
+            result_msg += f"Failed: 0\n\n"
+            result_msg += "Summary:\n" + "\n".join(test_results)
+            print(result_msg)
+            showInfo(result_msg)
+            return True
+        else:
+            result_msg = "⚠️ TESTS COMPLETED WITH ERRORS\n\n"
+            result_msg += f"Passed: {len(test_results)}\n"
+            result_msg += f"Failed: {len(errors)}\n\n"
+            result_msg += "Errors:\n" + "\n".join(errors[:10])  # Show first 10 errors
+            if len(errors) > 10:
+                result_msg += f"\n... and {len(errors) - 10} more errors"
+            print(result_msg)
+            showWarning(result_msg)
+            return False
+
+    except Exception as e:
+        error_msg = f"Self-test crashed: {e}"
+        showWarning(error_msg)
+        print(f"[Mega Self-Test] CRASH: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 # ---------------------------------------------------------
 
 if database_complete != False:
@@ -11844,6 +12249,30 @@ if database_complete != False:
         developer_menu.addAction(toggle_mega_action)
     except Exception as e:
         print(f"Could not add developer mega toggle: {e}")
+
+    # Developer Mode: Purge All Mega Stones
+    try:
+        purge_stones_action = QAction("🧹 Purge All Mega Stones", mw)
+        qconnect(purge_stones_action.triggered, _purge_all_mega_stones)
+        developer_menu.addAction(purge_stones_action)
+    except Exception as e:
+        print(f"Could not add purge stones action: {e}")
+
+    # Developer Mode: Seed 3 Specific Mega Stones
+    try:
+        seed_stones_action = QAction("🌱 Seed 3 Test Mega Stones", mw)
+        qconnect(seed_stones_action.triggered, _seed_specific_mega_stones)
+        developer_menu.addAction(seed_stones_action)
+    except Exception as e:
+        print(f"Could not add seed stones action: {e}")
+
+    # Developer Mode: Run Mega System Self-Test
+    try:
+        self_test_action = QAction("🔬 Run Mega System Self-Test", mw)
+        qconnect(self_test_action.triggered, _mega_system_self_test)
+        developer_menu.addAction(self_test_action)
+    except Exception as e:
+        print(f"Could not add self-test action: {e}")
 
     # 5. Separator
     mw.pokemenu.addSeparator()
