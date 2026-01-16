@@ -12305,10 +12305,31 @@ if database_complete != False:
     qconnect(pokecol_action.triggered, pokecollection_win.show)
     mw.pokemenu.addAction(pokecol_action)
 
-    # 4. Developer Mode submenu (hidden by default, toggle with Ctrl+Shift+D)
+    # Define toggle_developer_mode function (used by menu item and F6 hotkey)
+    def toggle_developer_mode():
+        """Toggle Developer Mode menu visibility"""
+        print("[DevMode] activated")  # Debug: shortcut fired
+        showInfo("Developer Mode toggled")  # Immediate visual confirmation
+
+        current_visible = developer_menu.menuAction().isVisible()
+        developer_menu.menuAction().setVisible(not current_visible)
+        if not current_visible:
+            tooltipWithColour("Developer Mode: Enabled", "#00FF00")
+            print("[DevMode] toggled: True")
+        else:
+            tooltipWithColour("Developer Mode: Hidden", "#888888")
+            print("[DevMode] toggled: False")
+
+    # 4. Developer Mode submenu (hidden by default, toggle with F6 or menu item)
     developer_menu = QMenu("Developer Mode", mw)
     mw.pokemenu.addMenu(developer_menu)
     developer_menu.menuAction().setVisible(False)  # Hidden by default
+
+    # 4b. Toggle Developer Mode - ALWAYS VISIBLE menu item
+    toggle_dev_mode_action = QAction("Toggle Developer Mode (F6)", mw)
+    qconnect(toggle_dev_mode_action.triggered, toggle_developer_mode)
+    mw.pokemenu.addAction(toggle_dev_mode_action)
+    print("[DevMenu] Added always-visible menu item: Toggle Developer Mode (F6)")
 
     # Developer Mode: Reset Battle
     reset_battle_action = QAction("🔄 Reset Battle", mw)
@@ -12401,41 +12422,21 @@ if database_complete != False:
     # Confirmation log
     print("[DevMenu] Developer Mode actions added: purge/seed/self-test")
 
-    # Add keyboard shortcut to toggle Developer Mode visibility (non-conflicting)
-    def toggle_developer_mode():
-        """Toggle Developer Mode menu visibility"""
-        print("[DevMode] activated")  # Debug: shortcut fired
-        showInfo("Developer Mode toggled")  # Immediate visual confirmation
-
-        current_visible = developer_menu.menuAction().isVisible()
-        developer_menu.menuAction().setVisible(not current_visible)
-        if not current_visible:
-            tooltipWithColour("Developer Mode: Enabled", "#00FF00")
-            print("[DevMode] toggled: True")
-        else:
-            tooltipWithColour("Developer Mode: Hidden", "#888888")
-            print("[DevMode] toggled: False")
-
+    # Add F6 keyboard shortcut to toggle Developer Mode visibility
     from PyQt6.QtGui import QKeySequence, QShortcut
     from PyQt6.QtCore import Qt
-    import platform
 
-    # Use Cmd+Option+Shift+D on macOS (non-conflicting), Ctrl+Alt+Shift+D on other platforms
-    if platform.system() == "Darwin":  # macOS
-        shortcut_key = QKeySequence("Cmd+Alt+Shift+D")  # Alt = Option on macOS
-    else:
-        shortcut_key = QKeySequence("Ctrl+Alt+Shift+D")
-
-    # Store globally to prevent garbage collection and set ApplicationShortcut context
-    dev_mode_shortcut = QShortcut(shortcut_key, mw)
-    dev_mode_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)  # Works across all windows
-    qconnect(dev_mode_shortcut.activated, toggle_developer_mode)
+    # F6 - simple, reliable, works everywhere
+    shortcut_f6 = QShortcut(QKeySequence("F6"), mw)
+    shortcut_f6.setContext(Qt.ShortcutContext.ApplicationShortcut)  # Works across all windows
+    qconnect(shortcut_f6.activated, toggle_developer_mode)
 
     # Store in mw to prevent garbage collection
-    mw._ankimon_dev_mode_shortcut = dev_mode_shortcut
+    mw._ankimon_dev_mode_shortcut_f6 = shortcut_f6
 
-    print(f"[DevMode] Hotkey registered: {shortcut_key.toString()}")
-    print(f"[DevMode] Shortcut context: ApplicationShortcut (works in Deck Browser, Reviewer, Browser)")
+    print("[DevMode] Hotkey registered: F6")
+    print("[DevMode] Shortcut context: ApplicationShortcut (works in Deck Browser, Reviewer, Browser)")
+    print("[DevMode] Menu item: 'Toggle Developer Mode (F6)' is always visible in Ankimon menu")
 
     # 5. Separator
     mw.pokemenu.addSeparator()
