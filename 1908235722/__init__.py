@@ -10105,29 +10105,35 @@ class ItemWindow(QWidget):
                 try:
                     # Stone name is just the item name
                     stone_name = item_name
-                    print(f"[Mega] Equipping mega stone: {stone_name} to {pkmn_name}")
+                    print(f"[Mega ItemBag] Equipping mega stone: {stone_name} to {pkmn_name}")
 
                     # Get Pokemon ID and check if it matches the stone
                     pokemon_id = search_pokedex(pkmn_name.lower(), "num")
                     if pokemon_id is None:
                         showWarning(f"Item equip failed: Could not find Pokemon ID for {pkmn_name}")
-                        print(f"[Mega] ERROR: pokemon_id is None for {pkmn_name}")
+                        print(f"[Mega ItemBag] ERROR: pokemon_id is None for {pkmn_name}")
                         return
 
                     expected_stone = _get_mega_stone_name(pokemon_id)
                     if expected_stone is None:
                         showWarning(f"Item equip failed: Could not determine mega stone for {pkmn_name}")
-                        print(f"[Mega] ERROR: expected_stone is None for pokemon_id {pokemon_id}")
+                        print(f"[Mega ItemBag] ERROR: expected_stone is None for pokemon_id {pokemon_id}")
                         return
 
-                    print(f"[Mega] Pokemon ID: {pokemon_id}, Expected stone: {expected_stone}, Actual stone: {stone_name}")
+                    # DEBUG: Show what we're comparing
+                    print(f"[Mega ItemBag] VALIDATION CHECK:")
+                    print(f"  - Pokemon: {pkmn_name} (ID: {pokemon_id})")
+                    print(f"  - Stone from UI: '{stone_name}' (type: {type(stone_name).__name__})")
+                    print(f"  - Expected stone: '{expected_stone}' (type: {type(expected_stone).__name__})")
+                    print(f"  - Lowercase match: '{stone_name.lower()}' == '{expected_stone.lower()}' = {stone_name.lower() == expected_stone.lower()}")
 
-                    if stone_name == expected_stone:
+                    # CRITICAL FIX: Case-insensitive comparison
+                    if stone_name.lower() == expected_stone.lower():
                         # Check if another Pokemon already holds this stone
                         conflict_pokemon = self.check_item_holder(item_name)
                         if conflict_pokemon and conflict_pokemon.lower() != pkmn_name.lower():
                             from aqt.utils import askUser
-                            move_item = askUser(f"{stone_name} is currently held by {conflict_pokemon}.\nMove it to {pkmn_name.capitalize()}?")
+                            move_item = askUser(f"{expected_stone} is currently held by {conflict_pokemon}.\nMove it to {pkmn_name.capitalize()}?")
                             if not move_item:
                                 return
                             self.remove_held_item_from(conflict_pokemon)
@@ -10135,15 +10141,17 @@ class ItemWindow(QWidget):
                         # Assign mega stone to Pokemon
                         self.assign_held_item(pkmn_name, item_name)
                         self.delete_item(item_name)
-                        print(f"[Mega] Successfully equipped {stone_name} to {pkmn_name}")
-                        showInfo(f"{stone_name} has been given to {pkmn_name.capitalize()}!\n{pkmn_name.capitalize()} can now Mega Evolve in battle!")
+                        print(f"[Mega ItemBag] SUCCESS: Equipped {stone_name} to {pkmn_name}")
+                        showInfo(f"{expected_stone} has been given to {pkmn_name.capitalize()}!\n{pkmn_name.capitalize()} can now Mega Evolve in battle!")
                     else:
+                        print(f"[Mega ItemBag] REJECTION: Stone mismatch")
+                        print(f"  - '{stone_name}' != '{expected_stone}'")
                         showInfo(f"{pkmn_name.capitalize()} cannot use {stone_name}.\nThis stone is for a different Pokemon.")
                     return
                 except Exception as e:
                     error_msg = f"Item equip failed: {str(e)}"
                     showWarning(error_msg)
-                    print(f"[Mega] ERROR during mega stone equip: {e}")
+                    print(f"[Mega ItemBag] ERROR during mega stone equip: {e}")
                     import traceback
                     traceback.print_exc()
                     return
