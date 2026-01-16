@@ -1413,9 +1413,13 @@ if database_complete != False:
                 else:
                     level = 5
                     min_level = 0
-            if min_level is None or not min_level or mainpokemon_level is None or not mainpokemon_level:
-                level = 5
-                min_level = 0
+
+            # Only apply this safety check for non-special battles
+            # For Gym/Elite Four/Champion, levels are already set correctly above
+            if not is_special_battle:
+                if min_level is None or not min_level or mainpokemon_level is None or not mainpokemon_level:
+                    level = 5
+                    min_level = 0
             if min_level < level:
                 id_check = check_id_ok(id)
                 if id_check:
@@ -2693,7 +2697,11 @@ def complete_gym_battle():
 
         # Show completion message
         try:
-            completion_msg = f"Gym {gym_number} battle complete! Collect 100 more cards for the next gym."
+            # Check if all 8 badges are earned (after gym 8)
+            if _ankimon_all_gym_badges_earned():
+                completion_msg = f"Gym {gym_number} battle complete!\n\n🏆 All 8 badges earned! Moving on to Elite Four.\n\nDefeat 100 Pokemon to challenge the first Elite Four member!"
+            else:
+                completion_msg = f"Gym {gym_number} battle complete! Collect 100 more cards for the next gym."
             tooltipWithColour(completion_msg, "#FFD700")
         except:
             pass
@@ -6074,11 +6082,45 @@ if database_complete != False and mainpokemon_empty is False:
             pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
             if show_mainpkmn_in_reviewer > 0:
                 main_pkmn_imagefile = f'{mainpokemon_id}.gif'
+
+                # Check if Pokemon is in Mega form
+                is_mega_active = False
+                try:
+                    party = _load_party()
+                    if party and isinstance(party, dict):
+                        active_slot = party.get("active_slot", 0)
+                        party_slots = party.get("slots", [0, 1, 2, 3])
+                        if active_slot < len(party_slots):
+                            active_pokemon_index = party_slots[active_slot]
+                            if active_pokemon_index is not None:
+                                pokemon_list = _load_mypokemon_list()
+                                if pokemon_list and active_pokemon_index < len(pokemon_list):
+                                    active_pokemon = pokemon_list[active_pokemon_index]
+                                    is_mega_active = active_pokemon.get('is_mega', False)
+                except Exception:
+                    pass
+
+                # Choose sprite directory based on Mega state
                 if view_main_front == -1:
-                    gif_type = "front_default_gif" 
+                    if is_mega_active:
+                        gif_type = "front_mega_pokemon_gif"
+                    else:
+                        gif_type = "front_default_gif"
                 else:
-                    gif_type = "back_default_gif"
+                    if is_mega_active:
+                        gif_type = "back_mega_pokemon_gif"
+                    else:
+                        gif_type = "back_default_gif"
+
                 main_pkmn_imagefile_path = os.path.join((user_path_sprites / f"{gif_type}"), main_pkmn_imagefile)
+
+                # Fallback to normal sprite if mega sprite doesn't exist
+                if is_mega_active and not os.path.exists(main_pkmn_imagefile_path):
+                    if view_main_front == -1:
+                        gif_type = "front_default_gif"
+                    else:
+                        gif_type = "back_default_gif"
+                    main_pkmn_imagefile_path = os.path.join((user_path_sprites / f"{gif_type}"), main_pkmn_imagefile)
         if show_mainpkmn_in_reviewer > 0:
             mainpkmn_max_hp = calculate_hp(mainpokemon_stats["hp"], mainpokemon_level, mainpokemon_ev, mainpokemon_iv)
             mainpkmn_hp_percent = int((mainpokemon_hp / mainpkmn_max_hp) * 50)
@@ -6473,11 +6515,45 @@ if database_complete != False and mainpokemon_empty is False:
             pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
             if show_mainpkmn_in_reviewer > 0:
                 main_pkmn_imagefile = f'{mainpokemon_id}.gif'
+
+                # Check if Pokemon is in Mega form
+                is_mega_active = False
+                try:
+                    party = _load_party()
+                    if party and isinstance(party, dict):
+                        active_slot = party.get("active_slot", 0)
+                        party_slots = party.get("slots", [0, 1, 2, 3])
+                        if active_slot < len(party_slots):
+                            active_pokemon_index = party_slots[active_slot]
+                            if active_pokemon_index is not None:
+                                pokemon_list = _load_mypokemon_list()
+                                if pokemon_list and active_pokemon_index < len(pokemon_list):
+                                    active_pokemon = pokemon_list[active_pokemon_index]
+                                    is_mega_active = active_pokemon.get('is_mega', False)
+                except Exception:
+                    pass
+
+                # Choose sprite directory based on Mega state
                 if view_main_front == -1:
-                    gif_type = "front_default_gif" 
+                    if is_mega_active:
+                        gif_type = "front_mega_pokemon_gif"
+                    else:
+                        gif_type = "front_default_gif"
                 else:
-                    gif_type = "back_default_gif"
+                    if is_mega_active:
+                        gif_type = "back_mega_pokemon_gif"
+                    else:
+                        gif_type = "back_default_gif"
+
                 main_pkmn_imagefile_path = os.path.join((user_path_sprites / f"{gif_type}"), main_pkmn_imagefile)
+
+                # Fallback to normal sprite if mega sprite doesn't exist
+                if is_mega_active and not os.path.exists(main_pkmn_imagefile_path):
+                    if view_main_front == -1:
+                        gif_type = "front_default_gif"
+                    else:
+                        gif_type = "back_default_gif"
+                    main_pkmn_imagefile_path = os.path.join((user_path_sprites / f"{gif_type}"), main_pkmn_imagefile)
         if show_mainpkmn_in_reviewer > 0:
             mainpkmn_max_hp = calculate_hp(mainpokemon_stats["hp"], mainpokemon_level, mainpokemon_ev, mainpokemon_iv)
             mainpkmn_hp_percent = int((mainpokemon_hp / mainpkmn_max_hp) * 50)
@@ -7848,16 +7924,16 @@ class TestWindow(QWidget):
                 if conf:
                     member_key = conf.get("ankimon_elite_four_member_key")
                     if member_key:
-                        elite_sprite_dir = addon_dir / "addon_sprites" / "elite_four_champion_sprite"
-                        trainer_sprite_path = elite_sprite_dir / f"{member_key}.png"
+                        elite_sprite_dir = addon_dir / "addon_sprites" / "elite_four_champion_sprite" / "elite_four_gif"
+                        trainer_sprite_path = elite_sprite_dir / f"{member_key}.gif"
             except Exception:
                 pass
 
         # Check for Champion battle
         elif _ankimon_is_champion_active():
             try:
-                elite_sprite_dir = addon_dir / "addon_sprites" / "elite_four_champion_sprite"
-                trainer_sprite_path = elite_sprite_dir / "cynthia.png"
+                elite_sprite_dir = addon_dir / "addon_sprites" / "elite_four_champion_sprite" / "elite_four_gif"
+                trainer_sprite_path = elite_sprite_dir / "cynthia.gif"
             except Exception:
                 pass
 
@@ -7866,14 +7942,17 @@ class TestWindow(QWidget):
             trainer_label = QLabel(container)
             trainer_label.setStyleSheet("background: transparent;")
             trainer_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-            trainer_pixmap = QPixmap(str(trainer_sprite_path))
-            # Scale trainer sprite to reasonable size (80px wide max)
-            trainer_scaled = trainer_pixmap.scaledToWidth(80, Qt.TransformationMode.SmoothTransformation)
-            trainer_label.setPixmap(trainer_scaled)
+
+            # Use QMovie for animated GIF instead of QPixmap
+            trainer_movie = QMovie(str(trainer_sprite_path))
+            trainer_movie.setScaledSize(QSize(80, 80))  # Scale to 80px
+            trainer_label.setMovie(trainer_movie)
+            trainer_movie.start()
+
             # Position trainer sprite on the left side of the wild Pokemon area
             trainer_x = 260  # Left of wild Pokemon
             trainer_y = 40   # Aligned with top of battle area
-            trainer_label.setGeometry(trainer_x, trainer_y, trainer_scaled.width(), trainer_scaled.height())
+            trainer_label.setGeometry(trainer_x, trainer_y, 80, 80)
 
         # Add popup message for first encounter
         if pokemon_encounter == 0:
@@ -9907,7 +9986,8 @@ class ItemWindow(QWidget):
 
             # Determine button text based on item type
             is_exp_share = 'exp' in item_name and 'share' in item_name
-            is_mega_stone = '80px-bag_' in item_name and 'za_sprite' in item_name
+            # Check if item is a mega stone (all mega stones end with "ite")
+            is_mega_stone = item_name.lower().endswith('ite')
 
             if is_exp_share:
                 button_text = "Assign EXP Share"
@@ -10001,11 +10081,11 @@ class ItemWindow(QWidget):
                 showInfo(f"{pkmn_name.capitalize()} is now holding EXP Share!\n{pkmn_name.capitalize()} will gain EXP when other Pokémon battle.")
                 return
 
-            # Check if it's a mega stone (formatted as 80px-Bag_{Name}_ZA_Sprite)
-            if "80px-Bag_" in item_name and "ZA_Sprite" in item_name:
+            # Check if it's a mega stone (clean names like "Ampharosite")
+            if item_name.lower().endswith('ite'):
                 try:
-                    # Extract stone name (e.g., "Ampharosite" from "80px-Bag_Ampharosite_ZA_Sprite")
-                    stone_name = item_name.replace("80px-Bag_", "").replace("_ZA_Sprite", "")
+                    # Stone name is just the item name
+                    stone_name = item_name
                     print(f"[Mega] Equipping mega stone: {stone_name} to {pkmn_name}")
 
                     # Get Pokemon ID and check if it matches the stone
@@ -10117,7 +10197,7 @@ class ItemWindow(QWidget):
                     print(f"[ItemBag] Updated {pkmn_name}: held_item changed from {old_item} to {item_name}")
 
                     # Check if this is a mega stone - if so, trigger mega form
-                    if item_name and "80px-Bag_" in item_name and "ZA_Sprite" in item_name:
+                    if item_name and item_name.lower().endswith('ite'):
                         pokemon_id = pokemon.get('id')
                         if pokemon_id and pokemon_id in _get_mega_capable_pokemon_ids():
                             pokemon['is_mega'] = True
@@ -10473,7 +10553,7 @@ def _remove_pokemon_held_item(pkmn_name):
                 pokemon['held_item'] = None
 
                 # If this was a mega stone, revert mega form
-                if item_removed and "80px-Bag_" in item_removed and "ZA_Sprite" in item_removed:
+                if item_removed and item_removed.lower().endswith('ite'):
                     if pokemon.get('is_mega', False):
                         pokemon['is_mega'] = False
                         was_mega = True
@@ -10584,7 +10664,15 @@ def _distribute_exp_share(exp_earned):
 
                 # Check for level-up
                 while pkmn_level < 100:
-                    exp_needed = find_experience_for_level(pkmn_growth_rate, pkmn_level)
+                    try:
+                        exp_needed = find_experience_for_level(pkmn_growth_rate, pkmn_level)
+                        # CRITICAL FIX: CSV reader returns strings, must convert to int
+                        exp_needed = int(exp_needed) if exp_needed else 0
+                    except (ValueError, TypeError, AttributeError):
+                        # Malformed XP value - skip level-up check to prevent crash
+                        print(f"[EXP Share] Invalid exp_needed for {pkmn_name} level {pkmn_level}")
+                        break
+
                     if new_xp >= exp_needed:
                         pkmn_level += 1
                         new_xp -= exp_needed
@@ -11045,8 +11133,8 @@ def _award_random_mega_stone():
         except (FileNotFoundError, json.JSONDecodeError):
             itembag_list = []
 
-        # Use sprite filename format: 80px-Bag_{StoneName}_ZA_Sprite
-        item_name = f"80px-Bag_{stone_name}_ZA_Sprite"
+        # Use clean stone name (e.g., "Ampharosite")
+        item_name = stone_name
         itembag_list.append(item_name)
 
         with open(itembag_path, 'w') as json_file:
@@ -11140,13 +11228,12 @@ def _can_mega_evolve():
             print(f"[Mega] FAIL: {pokemon_name} (ID: {pokemon_id}) cannot mega evolve")
             return False
 
-        # CRITICAL FIX: Check if Pokemon is HOLDING the correct mega stone
+        # Check if Pokemon is holding the correct mega stone
         expected_stone_name = _get_mega_stone_name(pokemon_id)
-        expected_item_format = f"80px-Bag_{expected_stone_name}_ZA_Sprite"
 
-        if held_item != expected_item_format:
+        if held_item != expected_stone_name:
             print(f"[Mega] FAIL: {pokemon_name} not holding {expected_stone_name}")
-            print(f"[Mega]   Expected: {expected_item_format}")
+            print(f"[Mega]   Expected: {expected_stone_name}")
             print(f"[Mega]   Actual: {held_item}")
             return False
 
