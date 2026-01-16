@@ -10123,8 +10123,8 @@ class ItemWindow(QWidget):
                     # DEBUG: Show what we're comparing
                     print(f"[Mega ItemBag] VALIDATION CHECK:")
                     print(f"  - Pokemon: {pkmn_name} (ID: {pokemon_id})")
-                    print(f"  - Stone from UI: '{stone_name}' (type: {type(stone_name).__name__})")
-                    print(f"  - Expected stone: '{expected_stone}' (type: {type(expected_stone).__name__})")
+                    print(f"  - Stone from UI: '{stone_name}'")
+                    print(f"  - Expected stone: '{expected_stone}'")
                     print(f"  - Lowercase match: '{stone_name.lower()}' == '{expected_stone.lower()}' = {stone_name.lower() == expected_stone.lower()}")
 
                     # CRITICAL FIX: Case-insensitive comparison
