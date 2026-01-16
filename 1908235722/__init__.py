@@ -12401,7 +12401,7 @@ if database_complete != False:
     # Confirmation log
     print("[DevMenu] Developer Mode actions added: purge/seed/self-test")
 
-    # Add keyboard shortcut to toggle Developer Mode visibility (Ctrl+Shift+D / Cmd+Shift+D)
+    # Add keyboard shortcut to toggle Developer Mode visibility (non-conflicting)
     def toggle_developer_mode():
         """Toggle Developer Mode menu visibility"""
         current_visible = developer_menu.menuAction().isVisible()
@@ -12417,15 +12417,15 @@ if database_complete != False:
     from PyQt6.QtCore import Qt
     import platform
 
-    # Use Cmd on macOS, Ctrl on other platforms
+    # Use Cmd+Option+Shift+D on macOS (non-conflicting), Ctrl+Alt+Shift+D on other platforms
     if platform.system() == "Darwin":  # macOS
-        shortcut_key = QKeySequence("Cmd+Shift+D")
+        shortcut_key = QKeySequence("Cmd+Alt+Shift+D")  # Alt = Option on macOS
     else:
-        shortcut_key = QKeySequence("Ctrl+Shift+D")
+        shortcut_key = QKeySequence("Ctrl+Alt+Shift+D")
 
     dev_mode_shortcut = QShortcut(shortcut_key, mw)
     qconnect(dev_mode_shortcut.activated, toggle_developer_mode)
-    print(f"[DevMenu] Keyboard shortcut registered: {shortcut_key.toString()}")
+    print(f"[DevMode] Hotkey registered: {shortcut_key.toString()}")
 
     # 5. Separator
     mw.pokemenu.addSeparator()
