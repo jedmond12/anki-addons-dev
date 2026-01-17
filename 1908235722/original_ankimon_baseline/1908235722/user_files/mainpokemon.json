@@ -1,0 +1,47 @@
+[
+  {
+    "name": "Cyndaquil",
+    "gender": "M",
+    "level": 5,
+    "id": 155,
+    "ability": "Blaze",
+    "type": [
+      "Fire"
+    ],
+    "stats": {
+      "hp": 39,
+      "atk": 52,
+      "def": 43,
+      "spa": 60,
+      "spd": 50,
+      "spe": 65,
+      "xp": 0
+    },
+    "ev": {
+      "hp": 0,
+      "atk": 0,
+      "def": 0,
+      "spa": 0,
+      "spd": 0,
+      "spe": 0
+    },
+    "iv": {
+      "hp": 22,
+      "atk": 32,
+      "def": 17,
+      "spa": 26,
+      "spd": 14,
+      "spe": 9
+    },
+    "attacks": [
+      "tackle",
+      "leer"
+    ],
+    "base_experience": 62,
+    "current_hp": 21,
+    "growth_rate": "medium-slow",
+    "evos": [
+      "Quilava"
+    ]
+  }
+]
