@@ -4334,9 +4334,31 @@ class PokemonCollectionDialog(QDialog):
                         fontpkmnspec.setPointSize(8)
                         painter.end()
 
+                        # Name with shiny icon (if shiny)
+                        name_container = QHBoxLayout()
+                        name_container.setContentsMargins(0, 0, 0, 0)
+                        name_container.setSpacing(5)
+
+                        # Add shiny icon if Pokemon is shiny
+                        is_shiny = pokemon.get('is_shiny', False)
+                        if is_shiny:
+                            shiny_icon_label = QLabel()
+                            shiny_icon_path = addon_dir / "addon_sprites" / "icons" / "shiny-stars.png"
+                            if shiny_icon_path.exists():
+                                shiny_icon_pixmap = QPixmap(str(shiny_icon_path))
+                                shiny_icon_scaled = shiny_icon_pixmap.scaled(16, 16, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                                shiny_icon_label.setPixmap(shiny_icon_scaled)
+                                name_container.addWidget(shiny_icon_label)
+
                         name_label = QLabel(capitalized_name)
                         name_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
                         name_label.setFont(font)
+                        name_container.addWidget(name_label)
+                        name_container.addStretch()
+
+                        # Convert QHBoxLayout to QWidget for adding to container
+                        name_widget = QWidget()
+                        name_widget.setLayout(name_container)
 
                         level_label = QLabel(lvl)
                         level_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -4441,7 +4463,7 @@ class PokemonCollectionDialog(QDialog):
                         else:
                             container_layout.addWidget(image_label)
                             image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                        container_layout.addWidget(name_label)
+                        container_layout.addWidget(name_widget)
                         container_layout.addWidget(level_label)
                         container_layout.addWidget(type_label)
                         container_layout.addWidget(ability_label)
@@ -4449,7 +4471,6 @@ class PokemonCollectionDialog(QDialog):
                         container_layout.addWidget(pokemon_button)
                         container_layout.addWidget(slot_combo)
                         type_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                        name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         level_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         ability_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -5309,7 +5330,7 @@ def move_category_path(category):
     category_path = addon_dir / "addon_sprites" / png_file
     return category_path
 
-def MainPokemon(name, nickname, level, id, ability, type, detail_stats, attacks, hp, base_experience, growth_rate, ev, iv, gender, preserve_enemy=False, silent=False):
+def MainPokemon(name, nickname, level, id, ability, type, detail_stats, attacks, hp, base_experience, growth_rate, ev, iv, gender, is_shiny=False, preserve_enemy=False, silent=False):
     # Display the Pokémon image
     global mainpkmn, addon_dir, currdirname, mainpokemon_path
     mainpkmn = 1
@@ -5341,7 +5362,8 @@ def MainPokemon(name, nickname, level, id, ability, type, detail_stats, attacks,
             "attacks": attacks,
             "base_experience": base_experience,
             "current_hp": calculate_hp(detail_stats["hp"],level, ev, iv),
-            "growth_rate": growth_rate
+            "growth_rate": growth_rate,
+            "is_shiny": is_shiny
         }
     ]
 
@@ -6663,13 +6685,13 @@ if database_complete != False and mainpokemon_empty is False:
                         gif_type = "back_default_gif"
                     main_pkmn_imagefile_path = os.path.join((user_path_sprites / f"{gif_type}"), main_pkmn_imagefile)
 
-                # Debug log for player shiny
-                if player_is_shiny:
-                    try:
-                        if developer_menu and developer_menu.menuAction().isVisible():
-                            print(f"[Shiny] Reviewer player sprite: id={mainpokemon_id} is_shiny=True path={main_pkmn_imagefile_path}")
-                    except:
-                        pass
+                # Debug log for sprite selection
+                if is_mega_active:
+                    print(f"[Sprite] reviewer player id={mainpokemon_id} shiny={player_is_shiny} mega=True -> {gif_type}")
+                elif player_is_shiny:
+                    print(f"[Sprite] reviewer player id={mainpokemon_id} shiny=True mega=False -> {gif_type}")
+                else:
+                    print(f"[Sprite] reviewer player id={mainpokemon_id} shiny=False mega=False -> {gif_type}")
         if show_mainpkmn_in_reviewer > 0:
             mainpkmn_max_hp = calculate_hp(mainpokemon_stats["hp"], mainpokemon_level, mainpokemon_ev, mainpokemon_iv)
             mainpkmn_hp_percent = int((mainpokemon_hp / mainpkmn_max_hp) * 50)
@@ -8024,6 +8046,7 @@ class TestWindow(QWidget):
             player_gif_path = user_path_sprites / "back_mega_pokemon_gif" / f"{mainpokemon_id}.gif"
             if not player_gif_path.exists():
                 player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
+            print(f"[Sprite] player id={mainpokemon_id} shiny={player_is_shiny} mega=True -> {player_gif_path.name}")
         # Use shiny sprite if Pokemon is shiny (and not mega)
         elif player_is_shiny:
             global shiny_back_default_gif
@@ -8031,16 +8054,13 @@ class TestWindow(QWidget):
             # Fallback to normal if shiny sprite doesn't exist
             if not player_gif_path.exists():
                 player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
+                print(f"[Sprite] player id={mainpokemon_id} shiny=True mega=False -> back_default_gif (shiny sprite not found)")
             else:
-                # Log successful shiny sprite load
-                try:
-                    if developer_menu and developer_menu.menuAction().isVisible():
-                        print(f"[Shiny] Player Pokémon is shiny: {player_gif_path}")
-                except:
-                    pass
+                print(f"[Sprite] player id={mainpokemon_id} shiny=True mega=False -> shiny_back_default_gif")
         # Normal sprite
         else:
             player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
+            print(f"[Sprite] player id={mainpokemon_id} shiny=False mega=False -> back_default_gif")
 
         # Store current sprite path and size for transition
         self.player_sprite_path = player_gif_path
@@ -11844,6 +11864,7 @@ def _set_active_from_party_slot(slot_index: int):
             p.get("ev", {}) or {},
             p.get("iv", {}) or {},
             p.get("gender", "N"),
+            is_shiny=p.get("is_shiny", False),
             preserve_enemy=True,
             silent=True,
         )
@@ -12633,16 +12654,10 @@ if database_complete != False:
         except Exception as e:
             print(f"[DevMode] Error refreshing Pokédex: {e}")
 
-    # 4. Developer Mode submenu (hidden by default, toggle with Option+Shift+9 or menu item)
+    # 4. Developer Mode submenu (hidden by default, toggle with Option+Shift+9 hotkey)
     developer_menu = QMenu("Developer Mode", mw)
     mw.pokemenu.addMenu(developer_menu)
     developer_menu.menuAction().setVisible(False)  # Hidden by default
-
-    # 4b. Toggle Developer Mode - ALWAYS VISIBLE menu item
-    toggle_dev_mode_action = QAction("Toggle Developer Mode (⌥⇧9)", mw)
-    qconnect(toggle_dev_mode_action.triggered, toggle_developer_mode)
-    mw.pokemenu.addAction(toggle_dev_mode_action)
-    print("[DevMenu] Added always-visible menu item: Toggle Developer Mode (⌥⇧9)")
 
     # Developer Mode: Reset Battle
     reset_battle_action = QAction("🔄 Reset Battle", mw)
