@@ -136,6 +136,451 @@ config = mw.addonManager.getConfig(__name__)
 addon_dir = Path(__file__).parents[0]
 currdirname = addon_dir
 
+# ============================================================================
+# ANKIMON LOGGING SYSTEM
+# ============================================================================
+
+import datetime
+import zipfile
+
+# Logging configuration
+LOG_DIR = addon_dir / "user_files" / "logs"
+LOG_FILE = LOG_DIR / "ankimon.log"
+LOG_MAX_SIZE = 5 * 1024 * 1024  # 5 MB
+LOG_KEEP_COUNT = 3  # Keep last 3 rotated logs
+
+def _ankimon_ensure_log_dir():
+    """Ensure log directory exists"""
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        return True
+    except Exception as e:
+        print(f"[Ankimon] Failed to create log directory: {e}")
+        return False
+
+def _ankimon_rotate_log():
+    """Rotate log file if it exceeds max size"""
+    try:
+        if not LOG_FILE.exists():
+            return
+        if LOG_FILE.stat().st_size < LOG_MAX_SIZE:
+            return
+
+        # Rotate existing logs
+        for i in range(LOG_KEEP_COUNT - 1, 0, -1):
+            old_log = LOG_DIR / f"ankimon.log.{i}"
+            new_log = LOG_DIR / f"ankimon.log.{i + 1}"
+            if old_log.exists():
+                if new_log.exists():
+                    new_log.unlink()
+                old_log.rename(new_log)
+
+        # Move current log to .1
+        rotated = LOG_DIR / "ankimon.log.1"
+        if rotated.exists():
+            rotated.unlink()
+        LOG_FILE.rename(rotated)
+    except Exception as e:
+        print(f"[Ankimon] Log rotation failed: {e}")
+
+def _ankimon_log(severity, prefix, message):
+    """
+    Write log message to file and console.
+
+    Args:
+        severity: INFO, WARN, ERROR
+        prefix: Component name (e.g., AnkimonValidator, AnkimonUI, AnkimonBattle)
+        message: Log message
+    """
+    try:
+        _ankimon_ensure_log_dir()
+        _ankimon_rotate_log()
+
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_line = f"[{timestamp}] [{severity}] [{prefix}] {message}\n"
+
+        # Write to file
+        with open(LOG_FILE, 'a', encoding='utf-8') as f:
+            f.write(log_line)
+
+        # Also print to console
+        print(f"[Ankimon] [{prefix}] {message}")
+    except Exception as e:
+        print(f"[Ankimon] Logging failed: {e}")
+
+# ============================================================================
+# SAFE JSON OPERATIONS
+# ============================================================================
+
+def _ankimon_safe_load_json(file_path, default_value=None):
+    """
+    Safely load JSON file with corruption handling.
+
+    Args:
+        file_path: Path to JSON file
+        default_value: Value to return if file missing/corrupted
+
+    Returns:
+        Loaded JSON data or default_value
+    """
+    try:
+        if not Path(file_path).exists():
+            _ankimon_log("WARN", "SafeJSON", f"File not found: {file_path}")
+            return default_value
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            _ankimon_log("INFO", "SafeJSON", f"Successfully loaded: {file_path}")
+            return data
+    except json.JSONDecodeError as e:
+        # Corrupted JSON - rename and return default
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = Path(str(file_path) + f".corrupted_{timestamp}")
+        try:
+            Path(file_path).rename(backup_path)
+            _ankimon_log("ERROR", "SafeJSON", f"Corrupted JSON renamed to: {backup_path}")
+        except Exception as rename_err:
+            _ankimon_log("ERROR", "SafeJSON", f"Failed to rename corrupted file: {rename_err}")
+        return default_value
+    except Exception as e:
+        _ankimon_log("ERROR", "SafeJSON", f"Unexpected error loading {file_path}: {e}")
+        return default_value
+
+def _ankimon_safe_save_json(file_path, data, indent=2):
+    """
+    Safely save JSON file with error handling.
+
+    Args:
+        file_path: Path to JSON file
+        data: Data to save
+        indent: JSON indentation level
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        # Ensure parent directory exists
+        Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=indent, ensure_ascii=False)
+        _ankimon_log("INFO", "SafeJSON", f"Successfully saved: {file_path}")
+        return True
+    except Exception as e:
+        _ankimon_log("ERROR", "SafeJSON", f"Failed to save {file_path}: {e}")
+        return False
+
+# ============================================================================
+# STARTUP STATE VALIDATOR
+# ============================================================================
+
+def _ankimon_validate_startup():
+    """
+    Validate and initialize all required directories and JSON files.
+    Run once on addon load before any UI windows are created.
+    """
+    _ankimon_log("INFO", "AnkimonValidator", "Starting startup validation...")
+
+    # Required directories
+    required_dirs = [
+        addon_dir / "user_files",
+        addon_dir / "user_files" / "data_files",
+        addon_dir / "user_files" / "pkmn_data",
+        addon_dir / "user_files" / "sprites",
+        addon_dir / "user_files" / "sprites" / "front_default",
+        addon_dir / "user_files" / "sprites" / "back_default",
+        addon_dir / "user_files" / "sprites" / "front_default_gif",
+        addon_dir / "user_files" / "sprites" / "back_default_gif",
+        addon_dir / "user_files" / "sprites" / "shiny_front_default",
+        addon_dir / "user_files" / "sprites" / "shiny_back_default_gif",
+        addon_dir / "user_files" / "sprites" / "items",
+        addon_dir / "user_files" / "sprites" / "badges",
+        addon_dir / "user_files" / "logs",
+        addon_dir / "user_files" / "debug_bundles",
+    ]
+
+    # Create missing directories
+    for dir_path in required_dirs:
+        try:
+            dir_path.mkdir(parents=True, exist_ok=True)
+            _ankimon_log("INFO", "AnkimonValidator", f"Directory OK: {dir_path.name}")
+        except Exception as e:
+            _ankimon_log("ERROR", "AnkimonValidator", f"Failed to create {dir_path}: {e}")
+
+    # Required JSON files with safe defaults
+    required_json_files = {
+        addon_dir / "user_files" / "party.json": [],
+        addon_dir / "user_files" / "mainpokemon.json": {},
+        addon_dir / "user_files" / "mypokemon.json": [],
+        addon_dir / "user_files" / "items.json": [],
+        addon_dir / "user_files" / "badges.json": [],
+        addon_dir / "user_files" / "progression_stats.json": {
+            "total_cards_reviewed": 0,
+            "total_pokemon_caught": 0,
+            "total_battles_won": 0,
+            "current_round": 0,
+            "gym_badges": [],
+            "elite_four_defeated": [],
+            "champion_defeated": False
+        },
+        addon_dir / "user_files" / "mega_state.json": {
+            "owned_mega_stones": [],
+            "mega_available": False,
+            "mega_active_this_battle": False,
+            "legendary_catches": {}
+        }
+    }
+
+    # Create missing JSON files with defaults
+    for file_path, default_data in required_json_files.items():
+        if not file_path.exists():
+            _ankimon_log("WARN", "AnkimonValidator", f"Creating missing file: {file_path.name}")
+            _ankimon_safe_save_json(file_path, default_data)
+        else:
+            # Validate existing JSON is loadable
+            loaded = _ankimon_safe_load_json(file_path, None)
+            if loaded is None:
+                # Corrupted - recreate with defaults
+                _ankimon_log("WARN", "AnkimonValidator", f"Recreating corrupted file: {file_path.name}")
+                _ankimon_safe_save_json(file_path, default_data)
+
+    _ankimon_log("INFO", "AnkimonValidator", "Startup validation complete!")
+
+# Run startup validation immediately
+_ankimon_validate_startup()
+
+# ============================================================================
+# BATTLE STATE LOCK SYSTEM
+# ============================================================================
+
+# Battle state tracking to prevent interruptions
+_ankimon_battle_state = "idle"  # idle | wild | trainer | gym | elite4 | champion
+
+def _ankimon_get_battle_state():
+    """Get current battle state"""
+    global _ankimon_battle_state
+    return _ankimon_battle_state
+
+def _ankimon_set_battle_state(state):
+    """
+    Set battle state.
+
+    Args:
+        state: idle | wild | trainer | gym | elite4 | champion
+    """
+    global _ankimon_battle_state
+    valid_states = ["idle", "wild", "trainer", "gym", "elite4", "champion"]
+    if state not in valid_states:
+        _ankimon_log("ERROR", "AnkimonBattle", f"Invalid battle state: {state}")
+        return
+
+    old_state = _ankimon_battle_state
+    _ankimon_battle_state = state
+    _ankimon_log("INFO", "AnkimonBattle", f"Battle state: {old_state} -> {state}")
+
+def _ankimon_is_battle_locked():
+    """Check if important battle is in progress (gym/elite4/champion)"""
+    state = _ankimon_get_battle_state()
+    return state in ["gym", "elite4", "champion"]
+
+def _ankimon_can_start_new_battle():
+    """Check if new battle can be started"""
+    state = _ankimon_get_battle_state()
+    if state != "idle":
+        _ankimon_log("WARN", "AnkimonBattle", f"Cannot start new battle - current state: {state}")
+        return False
+    return True
+
+# ============================================================================
+# DEBUG BUNDLE EXPORT
+# ============================================================================
+
+def _ankimon_export_debug_bundle():
+    """
+    Export debug bundle with logs, config, and state files.
+    Creates a ZIP file in user_files/debug_bundles/
+    """
+    try:
+        _ankimon_log("INFO", "AnkimonDebugBundle", "Creating debug bundle...")
+
+        # Create debug bundle directory
+        bundle_dir = addon_dir / "user_files" / "debug_bundles"
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create timestamped filename
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        zip_filename = f"ankimon_debug_{timestamp}.zip"
+        zip_path = bundle_dir / zip_filename
+
+        # Collect system info
+        system_info = []
+        system_info.append(f"Timestamp: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        system_info.append(f"Platform: {platform.system()} {platform.release()}")
+        system_info.append(f"Python Version: {sys.version}")
+        try:
+            system_info.append(f"Anki Version: {anki.version}")
+        except:
+            system_info.append("Anki Version: Unknown")
+        try:
+            system_info.append(f"Qt Version: {QT_VERSION_STR}")
+        except:
+            system_info.append("Qt Version: Unknown")
+        system_info.append(f"Addon Directory: {addon_dir}")
+
+        # Files to include in bundle
+        files_to_include = {
+            # Logs
+            "logs/ankimon.log": LOG_FILE,
+            "logs/ankimon.log.1": LOG_DIR / "ankimon.log.1",
+            "logs/ankimon.log.2": LOG_DIR / "ankimon.log.2",
+            "logs/ankimon.log.3": LOG_DIR / "ankimon.log.3",
+            # State files
+            "state/party.json": addon_dir / "user_files" / "party.json",
+            "state/mainpokemon.json": mainpokemon_path,
+            "state/mypokemon.json": mypokemon_path,
+            "state/items.json": itembag_path,
+            "state/badges.json": badgebag_path,
+            "state/progression_stats.json": progression_stats_path,
+            "state/mega_state.json": mega_state_path,
+            # Config
+            "config/config.json": addon_dir / "config.json",
+            "config/meta.json": addon_dir / "meta.json",
+        }
+
+        # Create ZIP file
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # Add system info
+            zipf.writestr("system_info.txt", "\n".join(system_info))
+
+            # Add files
+            for arcname, file_path in files_to_include.items():
+                try:
+                    if Path(file_path).exists():
+                        zipf.write(file_path, arcname)
+                        _ankimon_log("INFO", "AnkimonDebugBundle", f"Added: {arcname}")
+                    else:
+                        _ankimon_log("WARN", "AnkimonDebugBundle", f"Skipped (not found): {arcname}")
+                except Exception as e:
+                    _ankimon_log("WARN", "AnkimonDebugBundle", f"Failed to add {arcname}: {e}")
+
+        _ankimon_log("INFO", "AnkimonDebugBundle", f"Debug bundle created: {zip_path}")
+
+        # Show success message to user
+        from aqt.utils import showInfo
+        msg = f"Debug bundle created successfully!\n\n"
+        msg += f"Location: {zip_path}\n\n"
+        msg += "This bundle contains logs, config, and state files.\n"
+        msg += "Share this file when reporting issues."
+        showInfo(msg)
+
+        # Optionally open folder
+        try:
+            if platform.system() == "Windows":
+                os.startfile(bundle_dir)
+            elif platform.system() == "Darwin":  # macOS
+                os.system(f'open "{bundle_dir}"')
+            else:  # Linux
+                os.system(f'xdg-open "{bundle_dir}"')
+        except Exception as e:
+            _ankimon_log("WARN", "AnkimonDebugBundle", f"Could not open folder: {e}")
+
+        return True
+
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonDebugBundle", f"Failed to create debug bundle: {e}")
+        from aqt.utils import showWarning
+        showWarning(f"Failed to create debug bundle:\n{str(e)}")
+        return False
+
+# ============================================================================
+# CENTRALIZED UI REFRESH SYSTEM
+# ============================================================================
+
+# Global window references (will be set after windows are created)
+_ankimon_windows = {
+    "test_window": None,
+    "pokecollection_win": None,
+    "complete_pokedex": None,
+    "item_window": None,
+    "reviewer": None,
+}
+
+def _ankimon_register_window(name, window_obj):
+    """Register a window for centralized refresh"""
+    global _ankimon_windows
+    _ankimon_windows[name] = window_obj
+    _ankimon_log("INFO", "AnkimonUI", f"Registered window: {name}")
+
+def _ankimon_refresh_all_views():
+    """
+    Refresh all open Ankimon windows and views.
+    Safe to call anytime - handles missing/closed windows gracefully.
+    """
+    _ankimon_log("INFO", "AnkimonUI", "Refreshing all views...")
+
+    global _ankimon_windows
+
+    # Refresh test window (main battle window)
+    try:
+        if _ankimon_windows.get("test_window") and hasattr(_ankimon_windows["test_window"], "isVisible"):
+            if _ankimon_windows["test_window"].isVisible():
+                if hasattr(_ankimon_windows["test_window"], "update"):
+                    _ankimon_windows["test_window"].update()
+                    _ankimon_log("INFO", "AnkimonUI", "Refreshed test_window")
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonUI", f"Failed to refresh test_window: {e}")
+
+    # Refresh Pokemon Collection window
+    try:
+        if _ankimon_windows.get("pokecollection_win") and hasattr(_ankimon_windows["pokecollection_win"], "isVisible"):
+            if _ankimon_windows["pokecollection_win"].isVisible():
+                if hasattr(_ankimon_windows["pokecollection_win"], "refresh"):
+                    _ankimon_windows["pokecollection_win"].refresh()
+                    _ankimon_log("INFO", "AnkimonUI", "Refreshed pokecollection_win")
+                elif hasattr(_ankimon_windows["pokecollection_win"], "update"):
+                    _ankimon_windows["pokecollection_win"].update()
+                    _ankimon_log("INFO", "AnkimonUI", "Updated pokecollection_win")
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonUI", f"Failed to refresh pokecollection_win: {e}")
+
+    # Refresh Pokedex window
+    try:
+        if _ankimon_windows.get("complete_pokedex") and hasattr(_ankimon_windows["complete_pokedex"], "isVisible"):
+            if _ankimon_windows["complete_pokedex"].isVisible():
+                if hasattr(_ankimon_windows["complete_pokedex"], "refresh"):
+                    _ankimon_windows["complete_pokedex"].refresh()
+                    _ankimon_log("INFO", "AnkimonUI", "Refreshed complete_pokedex")
+                elif hasattr(_ankimon_windows["complete_pokedex"], "update"):
+                    _ankimon_windows["complete_pokedex"].update()
+                    _ankimon_log("INFO", "AnkimonUI", "Updated complete_pokedex")
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonUI", f"Failed to refresh complete_pokedex: {e}")
+
+    # Refresh Item window
+    try:
+        if _ankimon_windows.get("item_window") and hasattr(_ankimon_windows["item_window"], "isVisible"):
+            if _ankimon_windows["item_window"].isVisible():
+                if hasattr(_ankimon_windows["item_window"], "refresh"):
+                    _ankimon_windows["item_window"].refresh()
+                    _ankimon_log("INFO", "AnkimonUI", "Refreshed item_window")
+                elif hasattr(_ankimon_windows["item_window"], "update"):
+                    _ankimon_windows["item_window"].update()
+                    _ankimon_log("INFO", "AnkimonUI", "Updated item_window")
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonUI", f"Failed to refresh item_window: {e}")
+
+    # Refresh reviewer UI overlay
+    try:
+        if mw and hasattr(mw, "reviewer") and mw.reviewer:
+            if hasattr(mw.reviewer, "web"):
+                # Trigger reviewer refresh
+                mw.reviewer.web.eval("if (typeof refreshUI === 'function') { refreshUI(); }")
+                _ankimon_log("INFO", "AnkimonUI", "Refreshed reviewer overlay")
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonUI", f"Failed to refresh reviewer: {e}")
+
+    _ankimon_log("INFO", "AnkimonUI", "Refresh complete!")
+
 def check_folders_exist(parent_directory, folder):
     folder_path = os.path.join(parent_directory, folder)
     if not os.path.isdir(folder_path):
@@ -1591,6 +2036,10 @@ def kill_pokemon():
             conf["ankimon_gym_pending"] = False
             conf["ankimon_gym_enemy_index"] = 0
             mw.col.setMod()
+
+            # Set battle state to gym
+            _ankimon_set_battle_state("gym")
+
             try:
                 tooltipWithColour("Gym Battle Starting!", "#FFD700")
             except:
@@ -1610,6 +2059,10 @@ def kill_pokemon():
             conf["ankimon_elite_four_pending"] = False
             conf["ankimon_elite_four_pokemon_index"] = 0
             mw.col.setMod()
+
+            # Set battle state to elite4
+            _ankimon_set_battle_state("elite4")
+
             try:
                 member_name = conf.get("ankimon_elite_four_member_name", "Elite Four")
                 tooltipWithColour(f"Elite Four {member_name} Battle Starting!", "#FFD700")
@@ -1630,6 +2083,10 @@ def kill_pokemon():
             conf["ankimon_champion_pending"] = False
             conf["ankimon_champion_pokemon_index"] = 0
             mw.col.setMod()
+
+            # Set battle state to champion
+            _ankimon_set_battle_state("champion")
+
             try:
                 tooltipWithColour("Champion Cynthia Battle Starting!", "#FFD700")
             except:
@@ -2591,6 +3048,16 @@ def start_enemy_trainer_battle(trainer_name, trainer_sprite, trainer_scene):
 def new_pokemon():
     global name, id, level, hp, max_hp, ability, type, enemy_attacks, attacks, base_experience, stats, battlescene_file, ev, iv, gender, battle_status
     global is_trainer_battle, current_trainer_name, current_trainer_sprite
+
+    # BATTLE LOCK: Check if important battle is in progress
+    if _ankimon_is_battle_locked():
+        _ankimon_log("WARN", "AnkimonBattle", "Suppressed wild encounter - important battle in progress")
+        return
+
+    # Set battle state for wild encounter
+    if not _ankimon_is_gym_active() and not _ankimon_is_elite_four_active() and not _ankimon_is_champion_active():
+        _ankimon_set_battle_state("wild")
+
     # new pokemon - reset trainer battle flag
     is_trainer_battle = False
     current_trainer_name = None
@@ -2638,6 +3105,9 @@ def spawn_next_gym_pokemon():
     """Handler for Next Pokemon button - spawns the next gym pokemon"""
     global test_window, pkmn_window
     try:
+        # Set battle state to gym
+        _ankimon_set_battle_state("gym")
+
         conf = _ankimon_get_col_conf()
         if not conf:
             tooltipWithColour("Config not available", "#FF0000")
@@ -2719,6 +3189,9 @@ def complete_gym_battle():
         conf["ankimon_gym_active"] = False
         conf["ankimon_gym_enemy_ids"] = []
         conf["ankimon_gym_enemy_index"] = 0
+
+        # Reset battle state to idle
+        _ankimon_set_battle_state("idle")
         conf["ankimon_gym_current_enemy_id"] = None
         conf["ankimon_gym_last_cleared_leader"] = conf.get("ankimon_gym_leader_key")
         conf["ankimon_gym_leader_key"] = None
@@ -2819,6 +3292,9 @@ def complete_elite_four_member():
         conf["ankimon_elite_four_enemy_ids"] = []
         conf["ankimon_elite_four_pokemon_index"] = 0
 
+        # Reset battle state to idle
+        _ankimon_set_battle_state("idle")
+
         # Increment member index
         conf["ankimon_elite_four_index"] = member_index + 1
 
@@ -2894,6 +3370,9 @@ def complete_champion_battle():
         conf["ankimon_champion_enemy_ids"] = []
         conf["ankimon_champion_pokemon_index"] = 0
         conf["ankimon_champion_counter"] = 0
+
+        # Reset battle state to idle
+        _ankimon_set_battle_state("idle")
 
         mw.col.setMod()
 
@@ -3109,6 +3588,9 @@ def reset_battle():
             conf["ankimon_gym_enemy_index"] = 0
             conf["ankimon_gym_current_enemy_id"] = None
             mw.col.setMod()
+
+        # Reset battle state to idle
+        _ankimon_set_battle_state("idle")
 
         # Reset HP to ensure we're not in fainted state
         hp = 1
@@ -4738,6 +5220,7 @@ class PokemonCollectionDialog(QDialog):
 
 
 pokecollection_win = PokemonCollectionDialog()
+_ankimon_register_window("pokecollection_win", pokecollection_win)
 
 def rename_pkmn(nickname, pkmn_name):
     try:
@@ -8802,6 +9285,7 @@ class TestWindow(QWidget):
 
 # Create an instance of the MainWindow
 test_window = TestWindow()
+_ankimon_register_window("test_window", test_window)
 
 #Test window
 def rate_this_addon():
@@ -9624,6 +10108,18 @@ class CompletePokedex(QWidget):
         self.setLayout(main_layout)
         self.setMinimumSize(800, 600)
 
+        # Initialize lazy loading state
+        self.all_pokemon = []
+        self.caught_pokemon_ids = set()
+        self.render_batch_size = 25  # Render 25 pokemon at a time
+        self.render_index = 0
+        self.render_timer = QTimer()
+        self.render_timer.timeout.connect(self.render_next_batch)
+        self.grid_layout = None
+        self.current_row = 0
+        self.current_col = 0
+        self.max_cols = 3
+
         # Load all pokemon
         self.load_all_pokemon()
 
@@ -9666,11 +10162,192 @@ class CompletePokedex(QWidget):
                         self.all_pokemon.append(pkmn_data)
             # Sort by pokemon number
             self.all_pokemon.sort(key=lambda x: x.get('num', 0))
-            self.display_pokemon(self.all_pokemon)
+
+            # Start lazy loading instead of rendering all at once
+            _ankimon_log("INFO", "AnkimonPokedex", f"Loaded {len(self.all_pokemon)} pokemon, starting lazy render...")
+            self.start_lazy_display(self.all_pokemon)
         except Exception as e:
             error_label = QLabel(f"Error loading Pokédex: {str(e)}")
             error_label.setStyleSheet("color: #ff6b6b; font-size: 14px;")
             self.pokemon_layout.addWidget(error_label)
+            _ankimon_log("ERROR", "AnkimonPokedex", f"Failed to load pokedex: {e}")
+
+    def start_lazy_display(self, pokemon_list):
+        """Start lazy loading display of pokemon"""
+        # Stop any existing timer
+        if self.render_timer.isActive():
+            self.render_timer.stop()
+
+        # Clear existing layout
+        while self.pokemon_layout.count():
+            item = self.pokemon_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                self.clear_layout(item.layout())
+
+        # Create new grid layout
+        self.grid_layout = QGridLayout()
+        self.current_row = 0
+        self.current_col = 0
+        self.render_index = 0
+        self.pokemon_to_display = pokemon_list
+
+        # Show loading message initially
+        loading_label = QLabel(f"Loading {len(pokemon_list)} Pokémon...")
+        loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        loading_label.setStyleSheet("color: #5a9fd4; font-size: 16px; padding: 20px;")
+        self.pokemon_layout.addWidget(loading_label)
+
+        # Start rendering batches
+        self.render_timer.start(1)  # 1ms intervals for fast rendering
+
+    def render_next_batch(self):
+        """Render next batch of pokemon"""
+        if self.render_index >= len(self.pokemon_to_display):
+            # Done rendering
+            self.render_timer.stop()
+            # Remove loading message if present
+            if self.pokemon_layout.count() > 0:
+                item = self.pokemon_layout.itemAt(0)
+                if item and item.widget():
+                    widget = item.widget()
+                    if isinstance(widget, QLabel) and "Loading" in widget.text():
+                        widget.deleteLater()
+            # Add grid to layout
+            self.pokemon_layout.addLayout(self.grid_layout)
+            _ankimon_log("INFO", "AnkimonPokedex", f"Finished rendering {len(self.pokemon_to_display)} pokemon")
+            return
+
+        # Render batch
+        batch_end = min(self.render_index + self.render_batch_size, len(self.pokemon_to_display))
+        for i in range(self.render_index, batch_end):
+            pokemon = self.pokemon_to_display[i]
+            card_widget = self.render_pokemon_card(pokemon)
+            if card_widget:
+                self.grid_layout.addWidget(card_widget, self.current_row, self.current_col)
+                self.current_col += 1
+                if self.current_col >= self.max_cols:
+                    self.current_col = 0
+                    self.current_row += 1
+
+        self.render_index = batch_end
+        _ankimon_log("INFO", "AnkimonPokedex", f"Rendered batch: {self.render_index}/{len(self.pokemon_to_display)}")
+
+    def render_pokemon_card(self, pokemon):
+        """Render a single pokemon card widget"""
+        try:
+            pkmn_id = pokemon.get('num')
+            pkmn_name = pokemon.get('name', 'Unknown')
+
+            if not pkmn_id or not pkmn_name:
+                return None
+
+            # Check if caught
+            is_caught = pkmn_id in self.caught_pokemon_ids
+
+            # Pokemon card widget with dark theme
+            card_widget = QWidget()
+            border_color = "#4CAF50" if is_caught else "#4a4a4a"
+            card_widget.setStyleSheet(f"""
+                QWidget {{
+                    border: 2px solid {border_color};
+                    border-radius: 8px;
+                    padding: 10px;
+                    background-color: #2d2d2d;
+                }}
+            """)
+            card_layout = QVBoxLayout()
+
+            # Caught indicator
+            if is_caught:
+                caught_label = QLabel("🔴 CAUGHT")
+                caught_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                caught_label.setStyleSheet("""
+                    color: #4CAF50;
+                    font-weight: bold;
+                    font-size: 11px;
+                    padding: 3px;
+                    background-color: #1e4620;
+                    border-radius: 4px;
+                """)
+                card_layout.addWidget(caught_label)
+
+            # Pokemon image (lazy load - don't load until visible)
+            img_label = QLabel()
+            img_path = frontdefault / f"{pkmn_id}.png"
+            if img_path.exists():
+                try:
+                    pixmap = QPixmap(str(img_path))
+                    pixmap = pixmap.scaled(120, 120, Qt.AspectRatioMode.KeepAspectRatio)
+                    img_label.setPixmap(pixmap)
+                except:
+                    img_label.setText("IMG")
+                    img_label.setStyleSheet("color: #888;")
+            else:
+                img_label.setText("No Image")
+                img_label.setStyleSheet("color: #888;")
+            img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            card_layout.addWidget(img_label)
+
+            # Pokemon name and ID
+            info_label = QLabel(f"#{pkmn_id:03d} - {pkmn_name.capitalize()}")
+            info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            info_label.setStyleSheet("color: #e0e0e0; font-size: 14px; font-weight: bold;")
+            card_layout.addWidget(info_label)
+
+            # Type badges (keep this as it's quick)
+            types = pokemon.get('types', [])
+            if types:
+                type_container = QHBoxLayout()
+                type_container.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                type_colors = {
+                    'normal': '#A8A878', 'fire': '#F08030', 'water': '#6890F0',
+                    'electric': '#F8D030', 'grass': '#78C850', 'ice': '#98D8D8',
+                    'fighting': '#C03028', 'poison': '#A040A0', 'ground': '#E0C068',
+                    'flying': '#A890F0', 'psychic': '#F85888', 'bug': '#A8B820',
+                    'rock': '#B8A038', 'ghost': '#705898', 'dragon': '#7038F8',
+                    'dark': '#705848', 'steel': '#B8B8D0', 'fairy': '#EE99AC'
+                }
+                for ptype in types[:2]:  # Limit to 2 types for performance
+                    type_badge = QLabel(ptype.upper())
+                    bg_color = type_colors.get(ptype.lower(), '#68A090')
+                    type_badge.setStyleSheet(f"""
+                        background-color: {bg_color};
+                        color: white;
+                        font-size: 10px;
+                        font-weight: bold;
+                        padding: 3px 8px;
+                        border-radius: 10px;
+                    """)
+                    type_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    type_container.addWidget(type_badge)
+                card_layout.addLayout(type_container)
+
+            # Add force encounter button (Developer Mode feature)
+            if config and config.get("developer_mode_enabled", False):
+                force_button = QPushButton("Force Encounter")
+                force_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: #5a9fd4;
+                        color: white;
+                        border-radius: 5px;
+                        padding: 5px;
+                        font-size: 11px;
+                    }
+                    QPushButton:hover {
+                        background-color: #4a8fc4;
+                    }
+                """)
+                force_button.clicked.connect(lambda checked, pid=pkmn_id: self.force_encounter(pid))
+                card_layout.addWidget(force_button)
+
+            card_widget.setLayout(card_layout)
+            return card_widget
+
+        except Exception as e:
+            _ankimon_log("ERROR", "AnkimonPokedex", f"Failed to render card for {pokemon.get('name', '?')}: {e}")
+            return None
 
     def clear_layout(self, layout):
         """Recursively clear a layout and all its children"""
@@ -9862,8 +10539,8 @@ class CompletePokedex(QWidget):
         search_text = self.search_input.text().lower()
 
         if not search_text:
-            # Show all pokemon
-            self.display_pokemon(self.all_pokemon)
+            # Show all pokemon with lazy loading
+            self.start_lazy_display(self.all_pokemon)
             return
 
         # Filter pokemon by name or ID
@@ -9875,7 +10552,8 @@ class CompletePokedex(QWidget):
             if search_text in pkmn_name or search_text in pkmn_id:
                 filtered.append(pokemon)
 
-        self.display_pokemon(filtered)
+        # Display filtered results with lazy loading
+        self.start_lazy_display(filtered)
 
     def force_encounter(self, pokemon_id, pokemon_name):
         """Set the next wild encounter to be this specific pokemon with Normal/Shiny choice"""
@@ -10001,6 +10679,7 @@ if database_complete!= False:
 eff_chart = TableWidget()
 pokedex = Pokedex_Widget()
 complete_pokedex = CompletePokedex()
+_ankimon_register_window("complete_pokedex", complete_pokedex)
 gen_id_chart = IDTableWidget()
 
 class License(QWidget):
@@ -10641,6 +11320,7 @@ def get_id_and_description_by_item_name(item_name):
         return description
     
 item_window = ItemWindow()
+_ankimon_register_window("item_window", item_window)
 
 class AttackDialog(QDialog):
     def __init__(self, attacks, new_attack):
@@ -12658,6 +13338,11 @@ if database_complete != False:
     developer_menu = QMenu("Developer Mode", mw)
     mw.pokemenu.addMenu(developer_menu)
     developer_menu.menuAction().setVisible(False)  # Hidden by default
+
+    # Developer Mode: Export Debug Bundle
+    export_debug_action = QAction("📦 Export Debug Bundle", mw)
+    qconnect(export_debug_action.triggered, _ankimon_export_debug_bundle)
+    developer_menu.addAction(export_debug_action)
 
     # Developer Mode: Reset Battle
     reset_battle_action = QAction("🔄 Reset Battle", mw)
