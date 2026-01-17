@@ -162,11 +162,9 @@ frontdefault = addon_dir / "user_files" / "sprites" / "front_default"
 backdefault_gif = addon_dir / "user_files" / "sprites" / "back_default_gif"
 frontdefault_gif = addon_dir / "user_files" / "sprites" / "front_default_gif"
 
-# Shiny sprite paths
-shiny_back_default = addon_dir / "user_files" / "sprites" / "shiny_back_default"
-shiny_front_default = addon_dir / "user_files" / "sprites" / "shiny_front_default"
-shiny_back_default_gif = addon_dir / "user_files" / "sprites" / "shiny_back_default_gif"
-shiny_front_default_gif = addon_dir / "user_files" / "sprites" / "shiny_front_default_gif"
+# Shiny sprite paths (actual directory structure from repository)
+shiny_front_default = addon_dir / "user_files" / "sprites" / "shiny_front_default"  # Contains GIFs for enemy Pokémon
+shiny_back_default_gif = addon_dir / "user_files" / "sprites" / "shiny_back_default_gif"  # Contains GIFs for player Pokémon
 #Assign saved Pokemon Directory
 mypokemon_path = addon_dir / "user_files" / "mypokemon.json"
 mainpokemon_path = addon_dir / "user_files" / "mainpokemon.json"
@@ -7701,6 +7699,8 @@ class TestWindow(QWidget):
         # Set window
         self.setWindowTitle('Ankimon Window')
         self.setWindowIcon(QIcon(str(icon_path))) # Add a Pokeball icon
+        # Ensure window is resizable (remove any fixed size constraints)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.Window)
         # Display the Pokémon image
 
     def open_dynamic_window(self):
@@ -7761,7 +7761,8 @@ class TestWindow(QWidget):
 
         # Create a container widget
         container = QWidget()
-        container.setFixedSize(556, 300)
+        # Set minimum size but allow expansion - removed setFixedSize for resizability
+        container.setMinimumSize(556, 300)
 
         # Create background label
         background_label = QLabel(container)
@@ -7872,28 +7873,26 @@ class TestWindow(QWidget):
         wild_pkmn_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         # Check if this is a shiny encounter
-        global current_wild_is_shiny, shiny_front_default_gif, shiny_front_default
+        global current_wild_is_shiny, shiny_front_default
         sprite_loaded = False
 
         if current_wild_is_shiny:
-            # Try shiny GIF first
-            wild_gif_path = shiny_front_default_gif / f"{id}.gif"
+            # Try shiny GIF (shiny_front_default contains GIF files)
+            wild_gif_path = shiny_front_default / f"{id}.gif"
             if wild_gif_path.exists():
                 wild_movie = QMovie(str(wild_gif_path))
                 wild_movie.setScaledSize(QSize(wild_size, wild_size))
                 wild_pkmn_label.setMovie(wild_movie)
                 wild_movie.start()
                 sprite_loaded = True
-            else:
-                # Try shiny PNG
-                wild_pixmap_path = shiny_front_default / f"{id}.png"
-                if wild_pixmap_path.exists():
-                    wild_pixmap = QPixmap(str(wild_pixmap_path))
-                    wild_pixmap = wild_pixmap.scaled(wild_size, wild_size, Qt.AspectRatioMode.KeepAspectRatio)
-                    wild_pkmn_label.setPixmap(wild_pixmap)
-                    sprite_loaded = True
+                # Log successful shiny sprite load
+                try:
+                    if developer_menu and developer_menu.menuAction().isVisible():
+                        print(f"[Shiny] Loaded shiny sprite: {wild_gif_path}")
+                except:
+                    pass
 
-        # Fallback to normal sprites if shiny sprites don't exist
+        # Fallback to normal sprites ONLY if shiny sprite doesn't exist
         if not sprite_loaded:
             wild_gif_path = frontdefault_gif / f"{id}.gif"
             if wild_gif_path.exists():
@@ -7938,11 +7937,38 @@ class TestWindow(QWidget):
         # Check if Pokemon is in Mega form (uses hard Key Stone gate)
         player_is_mega = _is_mega_active()
 
+        # Check if player Pokemon is shiny
+        player_is_shiny = False
+        try:
+            if mainpokemon_path.is_file():
+                with open(mainpokemon_path, 'r') as file:
+                    mainpkmn_data = json.load(file)
+                    if isinstance(mainpkmn_data, list) and len(mainpkmn_data) > 0:
+                        player_is_shiny = mainpkmn_data[0].get('is_shiny', False)
+        except:
+            pass
+
+        # Priority: Mega > Shiny > Normal
         # Use mega sprite if Pokemon is in Mega form
         if player_is_mega:
             player_gif_path = user_path_sprites / "back_mega_pokemon_gif" / f"{mainpokemon_id}.gif"
             if not player_gif_path.exists():
                 player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
+        # Use shiny sprite if Pokemon is shiny (and not mega)
+        elif player_is_shiny:
+            global shiny_back_default_gif
+            player_gif_path = shiny_back_default_gif / f"{mainpokemon_id}.gif"
+            # Fallback to normal if shiny sprite doesn't exist
+            if not player_gif_path.exists():
+                player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
+            else:
+                # Log successful shiny sprite load
+                try:
+                    if developer_menu and developer_menu.menuAction().isVisible():
+                        print(f"[Shiny] Player Pokémon is shiny: {player_gif_path}")
+                except:
+                    pass
+        # Normal sprite
         else:
             player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
 
@@ -8476,8 +8502,7 @@ class TestWindow(QWidget):
         #battle_widget.setScaledContents(True) #scalable ankimon window
         self.content_layout.addWidget(battle_widget)
         self.setStyleSheet("background-color: rgb(44,44,44);")
-        self.setMaximumWidth(556)
-        self.setMaximumHeight(350)  # Increased to accommodate buttons
+        # Allow window to be resizable - removed setMaximumWidth/Height constraints
 
     def rate_display_item(self, item):
         Receive_Window = QDialog(mw)
@@ -12522,16 +12547,16 @@ if database_complete != False:
         except Exception as e:
             print(f"[DevMode] Error refreshing Pokédex: {e}")
 
-    # 4. Developer Mode submenu (hidden by default, toggle with F6 or menu item)
+    # 4. Developer Mode submenu (hidden by default, toggle with Cmd+Shift+M/G or menu item)
     developer_menu = QMenu("Developer Mode", mw)
     mw.pokemenu.addMenu(developer_menu)
     developer_menu.menuAction().setVisible(False)  # Hidden by default
 
     # 4b. Toggle Developer Mode - ALWAYS VISIBLE menu item
-    toggle_dev_mode_action = QAction("Toggle Developer Mode (F6)", mw)
+    toggle_dev_mode_action = QAction("Toggle Developer Mode (⌘⇧M)", mw)
     qconnect(toggle_dev_mode_action.triggered, toggle_developer_mode)
     mw.pokemenu.addAction(toggle_dev_mode_action)
-    print("[DevMenu] Added always-visible menu item: Toggle Developer Mode (F6)")
+    print("[DevMenu] Added always-visible menu item: Toggle Developer Mode (⌘⇧M)")
 
     # Developer Mode: Reset Battle
     reset_battle_action = QAction("🔄 Reset Battle", mw)
@@ -12624,21 +12649,27 @@ if database_complete != False:
     # Confirmation log
     print("[DevMenu] Developer Mode actions added: purge/seed/self-test")
 
-    # Add F6 keyboard shortcut to toggle Developer Mode visibility
+    # Add keyboard shortcuts to toggle Developer Mode visibility
     from PyQt6.QtGui import QKeySequence, QShortcut
     from PyQt6.QtCore import Qt
 
-    # F6 - simple, reliable, works everywhere
-    shortcut_f6 = QShortcut(QKeySequence("F6"), mw)
-    shortcut_f6.setContext(Qt.ShortcutContext.ApplicationShortcut)  # Works across all windows
-    qconnect(shortcut_f6.activated, toggle_developer_mode)
+    # Cmd+Shift+M - primary hotkey for macOS
+    shortcut_cmd_shift_m = QShortcut(QKeySequence("Meta+Shift+M"), mw)
+    shortcut_cmd_shift_m.setContext(Qt.ShortcutContext.ApplicationShortcut)  # Works across all windows
+    qconnect(shortcut_cmd_shift_m.activated, toggle_developer_mode)
+
+    # Cmd+Shift+G - alternative hotkey for macOS
+    shortcut_cmd_shift_g = QShortcut(QKeySequence("Meta+Shift+G"), mw)
+    shortcut_cmd_shift_g.setContext(Qt.ShortcutContext.ApplicationShortcut)  # Works across all windows
+    qconnect(shortcut_cmd_shift_g.activated, toggle_developer_mode)
 
     # Store in mw to prevent garbage collection
-    mw._ankimon_dev_mode_shortcut_f6 = shortcut_f6
+    mw._ankimon_dev_mode_shortcut_m = shortcut_cmd_shift_m
+    mw._ankimon_dev_mode_shortcut_g = shortcut_cmd_shift_g
 
-    print("[DevMode] Hotkey registered: F6")
+    print("[DevMode] Hotkeys registered: Cmd+Shift+M and Cmd+Shift+G")
     print("[DevMode] Shortcut context: ApplicationShortcut (works in Deck Browser, Reviewer, Browser)")
-    print("[DevMode] Menu item: 'Toggle Developer Mode (F6)' is always visible in Ankimon menu")
+    print("[DevMode] Menu item: 'Toggle Developer Mode' is always visible in Ankimon menu")
 
     # 5. Separator
     mw.pokemenu.addSeparator()
