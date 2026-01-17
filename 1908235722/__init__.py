@@ -391,6 +391,70 @@ def _ankimon_can_start_new_battle():
         return False
     return True
 
+def _ankimon_is_boss_battle_pending():
+    """Check if gym/elite4/champion battle is pending (queued)"""
+    try:
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            return False
+
+        is_pending = (
+            conf.get("ankimon_gym_pending", False) or
+            conf.get("ankimon_elite_four_pending", False) or
+            conf.get("ankimon_champion_pending", False)
+        )
+
+        if is_pending:
+            _ankimon_log("INFO", "AnkimonBattle", "Boss battle is pending")
+
+        return is_pending
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonBattle", f"Error checking pending boss battle: {e}")
+        return False
+
+def _ankimon_should_suppress_post_battle_ui():
+    """
+    Check if post-battle UI (Defeat/Catch screen) should be suppressed.
+    Returns True if currently in or pending a boss battle.
+    """
+    # Suppress if actively in boss battle
+    if _ankimon_is_battle_locked():
+        _ankimon_log("INFO", "AnkimonUI", "Suppressing post-battle UI - active boss battle")
+        return True
+
+    # Suppress if boss battle is pending
+    if _ankimon_is_boss_battle_pending():
+        _ankimon_log("INFO", "AnkimonUI", "Suppressing post-battle UI - pending boss battle")
+        return True
+
+    return False
+
+def _ankimon_close_post_battle_ui(reason=""):
+    """
+    Force-close any lingering post-battle UI (Defeat/Catch screens).
+
+    Args:
+        reason: Reason for closing (for logging)
+    """
+    _ankimon_log("INFO", "AnkimonUI", f"Closing post-battle UI: {reason}")
+
+    global test_window
+
+    # Close external window's post-battle screen
+    try:
+        if test_window and hasattr(test_window, 'isVisible') and test_window.isVisible():
+            # Check if we're on the post-battle screen and switch back to battle view
+            if hasattr(test_window, 'display_first_encounter'):
+                # This will clear the post-battle UI and show normal battle view
+                test_window.display_first_encounter()
+                _ankimon_log("INFO", "AnkimonUI", "Cleared post-battle screen in external window")
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonUI", f"Error closing external window post-battle UI: {e}")
+
+    # Note: The standalone display_dead_pokemon() dialog is modal and blocks,
+    # so it's less likely to cause this issue. The main problem is the
+    # external window's display_pokemon_death() screen.
+
 # ============================================================================
 # DEBUG BUNDLE EXPORT
 # ============================================================================
@@ -2031,6 +2095,11 @@ def kill_pokemon():
     try:
         conf = _ankimon_get_col_conf()
         if conf and conf.get("ankimon_gym_pending"):
+            _ankimon_log("INFO", "AnkimonBattle", "Starting queued gym battle after current battle ended")
+
+            # CRITICAL: Force-close any lingering post-battle UI
+            _ankimon_close_post_battle_ui("starting queued gym battle")
+
             # Start the gym battle now that wild pokemon is defeated
             conf["ankimon_gym_active"] = True
             conf["ankimon_gym_pending"] = False
@@ -2046,14 +2115,21 @@ def kill_pokemon():
                 pass
             if pkmn_window is True:
                 new_pokemon()  # Spawn first gym pokemon
+                # Refresh all views to ensure UI is correct
+                _ankimon_refresh_all_views()
             return
-    except Exception:
-        pass
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonBattle", f"Error starting queued gym battle: {e}")
 
     # Check if Elite Four battle is pending and start it now
     try:
         conf = _ankimon_get_col_conf()
         if conf and conf.get("ankimon_elite_four_pending"):
+            _ankimon_log("INFO", "AnkimonBattle", "Starting queued Elite Four battle after current battle ended")
+
+            # CRITICAL: Force-close any lingering post-battle UI
+            _ankimon_close_post_battle_ui("starting queued Elite Four battle")
+
             # Start the Elite Four battle now that wild pokemon is defeated
             conf["ankimon_elite_four_active"] = True
             conf["ankimon_elite_four_pending"] = False
@@ -2070,14 +2146,21 @@ def kill_pokemon():
                 pass
             if pkmn_window is True:
                 new_pokemon()  # Spawn first Elite Four pokemon
+                # Refresh all views to ensure UI is correct
+                _ankimon_refresh_all_views()
             return
-    except Exception:
-        pass
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonBattle", f"Error starting queued Elite Four battle: {e}")
 
     # Check if Champion battle is pending and start it now
     try:
         conf = _ankimon_get_col_conf()
         if conf and conf.get("ankimon_champion_pending"):
+            _ankimon_log("INFO", "AnkimonBattle", "Starting queued Champion battle after current battle ended")
+
+            # CRITICAL: Force-close any lingering post-battle UI
+            _ankimon_close_post_battle_ui("starting queued Champion battle")
+
             # Start the Champion battle now that wild pokemon is defeated
             conf["ankimon_champion_active"] = True
             conf["ankimon_champion_pending"] = False
@@ -2093,9 +2176,11 @@ def kill_pokemon():
                 pass
             if pkmn_window is True:
                 new_pokemon()  # Spawn first Champion pokemon
+                # Refresh all views to ensure UI is correct
+                _ankimon_refresh_all_views()
             return
-    except Exception:
-        pass
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonBattle", f"Error starting queued Champion battle: {e}")
 
     if pkmn_window is True:
         new_pokemon()  # Show a new random Pokémon
@@ -3107,6 +3192,9 @@ def spawn_next_gym_pokemon():
     try:
         # Set battle state to gym
         _ankimon_set_battle_state("gym")
+
+        # Defensive: Force-close any lingering post-battle UI
+        _ankimon_close_post_battle_ui("failsafe - gym pokemon spawn")
 
         conf = _ankimon_get_col_conf()
         if not conf:
@@ -4340,25 +4428,35 @@ def on_review_card(*args):
                     else:
                         seconds = 0
             else:
-                # Skip catch/defeat dialog during gym battles
-                if not _ankimon_is_gym_active():
+                # Skip catch/defeat dialog during gym battles or when boss battle pending
+                if not _ankimon_should_suppress_post_battle_ui():
                     if pkmn_window is True:
                         test_window.display_pokemon_death()
                     elif pkmn_window is False:
                         new_pokemon()
+                        general_card_count_for_battle = 0
+                else:
+                    # Boss battle active/pending - auto-resolve and continue
+                    if pkmn_window is False:
+                        kill_pokemon()
                         general_card_count_for_battle = 0
             # Update window during battle (including gym battles)
             if pkmn_window is True:
                 if hp > 0:
                     # Always update window when HP > 0, even during gym battles
                     test_window.display_first_encounter()
-                elif hp < 1 and not _ankimon_is_gym_active():
-                    # Only show death dialog if NOT in gym battle
+                elif hp < 1 and not _ankimon_should_suppress_post_battle_ui():
+                    # Only show death dialog if NOT in boss battle (active or pending)
                     hp = 0
                     test_window.display_pokemon_death()
                     general_card_count_for_battle = 0
-            elif pkmn_window is False and not _ankimon_is_gym_active():
-                # Only auto-spawn new pokemon if NOT in gym battle
+                elif hp < 1:
+                    # Boss battle active/pending - auto-resolve
+                    hp = 0
+                    kill_pokemon()
+                    general_card_count_for_battle = 0
+            elif pkmn_window is False and not _ankimon_should_suppress_post_battle_ui():
+                # Only auto-spawn new pokemon if NOT in boss battle (active or pending)
                 if hp < 1:
                     hp = 0
                     kill_pokemon()
@@ -9114,8 +9212,11 @@ class TestWindow(QWidget):
         Receive_Window.show()
 
     def display_pokemon_death(self):
-        # Prevent this from showing during gym battles
-        if _ankimon_is_gym_active():
+        # Prevent this from showing during gym battles or when boss battle is pending
+        if _ankimon_should_suppress_post_battle_ui():
+            _ankimon_log("INFO", "AnkimonUI", "Post-battle UI suppressed - boss battle active/pending")
+            # Auto-resolve: award EXP and continue to next step
+            kill_pokemon()
             return
 
         # Check if this is a legendary Pokemon - auto-capture instead of showing dialog
@@ -13909,6 +14010,7 @@ def _ankimon_gym_ready_popup():
             # Set gym enemy team for when battle actually starts
             conf["ankimon_gym_enemy_ids"] = leader.get("team", [])
             mw.col.setMod()
+            _ankimon_log("INFO", "AnkimonBattle", f"Gym battle queued: {leader['name']} - will start after current battle")
             dlg.accept()
             # Show message that gym will start after current match
             try:
@@ -14031,6 +14133,7 @@ def _ankimon_elite_four_ready_popup():
             conf["ankimon_elite_four_index"] = member_index
             conf["ankimon_elite_four_enemy_ids"] = member.get("team", [])
             mw.col.setMod()
+            _ankimon_log("INFO", "AnkimonBattle", f"Elite Four battle queued: {member['name']} - will start after current battle")
             dlg.accept()
             try:
                 tooltipWithColour("Elite Four battle will begin after current match", "#FFD700")
@@ -14133,6 +14236,7 @@ def _ankimon_champion_ready_popup():
             conf["ankimon_champion_pending"] = True
             conf["ankimon_champion_enemy_ids"] = champion_team
             mw.col.setMod()
+            _ankimon_log("INFO", "AnkimonBattle", "Champion battle queued: Cynthia - will start after current battle")
             dlg.accept()
             try:
                 tooltipWithColour("Champion battle will begin after current match", "#FFD700")
