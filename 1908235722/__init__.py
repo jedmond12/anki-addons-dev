@@ -1896,6 +1896,9 @@ def save_caught_pokemon(nickname):
     # Append the caught Pokémon's data to the list
     caught_pokemon_data.append(caught_pokemon)
 
+    # Debug log for capture
+    print(f"[Shiny] Captured: id={caught_pokemon['id']} is_shiny={is_shiny} name={caught_pokemon['name']}")
+
     # Save the caught Pokémon's data to a JSON file
     with open(str(mypokemon_path), "w") as json_file:
         json.dump(caught_pokemon_data, json_file, indent=2)
@@ -4259,16 +4262,37 @@ class PokemonCollectionDialog(QDialog):
                             except (NameError, Exception):
                                 is_mega_unlocked = False  # Default to locked if function not yet defined
 
+                            # Check if Pokemon is shiny
+                            is_shiny = pokemon.get('is_shiny', False)
+
+                            # Priority: Mega > Shiny > Normal
                             if is_mega_unlocked and pokemon.get('is_mega', False):
                                 pkmn_image_path = str(user_path_sprites / "front_mega_pokemon_gif" / f"{pokemon_id}.gif")
                                 # Fallback to normal if mega sprite doesn't exist
+                                if not os.path.exists(pkmn_image_path):
+                                    pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
+                            elif is_shiny:
+                                # Try shiny sprite
+                                global shiny_front_default
+                                pkmn_image_path = str(shiny_front_default / f"{pokemon_id}.gif")
+                                # Fallback to normal if shiny sprite doesn't exist
                                 if not os.path.exists(pkmn_image_path):
                                     pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
                             else:
                                 pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
                             splash_label = MovieSplashLabel(pkmn_image_path)
                         else:
-                            pkmn_image_path = str(frontdefault / f"{pokemon_id}.png")
+                            # PNG mode - check for shiny
+                            is_shiny = pokemon.get('is_shiny', False)
+                            if is_shiny:
+                                # Try shiny PNG (if exists)
+                                shiny_png_path = str(user_path_sprites / "shiny_front_default" / f"{pokemon_id}.png")
+                                if os.path.exists(shiny_png_path):
+                                    pkmn_image_path = shiny_png_path
+                                else:
+                                    pkmn_image_path = str(frontdefault / f"{pokemon_id}.png")
+                            else:
+                                pkmn_image_path = str(frontdefault / f"{pokemon_id}.png")
                         pixmap.load(pkmn_image_path)
 
                         # Calculate the new dimensions to maintain the aspect ratio
@@ -6571,35 +6595,81 @@ if database_complete != False and mainpokemon_empty is False:
                 main_pkmn_imagefile = f'{mainpokemon_id}.png' #use for png files
                 main_pkmn_imagefile_path = os.path.join(backdefault, main_pkmn_imagefile) #use for png files
         else:
+            # Enemy Pokémon sprite (wild encounter)
             pokemon_imagefile = f'{search_pokedex(name.lower(), "num")}.gif'
-            pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
+
+            # Check if this is a shiny encounter
+            global current_wild_is_shiny, shiny_front_default
+            if current_wild_is_shiny:
+                # Try shiny sprite first
+                shiny_sprite_path = shiny_front_default / pokemon_imagefile
+                if shiny_sprite_path.exists():
+                    pokemon_image_file = str(shiny_sprite_path)
+                    # Debug log
+                    try:
+                        if developer_menu and developer_menu.menuAction().isVisible():
+                            print(f"[Shiny] Reviewer enemy sprite: id={search_pokedex(name.lower(), 'num')} is_shiny=True path={pokemon_image_file}")
+                    except:
+                        pass
+                else:
+                    # Fallback to normal sprite
+                    pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
+            else:
+                pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
+
             if show_mainpkmn_in_reviewer > 0:
                 main_pkmn_imagefile = f'{mainpokemon_id}.gif'
 
                 # Check if Pokemon is in Mega form (uses hard Key Stone gate)
                 is_mega_active = _is_mega_active()
 
-                # Choose sprite directory based on Mega state
+                # Check if player Pokemon is shiny
+                player_is_shiny = False
+                try:
+                    if mainpokemon_path.is_file():
+                        with open(mainpokemon_path, 'r') as file:
+                            mainpkmn_data = json.load(file)
+                            if isinstance(mainpkmn_data, list) and len(mainpkmn_data) > 0:
+                                player_is_shiny = mainpkmn_data[0].get('is_shiny', False)
+                except:
+                    pass
+
+                # Choose sprite directory based on Mega state and shiny status
+                # Priority: Mega > Shiny > Normal
                 if view_main_front == -1:
                     if is_mega_active:
                         gif_type = "front_mega_pokemon_gif"
+                    elif player_is_shiny:
+                        # Shiny front sprite (not commonly used but supported)
+                        gif_type = "shiny_front_default"
                     else:
                         gif_type = "front_default_gif"
                 else:
                     if is_mega_active:
                         gif_type = "back_mega_pokemon_gif"
+                    elif player_is_shiny:
+                        global shiny_back_default_gif
+                        gif_type = "shiny_back_default_gif"
                     else:
                         gif_type = "back_default_gif"
 
                 main_pkmn_imagefile_path = os.path.join((user_path_sprites / f"{gif_type}"), main_pkmn_imagefile)
 
-                # Fallback to normal sprite if mega sprite doesn't exist
-                if is_mega_active and not os.path.exists(main_pkmn_imagefile_path):
+                # Fallback to normal sprite if mega/shiny sprite doesn't exist
+                if (is_mega_active or player_is_shiny) and not os.path.exists(main_pkmn_imagefile_path):
                     if view_main_front == -1:
                         gif_type = "front_default_gif"
                     else:
                         gif_type = "back_default_gif"
                     main_pkmn_imagefile_path = os.path.join((user_path_sprites / f"{gif_type}"), main_pkmn_imagefile)
+
+                # Debug log for player shiny
+                if player_is_shiny:
+                    try:
+                        if developer_menu and developer_menu.menuAction().isVisible():
+                            print(f"[Shiny] Reviewer player sprite: id={mainpokemon_id} is_shiny=True path={main_pkmn_imagefile_path}")
+                    except:
+                        pass
         if show_mainpkmn_in_reviewer > 0:
             mainpkmn_max_hp = calculate_hp(mainpokemon_stats["hp"], mainpokemon_level, mainpokemon_ev, mainpokemon_iv)
             mainpkmn_hp_percent = int((mainpokemon_hp / mainpkmn_max_hp) * 50)
@@ -9856,6 +9926,9 @@ class CompletePokedex(QWidget):
 
         forced_next_pokemon_shiny = is_shiny
 
+        # Debug log
+        print(f"[Shiny] Force encounter set is_shiny={is_shiny} for id={forced_next_pokemon_id}")
+
         # Show confirmation tooltip
         shiny_text = " ✨ SHINY" if is_shiny else ""
         tooltipWithColour(f"Force Encounter set: {pokemon_name.capitalize()}{shiny_text} (#{forced_next_pokemon_id})\nAnswer a card to trigger!", "#00FF00")
@@ -10440,13 +10513,17 @@ class ItemWindow(QWidget):
                 json.dump(pokemon_list, file, indent=2)
             print(f"[ItemBag] Pokemon data saved to {mypokemon_path}")
 
-            # Refresh Pokemon collection dialog if it's open
+            # Refresh Pokemon collection dialog and itembag if they're open
             if pokemon_found:
                 try:
-                    global test_window
+                    global test_window, item_window
                     if pokecollection_win and pokecollection_win.isVisible():
                         pokecollection_win.refresh_pokemon_collection()
                         print(f"[ItemBag] Refreshed Pokemon collection dialog")
+                    # Refresh itembag window if open
+                    if item_window and item_window.isVisible():
+                        item_window.renewWidgets()
+                        print(f"[ItemBag] Refreshed itembag window after equip")
                     # Refresh external Ankimon window if open
                     if test_window and test_window.isVisible():
                         test_window.display_first_encounter()
@@ -10818,6 +10895,15 @@ def _remove_pokemon_held_item(pkmn_name):
                 print(f"Error returning item to inventory: {e}")
                 item_display = item_removed.replace('_', ' ').replace('-', ' ').title()
                 showInfo(f"Removed {item_display} from {pkmn_name.capitalize()}")
+
+            # Refresh itembag window if open
+            try:
+                global item_window
+                if item_window and item_window.isVisible():
+                    item_window.renewWidgets()
+                    print(f"[ItemBag] Refreshed itembag window after unequip")
+            except Exception as e:
+                print(f"[ItemBag] Error refreshing itembag: {e}")
         else:
             showInfo(f"{pkmn_name.capitalize()} was not holding any item")
 
@@ -12547,16 +12633,16 @@ if database_complete != False:
         except Exception as e:
             print(f"[DevMode] Error refreshing Pokédex: {e}")
 
-    # 4. Developer Mode submenu (hidden by default, toggle with Cmd+Shift+M/G or menu item)
+    # 4. Developer Mode submenu (hidden by default, toggle with Option+Shift+9 or menu item)
     developer_menu = QMenu("Developer Mode", mw)
     mw.pokemenu.addMenu(developer_menu)
     developer_menu.menuAction().setVisible(False)  # Hidden by default
 
     # 4b. Toggle Developer Mode - ALWAYS VISIBLE menu item
-    toggle_dev_mode_action = QAction("Toggle Developer Mode (⌘⇧M)", mw)
+    toggle_dev_mode_action = QAction("Toggle Developer Mode (⌥⇧9)", mw)
     qconnect(toggle_dev_mode_action.triggered, toggle_developer_mode)
     mw.pokemenu.addAction(toggle_dev_mode_action)
-    print("[DevMenu] Added always-visible menu item: Toggle Developer Mode (⌘⇧M)")
+    print("[DevMenu] Added always-visible menu item: Toggle Developer Mode (⌥⇧9)")
 
     # Developer Mode: Reset Battle
     reset_battle_action = QAction("🔄 Reset Battle", mw)
@@ -12649,25 +12735,19 @@ if database_complete != False:
     # Confirmation log
     print("[DevMenu] Developer Mode actions added: purge/seed/self-test")
 
-    # Add keyboard shortcuts to toggle Developer Mode visibility
+    # Add keyboard shortcut to toggle Developer Mode visibility
     from PyQt6.QtGui import QKeySequence, QShortcut
     from PyQt6.QtCore import Qt
 
-    # Cmd+Shift+M - primary hotkey for macOS
-    shortcut_cmd_shift_m = QShortcut(QKeySequence("Meta+Shift+M"), mw)
-    shortcut_cmd_shift_m.setContext(Qt.ShortcutContext.ApplicationShortcut)  # Works across all windows
-    qconnect(shortcut_cmd_shift_m.activated, toggle_developer_mode)
-
-    # Cmd+Shift+G - alternative hotkey for macOS
-    shortcut_cmd_shift_g = QShortcut(QKeySequence("Meta+Shift+G"), mw)
-    shortcut_cmd_shift_g.setContext(Qt.ShortcutContext.ApplicationShortcut)  # Works across all windows
-    qconnect(shortcut_cmd_shift_g.activated, toggle_developer_mode)
+    # Option+Shift+9 (Alt+Shift+9) - macOS hotkey
+    shortcut_dev_mode = QShortcut(QKeySequence("Alt+Shift+9"), mw)
+    shortcut_dev_mode.setContext(Qt.ShortcutContext.ApplicationShortcut)  # Works across all windows
+    qconnect(shortcut_dev_mode.activated, toggle_developer_mode)
 
     # Store in mw to prevent garbage collection
-    mw._ankimon_dev_mode_shortcut_m = shortcut_cmd_shift_m
-    mw._ankimon_dev_mode_shortcut_g = shortcut_cmd_shift_g
+    mw._ankimon_dev_mode_shortcut = shortcut_dev_mode
 
-    print("[DevMode] Hotkeys registered: Cmd+Shift+M and Cmd+Shift+G")
+    print("[DevMode] Hotkey registered: Option+Shift+9 (Alt+Shift+9)")
     print("[DevMode] Shortcut context: ApplicationShortcut (works in Deck Browser, Reviewer, Browser)")
     print("[DevMode] Menu item: 'Toggle Developer Mode' is always visible in Ankimon menu")
 
