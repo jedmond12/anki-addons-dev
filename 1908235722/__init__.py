@@ -161,6 +161,12 @@ backdefault = addon_dir / "user_files" / "sprites" / "back_default"
 frontdefault = addon_dir / "user_files" / "sprites" / "front_default"
 backdefault_gif = addon_dir / "user_files" / "sprites" / "back_default_gif"
 frontdefault_gif = addon_dir / "user_files" / "sprites" / "front_default_gif"
+
+# Shiny sprite paths
+shiny_back_default = addon_dir / "user_files" / "sprites" / "shiny_back_default"
+shiny_front_default = addon_dir / "user_files" / "sprites" / "shiny_front_default"
+shiny_back_default_gif = addon_dir / "user_files" / "sprites" / "shiny_back_default_gif"
+shiny_front_default_gif = addon_dir / "user_files" / "sprites" / "shiny_front_default_gif"
 #Assign saved Pokemon Directory
 mypokemon_path = addon_dir / "user_files" / "mypokemon.json"
 mainpokemon_path = addon_dir / "user_files" / "mainpokemon.json"
@@ -222,6 +228,11 @@ pokemon_species_legendary_path = addon_dir / "user_files" / "pkmn_data" / "legen
 pokemon_species_ultra_path = addon_dir / "user_files" / "pkmn_data" / "ultra.json"
 pokemon_species_mythical_path = addon_dir / "user_files" / "pkmn_data" / "mythical.json"
 pokemon_species_baby_path = addon_dir / "user_files" / "pkmn_data" / "baby.json"
+
+# New rarity tier paths for wild encounters
+pokemon_species_common_path = addon_dir / "user_files" / "pkmn_data" / "common.json"
+pokemon_species_uncommon_path = addon_dir / "user_files" / "pkmn_data" / "uncommon.json"
+pokemon_species_rare_path = addon_dir / "user_files" / "pkmn_data" / "rare.json"
 
 # Get the profile folder
 profilename = mw.pm.name
@@ -338,6 +349,11 @@ card_counter = -1
 item_receive_value = random.randint(30, 120)
 system_name = platform.system()
 forced_next_pokemon_id = None  # For Pokédex force encounter feature
+forced_next_pokemon_shiny = False  # Whether forced encounter should be shiny
+
+# Shiny system globals
+current_wild_is_shiny = False  # Tracks if current wild encounter is shiny
+SHINY_RATE = 1 / 512  # 1 in 512 chance for shiny encounters
 
 if system_name == "Windows" or system_name == "Linux":
     system = "win_lin"
@@ -1270,18 +1286,24 @@ if database_complete != False:
         id = None
         try:
             # Check for forced encounter from Pokédex
-            global forced_next_pokemon_id
+            global forced_next_pokemon_id, forced_next_pokemon_shiny, current_wild_is_shiny
             if forced_next_pokemon_id is not None and not _ankimon_is_gym_active():
                 # Use the forced pokemon ID and clear it
                 id = forced_next_pokemon_id
                 forced_next_pokemon_id = None
                 pokemon_species = None
+                # Apply forced shiny status
+                current_wild_is_shiny = forced_next_pokemon_shiny
+                forced_next_pokemon_shiny = False
                 try:
-                    tooltipWithColour(f"Forced encounter activated!", "#00FF00")
+                    shiny_text = " (Shiny)" if current_wild_is_shiny else ""
+                    tooltipWithColour(f"Forced encounter activated{shiny_text}!", "#00FF00")
                 except:
                     pass
             # If a gym battle is active, lock the opponent to the current gym team.
             elif _ankimon_is_gym_active():
+                # Gym battles are NEVER shiny
+                current_wild_is_shiny = False
                 _ids = _ankimon_get_gym_enemy_ids()
                 _idx = _ankimon_get_gym_enemy_index()
                 if _ids and len(_ids) > 0:
@@ -1300,6 +1322,8 @@ if database_complete != False:
                     id, pokemon_species = choose_random_pkmn_from_tier()
             # If Elite Four battle is active, lock the opponent to the current member's team
             elif _ankimon_is_elite_four_active():
+                # Elite Four battles are NEVER shiny
+                current_wild_is_shiny = False
                 _ids = _ankimon_get_elite_four_enemy_ids()
                 _idx = _ankimon_get_elite_four_pokemon_index()
                 if _ids and len(_ids) > 0:
@@ -1316,6 +1340,8 @@ if database_complete != False:
                     id, pokemon_species = choose_random_pkmn_from_tier()
             # If Champion battle is active, lock the opponent to Champion's team
             elif _ankimon_is_champion_active():
+                # Champion battles are NEVER shiny
+                current_wild_is_shiny = False
                 _ids = _ankimon_get_champion_enemy_ids()
                 _idx = _ankimon_get_champion_pokemon_index()
                 if _ids and len(_ids) > 0:
@@ -1331,11 +1357,23 @@ if database_complete != False:
                 else:
                     id, pokemon_species = choose_random_pkmn_from_tier()
             else:
+                # Wild encounter - use weighted rarity system
                 id, pokemon_species = choose_random_pkmn_from_tier()
+
+                # Roll for shiny AFTER Pokemon selection (wild encounters only)
+                current_wild_is_shiny = roll_for_shiny()
+
+                # Log shiny encounter for debugging (only if Developer Mode is active)
+                try:
+                    if current_wild_is_shiny and developer_menu and developer_menu.menuAction().isVisible():
+                        print(f"[Wild] SHINY ENCOUNTER! id={id}")
+                except:
+                    pass
 
             # Safety check: if id is still None, use fallback
             if id is None:
                 id, pokemon_species = choose_random_pkmn_from_tier()
+                current_wild_is_shiny = roll_for_shiny()
             #test_ids = [417]
             #id = random.choice(test_ids)
             name = search_pokedex_by_id(id)
@@ -1705,28 +1743,49 @@ def get_pokemon_by_category(category_name):
     return random_pokemon_name_from_tier #return random pokemon name from that category
 
 def choose_random_pkmn_from_tier():
-    global cards_per_round, card_counter
-    possible_tiers = []
+    """
+    NEW WEIGHTED RARITY SYSTEM for wild encounters only.
+    Uses fixed probabilities instead of progression-based tiers.
+    Trainer/Gym/Elite Four/Champion battles are NOT affected.
+
+    Rarity weights (wild encounters only):
+    - COMMON:     75.0%
+    - UNCOMMON:   20.0%
+    - RARE:        4.5%
+    - LEGENDARY:   0.45%
+    - MYTHICAL:    0.05%
+    """
     try:
-        if card_counter < (40*cards_per_round):
-            possible_tiers.append("Normal")
-        elif card_counter < (50*cards_per_round):
-            possible_tiers.extend(["Baby", "Normal", "Normal", "Normal", "Normal", "Normal", "Normal", "Normal"])
-        elif card_counter < (65*cards_per_round):
-            possible_tiers.extend(["Baby", "Normal", "Normal", "Normal", "Normal", "Normal", "Normal", "Normal", "Ultra"])
-        elif card_counter < (90*cards_per_round):
-            possible_tiers.extend(["Baby", "Legendary", "Normal", "Normal", "Normal", "Normal", "Normal", "Normal", "Ultra", "Ultra"])
-        else:
-            possible_tiers.extend(["Baby", "Legendary", "Mythical", "Normal", "Normal", "Normal", "Normal", "Normal", "Normal", "Normal", "Ultra", "Ultra"])
-        tier = random.choice(possible_tiers)
+        # Define weighted rarity tiers
+        tiers = ["COMMON", "UNCOMMON", "RARE", "LEGENDARY", "MYTHICAL"]
+        weights = [75.0, 20.0, 4.5, 0.45, 0.05]
+
+        # Randomly select a tier based on weights
+        tier = random.choices(tiers, weights=weights, k=1)[0]
+
+        # Get a random Pokemon ID from the selected tier
         id, pokemon_species = get_pokemon_id_by_tier(tier)
+
+        # Log encounter for debugging (only if Developer Mode is active)
+        try:
+            global developer_menu
+            if developer_menu and developer_menu.menuAction().isVisible():
+                print(f"[Wild] tier={tier} id={id}")
+        except:
+            pass
+
         return id, pokemon_species
-    except:
-        showWarning(f" An error occured with generating following Pkmn Info: {id}{pokemon_species} \n Please post this error message over the Report Bug Issue")
+    except Exception as e:
+        showWarning(f"An error occurred with generating Pokémon: {e}\nPlease report this error.")
+        # Fallback to a safe Common tier selection
+        return get_pokemon_id_by_tier("COMMON")
 
 def get_pokemon_id_by_tier(tier):
     global pokemon_species_normal_path, pokemon_species_baby_path, pokemon_species_mythical_path, pokemon_species_ultra_path, pokemon_species_legendary_path
+    global pokemon_species_common_path, pokemon_species_uncommon_path, pokemon_species_rare_path
     id_species_path = None
+
+    # Support both old and new tier naming systems
     if tier == "Normal":
         id_species_path = pokemon_species_normal_path
     elif tier == "Baby":
@@ -1737,6 +1796,13 @@ def get_pokemon_id_by_tier(tier):
         id_species_path = pokemon_species_legendary_path
     elif tier == "Mythical":
         id_species_path = pokemon_species_mythical_path
+    # New rarity tiers for wild encounters
+    elif tier == "COMMON":
+        id_species_path = pokemon_species_common_path
+    elif tier == "UNCOMMON":
+        id_species_path = pokemon_species_uncommon_path
+    elif tier == "RARE":
+        id_species_path = pokemon_species_rare_path
 
     with open(id_species_path, 'r') as file:
         id_data = json.load(file)
@@ -1745,6 +1811,14 @@ def get_pokemon_id_by_tier(tier):
     # Select a random Pokemon ID from those in the tier
     random_pokemon_id = random.choice(id_data)
     return random_pokemon_id, pokemon_species
+
+def roll_for_shiny():
+    """
+    Roll for shiny Pokemon based on SHINY_RATE (1/512 by default).
+    Returns True if shiny, False otherwise.
+    """
+    global SHINY_RATE
+    return random.random() < SHINY_RATE
 
 def save_caught_pokemon(nickname):
     # Create a dictionary to store the Pokémon's data
@@ -1791,6 +1865,11 @@ def save_caught_pokemon(nickname):
     evos = search_pokedex(name, "evos")
     if evos is None:
         evos = ""
+
+    # Capture shiny status from current wild encounter
+    global current_wild_is_shiny
+    is_shiny = current_wild_is_shiny if current_wild_is_shiny else False
+
     caught_pokemon = {
         "name": name.capitalize(),
         "nickname": nickname,
@@ -1806,7 +1885,8 @@ def save_caught_pokemon(nickname):
         "base_experience": base_experience,
         "current_hp": calculate_hp(int(stats["hp"]),level, ev, iv),
         "growth_rate": growth_rate,
-        "evos": evos
+        "evos": evos,
+        "is_shiny": is_shiny
     }
     # Load existing Pokémon data if it exists
     if mypokemon_path.is_file():
@@ -7786,25 +7866,64 @@ class TestWindow(QWidget):
         ENEMY_GROUND_X, ENEMY_GROUND_Y = 390, 166  # Enemy Pokemon ground baseline
         PLAYER_GROUND_X, PLAYER_GROUND_Y = 134, 249  # Player Pokemon ground baseline
 
-        # Wild Pokemon animated sprite
+        # Wild Pokemon animated sprite (with shiny support)
         wild_pkmn_label = QLabel(container)
         wild_pkmn_label.setStyleSheet("background: transparent;")
         wild_pkmn_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        wild_gif_path = frontdefault_gif / f"{id}.gif"
-        if wild_gif_path.exists():
-            wild_movie = QMovie(str(wild_gif_path))
-            wild_movie.setScaledSize(QSize(wild_size, wild_size))
-            wild_pkmn_label.setMovie(wild_movie)
-            wild_movie.start()
-        else:
-            # Fallback to PNG
-            wild_pixmap = QPixmap(str(frontdefault / f"{id}.png"))
-            wild_pixmap = wild_pixmap.scaled(wild_size, wild_size, Qt.AspectRatioMode.KeepAspectRatio)
-            wild_pkmn_label.setPixmap(wild_pixmap)
+
+        # Check if this is a shiny encounter
+        global current_wild_is_shiny, shiny_front_default_gif, shiny_front_default
+        sprite_loaded = False
+
+        if current_wild_is_shiny:
+            # Try shiny GIF first
+            wild_gif_path = shiny_front_default_gif / f"{id}.gif"
+            if wild_gif_path.exists():
+                wild_movie = QMovie(str(wild_gif_path))
+                wild_movie.setScaledSize(QSize(wild_size, wild_size))
+                wild_pkmn_label.setMovie(wild_movie)
+                wild_movie.start()
+                sprite_loaded = True
+            else:
+                # Try shiny PNG
+                wild_pixmap_path = shiny_front_default / f"{id}.png"
+                if wild_pixmap_path.exists():
+                    wild_pixmap = QPixmap(str(wild_pixmap_path))
+                    wild_pixmap = wild_pixmap.scaled(wild_size, wild_size, Qt.AspectRatioMode.KeepAspectRatio)
+                    wild_pkmn_label.setPixmap(wild_pixmap)
+                    sprite_loaded = True
+
+        # Fallback to normal sprites if shiny sprites don't exist
+        if not sprite_loaded:
+            wild_gif_path = frontdefault_gif / f"{id}.gif"
+            if wild_gif_path.exists():
+                wild_movie = QMovie(str(wild_gif_path))
+                wild_movie.setScaledSize(QSize(wild_size, wild_size))
+                wild_pkmn_label.setMovie(wild_movie)
+                wild_movie.start()
+            else:
+                # Fallback to PNG
+                wild_pixmap = QPixmap(str(frontdefault / f"{id}.png"))
+                wild_pixmap = wild_pixmap.scaled(wild_size, wild_size, Qt.AspectRatioMode.KeepAspectRatio)
+                wild_pkmn_label.setPixmap(wild_pixmap)
 
         # Calculate bottom-anchored position for enemy Pokemon
         enemy_draw_x, enemy_draw_y = bottom_anchor_pos(ENEMY_GROUND_X, ENEMY_GROUND_Y, wild_size, wild_size, anchor="center")
         wild_pkmn_label.setGeometry(enemy_draw_x, enemy_draw_y, wild_size, wild_size)
+
+        # Display shiny icon if this is a shiny encounter
+        if current_wild_is_shiny:
+            shiny_icon_label = QLabel(container)
+            shiny_icon_label.setStyleSheet("background: transparent;")
+            shiny_icon_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            shiny_icon_path = addon_dir / "addon_sprites" / "icons" / "shiny-stars.png"
+            if shiny_icon_path.exists():
+                shiny_icon_pixmap = QPixmap(str(shiny_icon_path))
+                # Scale to small icon size (20x20)
+                shiny_icon_scaled = shiny_icon_pixmap.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                shiny_icon_label.setPixmap(shiny_icon_scaled)
+                # Position next to wild Pokemon name (left side of name box)
+                shiny_icon_label.setGeometry(15, 50, 20, 20)
 
         # Player Pokemon animated sprite
         player_pkmn_label = QLabel(container)
@@ -9578,7 +9697,7 @@ class CompletePokedex(QWidget):
                     hw_label.setStyleSheet("color: #90c090; font-size: 10px;")
                     card_layout.addWidget(hw_label)
 
-                # Force Encounter button
+                # Force Encounter button (only visible when Developer Mode is ON)
                 encounter_btn = QPushButton("Force Encounter")
                 encounter_btn.setStyleSheet("""
                     QPushButton {
@@ -9597,6 +9716,17 @@ class CompletePokedex(QWidget):
                     }
                 """)
                 encounter_btn.clicked.connect(lambda checked, pid=pkmn_id, pname=pkmn_name: self.force_encounter(pid, pname))
+
+                # Check if Developer Mode is active
+                try:
+                    global developer_menu
+                    if developer_menu and developer_menu.menuAction().isVisible():
+                        encounter_btn.setVisible(True)
+                    else:
+                        encounter_btn.setVisible(False)
+                except:
+                    encounter_btn.setVisible(False)
+
                 card_layout.addWidget(encounter_btn)
 
                 card_widget.setLayout(card_layout)
@@ -9633,8 +9763,65 @@ class CompletePokedex(QWidget):
         self.display_pokemon(filtered)
 
     def force_encounter(self, pokemon_id, pokemon_name):
-        """Set the next wild encounter to be this specific pokemon"""
-        global forced_next_pokemon_id
+        """Set the next wild encounter to be this specific pokemon with Normal/Shiny choice"""
+        global forced_next_pokemon_id, forced_next_pokemon_shiny
+
+        # Show dialog to choose Normal or Shiny
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Force Encounter: {pokemon_name.capitalize()}")
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #1e1e1e;
+            }
+            QLabel {
+                color: #e0e0e0;
+                font-size: 14px;
+                padding: 10px;
+            }
+            QPushButton {
+                background-color: #5a9fd4;
+                color: white;
+                border-radius: 5px;
+                padding: 10px 20px;
+                font-weight: bold;
+                font-size: 12px;
+                min-width: 100px;
+            }
+            QPushButton:hover {
+                background-color: #4a8fc4;
+            }
+            QPushButton:pressed {
+                background-color: #3a7fb4;
+            }
+        """)
+
+        layout = QVBoxLayout()
+
+        # Question label
+        question_label = QLabel(f"Choose encounter type for {pokemon_name.capitalize()}:")
+        question_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(question_label)
+
+        # Button layout
+        button_layout = QHBoxLayout()
+
+        # Normal button
+        normal_btn = QPushButton("Normal")
+        normal_btn.clicked.connect(lambda: self._set_forced_encounter(pokemon_id, pokemon_name, False, dialog))
+        button_layout.addWidget(normal_btn)
+
+        # Shiny button
+        shiny_btn = QPushButton("✨ Shiny")
+        shiny_btn.clicked.connect(lambda: self._set_forced_encounter(pokemon_id, pokemon_name, True, dialog))
+        button_layout.addWidget(shiny_btn)
+
+        layout.addLayout(button_layout)
+        dialog.setLayout(layout)
+        dialog.exec()
+
+    def _set_forced_encounter(self, pokemon_id, pokemon_name, is_shiny, dialog):
+        """Helper method to set forced encounter and close dialog"""
+        global forced_next_pokemon_id, forced_next_pokemon_shiny
 
         # Ensure pokemon_id is an integer
         try:
@@ -9642,11 +9829,16 @@ class CompletePokedex(QWidget):
         except (ValueError, TypeError):
             forced_next_pokemon_id = pokemon_id
 
-        # Use tooltip instead of dialog to avoid interruption
-        tooltipWithColour(f"Force Encounter set: {pokemon_name.capitalize()} (#{forced_next_pokemon_id})\nAnswer a card to trigger!", "#00FF00")
+        forced_next_pokemon_shiny = is_shiny
+
+        # Show confirmation tooltip
+        shiny_text = " ✨ SHINY" if is_shiny else ""
+        tooltipWithColour(f"Force Encounter set: {pokemon_name.capitalize()}{shiny_text} (#{forced_next_pokemon_id})\nAnswer a card to trigger!", "#00FF00")
+
+        # Close dialog
+        dialog.accept()
 
         # Keep Pokédex open for easier testing/iteration
-        # self.close()  # Removed to keep Pokédex open
 
     def show_complete_pokedex(self):
         self.load_all_pokemon()
@@ -12319,6 +12511,16 @@ if database_complete != False:
         else:
             tooltipWithColour("Developer Mode: Hidden", "#888888")
             print("[DevMode] toggled: False")
+
+        # Refresh Pokédex if it's open to update Force Encounter button visibility
+        try:
+            global complete_pokedex
+            if complete_pokedex and complete_pokedex.isVisible():
+                # Reload pokemon display to refresh button visibility
+                complete_pokedex.display_pokemon(complete_pokedex.all_pokemon)
+                print("[DevMode] Pokédex refreshed")
+        except Exception as e:
+            print(f"[DevMode] Error refreshing Pokédex: {e}")
 
     # 4. Developer Mode submenu (hidden by default, toggle with F6 or menu item)
     developer_menu = QMenu("Developer Mode", mw)
