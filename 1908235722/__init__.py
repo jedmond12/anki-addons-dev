@@ -528,54 +528,20 @@ def _ankimon_clear_stale_enemy_sprites():
     except Exception as e:
         _ankimon_log("ERROR", "AnkimonUI", f"Error clearing stale sprites: {e}")
 
-def _ankimon_reset_enemy_battle_vars():
-    """
-    Reset all enemy battle variables to prevent stale data during transitions.
-    This ensures clean slate before spawning new enemy.
-    """
-    global name, id, hp, max_hp, level, ability, type, enemy_attacks, stats, base_experience, ev, iv, gender, battle_status
-
-    try:
-        _ankimon_log("INFO", "AnkimonBattle", "Resetting enemy battle variables")
-
-        # Log current enemy state before reset
-        _ankimon_log("INFO", "AnkimonBattle", f"Pre-reset enemy: id={id}, name={name}, hp={hp}/{max_hp}")
-
-        # Reset enemy vars to safe defaults
-        name = "unknown"
-        id = 0
-        hp = 1
-        max_hp = 1
-        level = 1
-        ability = ""
-        type = []
-        enemy_attacks = []
-        stats = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
-        base_experience = 0
-        ev = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
-        iv = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
-        gender = None
-        battle_status = "fighting"
-
-        _ankimon_log("INFO", "AnkimonBattle", "Enemy variables reset complete")
-    except Exception as e:
-        _ankimon_log("ERROR", "AnkimonBattle", f"Error resetting enemy vars: {e}")
-
 def _ankimon_transition_to_gym(reason=""):
     """
     Atomic transition to gym battle - ensures clean UI state transition.
 
     This function handles the complete transition from wild/trainer battle to gym battle:
-    1. Closes post-battle UI (without rendering stale data)
-    2. Clears enemy state variables
-    3. Activates gym and sets battle state
-    4. Spawns first gym Pokemon
-    5. Forces complete UI refresh on all surfaces
+    1. Clears stale enemy sprites
+    2. Activates gym and sets battle state
+    3. Spawns first gym Pokemon (updates all enemy vars)
+    4. Forces complete UI refresh on all surfaces
 
     Args:
         reason: Description of why transition is happening (for logging)
     """
-    global test_window, pkmn_window
+    global test_window, pkmn_window, id, name, hp, max_hp
 
     try:
         _ankimon_log("INFO", "AnkimonBattle", f"=== Transitioning to gym battle ({reason}) ===")
@@ -589,24 +555,13 @@ def _ankimon_transition_to_gym(reason=""):
         leader_name = conf.get("ankimon_gym_leader_name", "Unknown Leader")
         enemy_ids = conf.get("ankimon_gym_enemy_ids") or []
 
-        _ankimon_log("INFO", "AnkimonBattle", f"Gym transition: leader={leader_name}, team_size={len(enemy_ids)}")
+        _ankimon_log("INFO", "AnkimonBattle", f"Gym transition: leader={leader_name}, team_size={len(enemy_ids)}, first_pokemon_id={enemy_ids[0] if enemy_ids else 'none'}")
 
-        # Step 1: Close post-battle UI WITHOUT triggering render
-        # (We'll do a proper render after enemy vars are updated)
-        try:
-            if test_window and hasattr(test_window, 'isVisible'):
-                # Just hide any dialogs, don't call display methods yet
-                _ankimon_log("INFO", "AnkimonUI", "Hiding post-battle UI elements")
-        except Exception as e:
-            _ankimon_log("ERROR", "AnkimonUI", f"Error hiding post-battle UI: {e}")
-
-        # Step 2: Clear stale enemy sprites
+        # Step 1: Clear stale enemy sprites
         _ankimon_clear_stale_enemy_sprites()
 
-        # Step 3: Reset enemy variables to prevent stale data from showing
-        _ankimon_reset_enemy_battle_vars()
-
-        # Step 4: Activate gym and set battle state
+        # Step 2: Activate gym and set battle state BEFORE spawning
+        # This ensures generate_random_pokemon() sees gym_active=True
         conf["ankimon_gym_active"] = True
         conf["ankimon_gym_pending"] = False
         conf["ankimon_gym_enemy_index"] = 0
@@ -617,20 +572,20 @@ def _ankimon_transition_to_gym(reason=""):
         _ankimon_set_battle_state("gym")
         _ankimon_log("INFO", "AnkimonBattle", "Battle state set to: gym")
 
-        # Step 5: Spawn first gym Pokemon (this updates all enemy vars)
+        # Step 3: Spawn first gym Pokemon (this updates all enemy vars naturally)
         try:
             tooltipWithColour(f"Gym Battle vs {leader_name} Starting!", "#FFD700")
         except:
             pass
 
+        _ankimon_log("INFO", "AnkimonBattle", "Calling new_pokemon() to spawn first gym pokemon...")
+        new_pokemon()  # This will generate the first gym pokemon and update globals
+
+        # Log the new enemy state for debugging
+        _ankimon_log("INFO", "AnkimonBattle", f"Post-spawn state: id={id}, name={name}, hp={hp}/{max_hp}")
+
+        # Step 4: Force complete refresh of ALL views (if external window enabled)
         if pkmn_window is True:
-            _ankimon_log("INFO", "AnkimonBattle", "Spawning first gym pokemon...")
-            new_pokemon()  # This will generate the first gym pokemon and update globals
-
-            # Log the new enemy state
-            _ankimon_log("INFO", "AnkimonBattle", f"First gym pokemon spawned: id={id}, name={name}, hp={hp}/{max_hp}")
-
-            # Step 6: Force complete refresh of ALL views
             from aqt.qt import QTimer
 
             # Immediate refresh
