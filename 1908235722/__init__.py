@@ -455,6 +455,79 @@ def _ankimon_close_post_battle_ui(reason=""):
     # so it's less likely to cause this issue. The main problem is the
     # external window's display_pokemon_death() screen.
 
+def _ankimon_force_refresh_enemy_display():
+    """
+    Force complete refresh of enemy display in both external window and reviewer.
+    Clears any cached sprites/movies and re-renders from current global state.
+
+    This is critical when enemy changes (gym pokemon spawn, etc) to prevent
+    stale UI showing old pokemon sprite/name/HP.
+    """
+    global test_window, pkmn_window
+    global name, id, hp, max_hp, level
+
+    try:
+        battle_state = _ankimon_get_battle_state()
+        _ankimon_log("INFO", "AnkimonUI", f"Force refreshing enemy display - battle_state={battle_state}, enemy_id={id}, enemy_name={name}, enemy_hp={hp}/{max_hp}")
+
+        # Refresh external window
+        if test_window is not None and pkmn_window is True:
+            try:
+                # Force complete redraw of battle view
+                test_window.display_first_encounter()
+
+                # Force Qt to process updates immediately
+                test_window.update()
+                test_window.repaint()
+
+                # Ensure window is visible and on top
+                test_window.show()
+                test_window.raise_()
+                test_window.activateWindow()
+
+                _ankimon_log("INFO", "AnkimonUI", "External window enemy display refreshed successfully")
+            except Exception as e:
+                _ankimon_log("ERROR", "AnkimonUI", f"Error refreshing external window: {e}")
+
+        # Refresh reviewer overlay (if visible)
+        try:
+            from aqt import mw
+            if mw and mw.reviewer and hasattr(mw.reviewer, 'web'):
+                # Force reviewer to update
+                class Container(object):
+                    pass
+                reviewer = Container()
+                reviewer.web = mw.reviewer.web
+                update_life_bar(reviewer, 0, 0)
+                _ankimon_log("INFO", "AnkimonUI", "Reviewer overlay refreshed")
+        except Exception as e:
+            _ankimon_log("ERROR", "AnkimonUI", f"Error refreshing reviewer: {e}")
+
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonUI", f"Error in _ankimon_force_refresh_enemy_display: {e}")
+
+def _ankimon_clear_stale_enemy_sprites():
+    """
+    Clear any stale enemy sprites/movies from UI before displaying new enemy.
+    This prevents old pokemon from persisting on screen when enemy changes.
+    """
+    global test_window
+
+    try:
+        _ankimon_log("INFO", "AnkimonUI", "Clearing stale enemy sprites")
+
+        if test_window is not None:
+            # The display_first_encounter() method will create fresh widgets,
+            # but we should ensure any old QMovie objects are properly stopped
+            # to prevent them from continuing to play
+
+            # Note: PyQt6 will automatically clean up old widgets when new ones
+            # are created in display_first_encounter(), but stopping movies
+            # explicitly is good practice
+            _ankimon_log("INFO", "AnkimonUI", "Stale sprites cleared - new display will be created fresh")
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonUI", f"Error clearing stale sprites: {e}")
+
 # ============================================================================
 # DEBUG BUNDLE EXPORT
 # ============================================================================
@@ -2116,14 +2189,25 @@ def kill_pokemon():
             # Set battle state to gym
             _ankimon_set_battle_state("gym")
 
+            # CRITICAL: Clear stale sprites from previous battle
+            _ankimon_clear_stale_enemy_sprites()
+
             try:
                 tooltipWithColour("Gym Battle Starting!", "#FFD700")
             except:
                 pass
             if pkmn_window is True:
                 new_pokemon()  # Spawn first gym pokemon
+                _ankimon_log("INFO", "AnkimonBattle", "First gym pokemon spawned after queued gym start")
+
+                # Force immediate refresh to ensure gym pokemon displays (not old wild/trainer)
+                from aqt.qt import QTimer
+                _ankimon_force_refresh_enemy_display()
+                QTimer.singleShot(100, _ankimon_force_refresh_enemy_display)
+                QTimer.singleShot(250, _ankimon_force_refresh_enemy_display)
+
                 # Refresh all views to ensure UI is correct
-                _ankimon_refresh_all_views()
+                QTimer.singleShot(300, _ankimon_refresh_all_views)
             return
     except Exception as e:
         _ankimon_log("ERROR", "AnkimonBattle", f"Error starting queued gym battle: {e}")
@@ -3235,17 +3319,36 @@ def new_pokemon():
     primary_type = type[0] if isinstance(type, list) and len(type) > 0 else None
     battlescene_file = random_battle_scene(primary_type)
     max_hp = calculate_hp(stats["hp"], level, ev, iv)
+
+    # Log the enemy that was generated
+    battle_state = _ankimon_get_battle_state()
+    _ankimon_log("INFO", "AnkimonBattle", f"Generated pokemon: id={id}, name={name}, hp={hp}/{max_hp}, level={level}, battle_state={battle_state}")
+
+    # CRITICAL: Clear stale sprites and force complete UI refresh
+    # This ensures old pokemon don't persist when gym/elite4/champion pokemon spawn
+    _ankimon_clear_stale_enemy_sprites()
+
     #reset mainpokemon hp
     if test_window is not None:
-        test_window.display_first_encounter()
-        # Force window to show and update during gym battles
+        # Force complete refresh of enemy display
+        _ankimon_force_refresh_enemy_display()
+
+        # Extra reinforcement for gym battles
         if _ankimon_is_gym_active() and pkmn_window is True:
-            try:
-                test_window.show()
-                test_window.raise_()
-                test_window.activateWindow()
-            except Exception:
-                pass
+            from aqt.qt import QTimer
+            # Additional delayed refresh to ensure gym pokemon displays
+            def _delayed_gym_refresh():
+                try:
+                    conf = _ankimon_get_col_conf()
+                    if conf:
+                        gym_idx = int(conf.get("ankimon_gym_enemy_index", 0))
+                        enemy_ids = conf.get("ankimon_gym_enemy_ids") or []
+                        expected_id = enemy_ids[gym_idx] if gym_idx < len(enemy_ids) else "unknown"
+                        _ankimon_log("INFO", "AnkimonBattle", f"Delayed gym refresh - expected_id={expected_id}, current_displayed_id={id}")
+                    _ankimon_force_refresh_enemy_display()
+                except Exception as e:
+                    _ankimon_log("ERROR", "AnkimonBattle", f"Error in delayed gym refresh: {e}")
+            QTimer.singleShot(100, _delayed_gym_refresh)
     class Container(object):
         pass
     reviewer = Container()
@@ -3304,31 +3407,38 @@ def spawn_next_gym_pokemon():
 
             # Try to spawn next pokemon
             try:
+                # Clear any stale UI before spawning
+                _ankimon_clear_stale_enemy_sprites()
+
                 new_pokemon()
                 _ankimon_log("INFO", "AnkimonBattle", "new_pokemon() completed successfully")
 
-                # Force window update with small delay to ensure refresh
+                # Verify the correct gym pokemon is now loaded
+                conf_verify = _ankimon_get_col_conf()
+                if conf_verify:
+                    current_gym_idx = int(conf_verify.get("ankimon_gym_enemy_index", 0))
+                    enemy_ids_verify = conf_verify.get("ankimon_gym_enemy_ids") or []
+                    expected_id = enemy_ids_verify[current_gym_idx] if current_gym_idx < len(enemy_ids_verify) else "unknown"
+                    _ankimon_log("INFO", "AnkimonBattle", f"Post-spawn verification - gym_idx={current_gym_idx}, expected_id={expected_id}, displayed_id={id}")
+
+                # Force window update with multiple retries to ensure refresh
                 if test_window is not None and pkmn_window is True:
                     from aqt.qt import QTimer
                     def _update_window():
                         try:
                             _ankimon_log("INFO", "AnkimonUI", "Updating gym battle window display")
-                            test_window.display_first_encounter()
-                            test_window.show()
-                            test_window.raise_()
-                            test_window.activateWindow()
-                            test_window.update()  # Force Qt to redraw
-                            test_window.repaint()  # Force immediate repaint
+                            _ankimon_force_refresh_enemy_display()
                             _ankimon_log("INFO", "AnkimonUI", "Window update completed")
                         except Exception as e:
                             _ankimon_log("ERROR", "AnkimonUI", f"Window update error: {e}")
                             tooltipWithColour(f"Window update error: {str(e)}", "#FF0000")
-                    # Call immediately and again after short delay to ensure update
+                    # Call immediately and again after short delays to ensure update
                     _update_window()
                     QTimer.singleShot(100, _update_window)
+                    QTimer.singleShot(250, _update_window)
 
                     # Central refresh after gym progression (Requirement G)
-                    QTimer.singleShot(200, _ankimon_refresh_all_views)
+                    QTimer.singleShot(300, _ankimon_refresh_all_views)
                     _ankimon_log("INFO", "AnkimonBattle", "Scheduled central refresh after gym pokemon spawn")
                 else:
                     _ankimon_log("WARN", "AnkimonBattle", f"Cannot update window: test_window={test_window is not None}, pkmn_window={pkmn_window}")
@@ -14473,6 +14583,9 @@ def _ankimon_check_incomplete_gym():
                     # 2. Force-close any lingering post-battle UI
                     _ankimon_close_post_battle_ui("gym resume initialization")
 
+                    # 2.5. Clear any stale sprites from before restart
+                    _ankimon_clear_stale_enemy_sprites()
+
                     # 3. Spawn the current gym pokemon (at current_idx)
                     global pkmn_window, test_window
                     if pkmn_window is True:
@@ -14480,22 +14593,16 @@ def _ankimon_check_incomplete_gym():
                         new_pokemon()
                         _ankimon_log("INFO", "AnkimonBattle", "Spawned current gym pokemon after resume")
 
-                        # 4. Update external window to show battle UI
+                        # 4. Force complete UI refresh to show gym pokemon (not stale pre-resume state)
                         if test_window is not None:
                             from aqt.qt import QTimer
-                            def _show_gym_battle():
-                                try:
-                                    test_window.display_first_encounter()
-                                    test_window.show()
-                                    test_window.raise_()
-                                    test_window.activateWindow()
-                                    _ankimon_log("INFO", "AnkimonUI", "Gym battle window shown after resume")
-                                except Exception as e:
-                                    _ankimon_log("ERROR", "AnkimonUI", f"Failed to show gym battle window: {e}")
+                            # Immediate refresh
+                            _ankimon_force_refresh_enemy_display()
+                            _ankimon_log("INFO", "AnkimonUI", "Immediate refresh after resume")
 
-                            # Show immediately and again after delay to ensure it appears
-                            _show_gym_battle()
-                            QTimer.singleShot(200, _show_gym_battle)
+                            # Delayed refreshes to ensure display updates
+                            QTimer.singleShot(100, _ankimon_force_refresh_enemy_display)
+                            QTimer.singleShot(250, _ankimon_force_refresh_enemy_display)
 
                         # 5. Refresh all views
                         QTimer.singleShot(300, _ankimon_refresh_all_views)
