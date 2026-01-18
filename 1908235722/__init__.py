@@ -3190,6 +3190,8 @@ def spawn_next_gym_pokemon():
     """Handler for Next Pokemon button - spawns the next gym pokemon"""
     global test_window, pkmn_window
     try:
+        _ankimon_log("INFO", "AnkimonBattle", "=== spawn_next_gym_pokemon() called ===")
+
         # Set battle state to gym
         _ankimon_set_battle_state("gym")
 
@@ -3198,15 +3200,31 @@ def spawn_next_gym_pokemon():
 
         conf = _ankimon_get_col_conf()
         if not conf:
+            _ankimon_log("ERROR", "AnkimonBattle", "Config not available in spawn_next_gym_pokemon")
             tooltipWithColour("Config not available", "#FF0000")
             return
 
         # Get current gym state
+        gym_active = conf.get("ankimon_gym_active", False)
         enemy_ids = conf.get("ankimon_gym_enemy_ids") or []
         current_idx = int(conf.get("ankimon_gym_enemy_index") or 0)
+        leader_name = conf.get("ankimon_gym_leader_name", "Unknown")
         next_idx = current_idx + 1
 
+        _ankimon_log("INFO", "AnkimonBattle", f"Gym state: active={gym_active}, current_idx={current_idx}, next_idx={next_idx}, total={len(enemy_ids)}, leader={leader_name}")
+
+        if not gym_active:
+            _ankimon_log("WARN", "AnkimonBattle", "spawn_next_gym_pokemon called but gym not active - aborting")
+            return
+
+        if not enemy_ids:
+            _ankimon_log("ERROR", "AnkimonBattle", "spawn_next_gym_pokemon called but no enemy_ids - corrupted state")
+            tooltipWithColour("Gym state corrupted - use Reset Battle", "#FF0000")
+            return
+
         if next_idx < len(enemy_ids):
+            _ankimon_log("INFO", "AnkimonBattle", f"Spawning next gym pokemon: index {next_idx}/{len(enemy_ids)}, ID={enemy_ids[next_idx] if next_idx < len(enemy_ids) else 'N/A'}")
+
             # Show tooltip BEFORE incrementing index
             try:
                 tooltipWithColour(f"Leader sends out next Pokémon! ({next_idx+1}/{len(enemy_ids)})", "#00FF00")
@@ -3216,32 +3234,41 @@ def spawn_next_gym_pokemon():
             # Increment index BEFORE spawning (needed for generate_random_pokemon to use correct ID)
             conf["ankimon_gym_enemy_index"] = next_idx
             mw.col.setMod()
+            _ankimon_log("INFO", "AnkimonBattle", f"Updated gym_enemy_index to {next_idx}")
 
             # Try to spawn next pokemon
             try:
                 new_pokemon()
+                _ankimon_log("INFO", "AnkimonBattle", "new_pokemon() completed successfully")
+
                 # Force window update with small delay to ensure refresh
                 if test_window is not None and pkmn_window is True:
                     from aqt.qt import QTimer
                     def _update_window():
                         try:
+                            _ankimon_log("INFO", "AnkimonUI", "Updating gym battle window display")
                             test_window.display_first_encounter()
                             test_window.show()
                             test_window.raise_()
                             test_window.activateWindow()
                             test_window.update()  # Force Qt to redraw
                             test_window.repaint()  # Force immediate repaint
+                            _ankimon_log("INFO", "AnkimonUI", "Window update completed")
                         except Exception as e:
+                            _ankimon_log("ERROR", "AnkimonUI", f"Window update error: {e}")
                             tooltipWithColour(f"Window update error: {str(e)}", "#FF0000")
                     # Call immediately and again after short delay to ensure update
                     _update_window()
                     QTimer.singleShot(100, _update_window)
+                else:
+                    _ankimon_log("WARN", "AnkimonBattle", f"Cannot update window: test_window={test_window is not None}, pkmn_window={pkmn_window}")
             except Exception as e:
                 # CRITICAL: If spawning fails, rollback the index to prevent state corruption
                 conf["ankimon_gym_enemy_index"] = current_idx
                 mw.col.setMod()
 
                 error_msg = f"Error spawning next gym pokemon: {str(e)}"
+                _ankimon_log("ERROR", "AnkimonBattle", error_msg)
                 tooltipWithColour(error_msg, "#FF0000")
                 import traceback
                 traceback.print_exc()
@@ -3253,9 +3280,11 @@ def spawn_next_gym_pokemon():
                     pass
         else:
             # All pokemon defeated - complete the gym
+            _ankimon_log("INFO", "AnkimonBattle", "All gym pokemon defeated, completing gym battle")
             complete_gym_battle()
     except Exception as e:
         error_msg = f"Error in spawn_next_gym_pokemon: {str(e)}"
+        _ankimon_log("ERROR", "AnkimonBattle", error_msg)
         tooltipWithColour(error_msg, "#FF0000")
         import traceback
         traceback.print_exc()
@@ -14339,19 +14368,60 @@ def _ankimon_check_incomplete_gym():
 
             if reply == QMessageBox.StandardButton.Yes:
                 # Continue the gym battle
+                _ankimon_log("INFO", "AnkimonBattle", f"User chose to resume gym battle vs {leader_name} ({remaining} pokemon remaining)")
+
                 if gym_pending:
                     # Was pending, activate it now
                     conf["ankimon_gym_active"] = True
                     conf["ankimon_gym_pending"] = False
                     mw.col.setMod()
-                    try:
-                        tooltipWithColour("Continuing Gym Battle!", "#FFD700")
-                    except:
-                        pass
-                else:
-                    # Already active, just show message
+
+                # CRITICAL: Fully initialize gym battle state
+                try:
+                    # 1. Set battle state to gym
+                    _ankimon_set_battle_state("gym")
+                    _ankimon_log("INFO", "AnkimonBattle", f"Set battle state to gym, index={current_idx}, remaining={remaining}")
+
+                    # 2. Force-close any lingering post-battle UI
+                    _ankimon_close_post_battle_ui("gym resume initialization")
+
+                    # 3. Spawn the current gym pokemon (at current_idx)
+                    global pkmn_window, test_window
+                    if pkmn_window is True:
+                        # Spawn current gym pokemon
+                        new_pokemon()
+                        _ankimon_log("INFO", "AnkimonBattle", "Spawned current gym pokemon after resume")
+
+                        # 4. Update external window to show battle UI
+                        if test_window is not None:
+                            from aqt.qt import QTimer
+                            def _show_gym_battle():
+                                try:
+                                    test_window.display_first_encounter()
+                                    test_window.show()
+                                    test_window.raise_()
+                                    test_window.activateWindow()
+                                    _ankimon_log("INFO", "AnkimonUI", "Gym battle window shown after resume")
+                                except Exception as e:
+                                    _ankimon_log("ERROR", "AnkimonUI", f"Failed to show gym battle window: {e}")
+
+                            # Show immediately and again after delay to ensure it appears
+                            _show_gym_battle()
+                            QTimer.singleShot(200, _show_gym_battle)
+
+                        # 5. Refresh all views
+                        QTimer.singleShot(300, _ankimon_refresh_all_views)
+
                     try:
                         tooltipWithColour(f"Gym Battle vs {leader_name} - {remaining} Pokémon left", "#FFD700")
+                    except:
+                        pass
+                except Exception as e:
+                    _ankimon_log("ERROR", "AnkimonBattle", f"Failed to initialize resumed gym battle: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    try:
+                        tooltipWithColour("Error resuming gym battle - please restart", "#FF0000")
                     except:
                         pass
             else:
