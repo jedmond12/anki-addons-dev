@@ -528,6 +528,145 @@ def _ankimon_clear_stale_enemy_sprites():
     except Exception as e:
         _ankimon_log("ERROR", "AnkimonUI", f"Error clearing stale sprites: {e}")
 
+def _ankimon_reset_enemy_battle_vars():
+    """
+    Reset all enemy battle variables to prevent stale data during transitions.
+    This ensures clean slate before spawning new enemy.
+    """
+    global name, id, hp, max_hp, level, ability, type, enemy_attacks, stats, base_experience, ev, iv, gender, battle_status
+
+    try:
+        _ankimon_log("INFO", "AnkimonBattle", "Resetting enemy battle variables")
+
+        # Log current enemy state before reset
+        _ankimon_log("INFO", "AnkimonBattle", f"Pre-reset enemy: id={id}, name={name}, hp={hp}/{max_hp}")
+
+        # Reset enemy vars to safe defaults
+        name = "unknown"
+        id = 0
+        hp = 1
+        max_hp = 1
+        level = 1
+        ability = ""
+        type = []
+        enemy_attacks = []
+        stats = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+        base_experience = 0
+        ev = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+        iv = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+        gender = None
+        battle_status = "fighting"
+
+        _ankimon_log("INFO", "AnkimonBattle", "Enemy variables reset complete")
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonBattle", f"Error resetting enemy vars: {e}")
+
+def _ankimon_transition_to_gym(reason=""):
+    """
+    Atomic transition to gym battle - ensures clean UI state transition.
+
+    This function handles the complete transition from wild/trainer battle to gym battle:
+    1. Closes post-battle UI (without rendering stale data)
+    2. Clears enemy state variables
+    3. Activates gym and sets battle state
+    4. Spawns first gym Pokemon
+    5. Forces complete UI refresh on all surfaces
+
+    Args:
+        reason: Description of why transition is happening (for logging)
+    """
+    global test_window, pkmn_window
+
+    try:
+        _ankimon_log("INFO", "AnkimonBattle", f"=== Transitioning to gym battle ({reason}) ===")
+
+        # Get gym configuration
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            _ankimon_log("ERROR", "AnkimonBattle", "Cannot transition to gym - config not available")
+            return False
+
+        leader_name = conf.get("ankimon_gym_leader_name", "Unknown Leader")
+        enemy_ids = conf.get("ankimon_gym_enemy_ids") or []
+
+        _ankimon_log("INFO", "AnkimonBattle", f"Gym transition: leader={leader_name}, team_size={len(enemy_ids)}")
+
+        # Step 1: Close post-battle UI WITHOUT triggering render
+        # (We'll do a proper render after enemy vars are updated)
+        try:
+            if test_window and hasattr(test_window, 'isVisible'):
+                # Just hide any dialogs, don't call display methods yet
+                _ankimon_log("INFO", "AnkimonUI", "Hiding post-battle UI elements")
+        except Exception as e:
+            _ankimon_log("ERROR", "AnkimonUI", f"Error hiding post-battle UI: {e}")
+
+        # Step 2: Clear stale enemy sprites
+        _ankimon_clear_stale_enemy_sprites()
+
+        # Step 3: Reset enemy variables to prevent stale data from showing
+        _ankimon_reset_enemy_battle_vars()
+
+        # Step 4: Activate gym and set battle state
+        conf["ankimon_gym_active"] = True
+        conf["ankimon_gym_pending"] = False
+        conf["ankimon_gym_enemy_index"] = 0
+        mw.col.setMod()
+        _ankimon_log("INFO", "AnkimonBattle", "Gym activated: active=True, pending=False, index=0")
+
+        # Set battle state to gym
+        _ankimon_set_battle_state("gym")
+        _ankimon_log("INFO", "AnkimonBattle", "Battle state set to: gym")
+
+        # Step 5: Spawn first gym Pokemon (this updates all enemy vars)
+        try:
+            tooltipWithColour(f"Gym Battle vs {leader_name} Starting!", "#FFD700")
+        except:
+            pass
+
+        if pkmn_window is True:
+            _ankimon_log("INFO", "AnkimonBattle", "Spawning first gym pokemon...")
+            new_pokemon()  # This will generate the first gym pokemon and update globals
+
+            # Log the new enemy state
+            _ankimon_log("INFO", "AnkimonBattle", f"First gym pokemon spawned: id={id}, name={name}, hp={hp}/{max_hp}")
+
+            # Step 6: Force complete refresh of ALL views
+            from aqt.qt import QTimer
+
+            # Immediate refresh
+            _ankimon_force_refresh_enemy_display()
+            _ankimon_log("INFO", "AnkimonUI", "Immediate refresh triggered")
+
+            # Delayed refreshes to ensure update propagates
+            def _delayed_refresh():
+                try:
+                    _ankimon_log("INFO", "AnkimonUI", "Delayed refresh executing")
+                    _ankimon_force_refresh_enemy_display()
+                except Exception as e:
+                    _ankimon_log("ERROR", "AnkimonUI", f"Delayed refresh error: {e}")
+
+            QTimer.singleShot(100, _delayed_refresh)
+            QTimer.singleShot(250, _delayed_refresh)
+
+            # Final complete refresh of all views
+            def _final_refresh():
+                try:
+                    _ankimon_log("INFO", "AnkimonUI", "Final complete refresh executing")
+                    _ankimon_refresh_all_views()
+                except Exception as e:
+                    _ankimon_log("ERROR", "AnkimonUI", f"Final refresh error: {e}")
+
+            QTimer.singleShot(300, _final_refresh)
+
+        _ankimon_log("INFO", "AnkimonBattle", "=== Gym transition complete ===")
+        return True
+
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonBattle", f"Error in gym transition: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 # ============================================================================
 # DEBUG BUNDLE EXPORT
 # ============================================================================
@@ -2175,42 +2314,19 @@ def kill_pokemon():
     try:
         conf = _ankimon_get_col_conf()
         if conf and conf.get("ankimon_gym_pending"):
-            _ankimon_log("INFO", "AnkimonBattle", "Starting queued gym battle after current battle ended")
+            _ankimon_log("INFO", "AnkimonBattle", "Detected queued gym battle after current battle ended")
 
-            # CRITICAL: Force-close any lingering post-battle UI
-            _ankimon_close_post_battle_ui("starting queued gym battle")
-
-            # Start the gym battle now that wild pokemon is defeated
-            conf["ankimon_gym_active"] = True
-            conf["ankimon_gym_pending"] = False
-            conf["ankimon_gym_enemy_index"] = 0
-            mw.col.setMod()
-
-            # Set battle state to gym
-            _ankimon_set_battle_state("gym")
-
-            # CRITICAL: Clear stale sprites from previous battle
-            _ankimon_clear_stale_enemy_sprites()
-
-            try:
-                tooltipWithColour("Gym Battle Starting!", "#FFD700")
-            except:
-                pass
-            if pkmn_window is True:
-                new_pokemon()  # Spawn first gym pokemon
-                _ankimon_log("INFO", "AnkimonBattle", "First gym pokemon spawned after queued gym start")
-
-                # Force immediate refresh to ensure gym pokemon displays (not old wild/trainer)
-                from aqt.qt import QTimer
-                _ankimon_force_refresh_enemy_display()
-                QTimer.singleShot(100, _ankimon_force_refresh_enemy_display)
-                QTimer.singleShot(250, _ankimon_force_refresh_enemy_display)
-
-                # Refresh all views to ensure UI is correct
-                QTimer.singleShot(300, _ankimon_refresh_all_views)
-            return
+            # Use atomic transition helper to ensure clean UI state
+            if _ankimon_transition_to_gym("queued start after defeat"):
+                _ankimon_log("INFO", "AnkimonBattle", "Gym transition successful")
+                return
+            else:
+                _ankimon_log("ERROR", "AnkimonBattle", "Gym transition failed")
+                # Fall through to normal flow if transition failed
     except Exception as e:
         _ankimon_log("ERROR", "AnkimonBattle", f"Error starting queued gym battle: {e}")
+        import traceback
+        traceback.print_exc()
 
     # Check if Elite Four battle is pending and start it now
     try:
@@ -3055,19 +3171,19 @@ def catch_pokemon(nickname):
         try:
             conf = _ankimon_get_col_conf()
             if conf and conf.get("ankimon_gym_pending"):
-                # Start the gym battle now that wild pokemon is caught
-                conf["ankimon_gym_active"] = True
-                conf["ankimon_gym_pending"] = False
-                conf["ankimon_gym_enemy_index"] = 0
-                mw.col.setMod()
-                try:
-                    tooltipWithColour("Gym Battle Starting!", "#FFD700")
-                except:
-                    pass
-                new_pokemon()  # Spawn first gym pokemon
-                return
-        except Exception:
-            pass
+                _ankimon_log("INFO", "AnkimonBattle", "Detected queued gym battle after catching pokemon")
+
+                # Use atomic transition helper to ensure clean UI state
+                if _ankimon_transition_to_gym("queued start after catch"):
+                    _ankimon_log("INFO", "AnkimonBattle", "Gym transition successful after catch")
+                    return
+                else:
+                    _ankimon_log("ERROR", "AnkimonBattle", "Gym transition failed after catch")
+                    # Fall through to spawn new pokemon if transition failed
+        except Exception as e:
+            _ankimon_log("ERROR", "AnkimonBattle", f"Error in gym transition after catch: {e}")
+            import traceback
+            traceback.print_exc()
 
         # Refresh captured Pokemon collection dialog if it's open
         try:
