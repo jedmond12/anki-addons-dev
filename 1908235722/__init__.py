@@ -2037,15 +2037,22 @@ if database_complete != False:
             # Set the layout for the dialog
 
 def kill_pokemon():
-    # Prevent this function from running during gym battles
-    if _ankimon_is_gym_active():
-        return
+    """
+    Handle defeated Pokemon based on battle_state.
+    Routes to appropriate handler: wild/trainer = spawn new, gym/elite4/champion = advance boss battle.
+    """
     global level, hp, name, image_url, mainpokemon_xp, mainpokemon_base_experience, mainpokemon_name, mainpokemon_level, mainpokemon_path, mainpokemon_growth_rate, mainpokemon_hp, ev_yield
     global pkmn_window, base_experience
+
+    # Get current battle state to determine routing
+    battle_state = _ankimon_get_battle_state()
+    _ankimon_log("INFO", "AnkimonBattle", f"kill_pokemon() called - battle_state={battle_state}")
+
     name = name.capitalize()
     # CRITICAL FIX: Use defeated pokemon's base_experience, not main pokemon's
     exp = int(calc_experience(base_experience, level))
     mainpokemon_level = save_main_pokemon_progress(mainpokemon_path, mainpokemon_level, mainpokemon_name, mainpokemon_base_experience, mainpokemon_growth_rate, exp)
+    _ankimon_log("INFO", "AnkimonBattle", f"Awarded {exp} XP to {mainpokemon_name}, now level {mainpokemon_level}")
 
     # Distribute EXP to Pokemon holding EXP Share (50% of earned EXP)
     try:
@@ -2182,6 +2189,65 @@ def kill_pokemon():
     except Exception as e:
         _ankimon_log("ERROR", "AnkimonBattle", f"Error starting queued Champion battle: {e}")
 
+    # Route based on battle_state (Requirement D)
+    battle_state = _ankimon_get_battle_state()
+
+    if battle_state == "gym":
+        # Gym battle: advance to next pokemon or complete gym
+        _ankimon_log("INFO", "AnkimonBattle", "Gym pokemon defeated - calling spawn_next_gym_pokemon()")
+        spawn_next_gym_pokemon()
+        return
+
+    elif battle_state == "elite4":
+        # Elite Four battle: advance to next pokemon or complete member
+        _ankimon_log("INFO", "AnkimonBattle", "Elite Four pokemon defeated - advancing")
+        try:
+            conf = _ankimon_get_col_conf()
+            if conf:
+                enemy_ids = conf.get("ankimon_elite_four_enemy_ids") or []
+                pokemon_idx = int(conf.get("ankimon_elite_four_pokemon_index", 0))
+
+                if pokemon_idx >= len(enemy_ids) - 1:
+                    # Last Pokemon defeated - complete this Elite Four member
+                    complete_elite_four_member()
+                else:
+                    # More Pokemon remain - increment index and spawn next
+                    conf["ankimon_elite_four_pokemon_index"] = pokemon_idx + 1
+                    mw.col.setMod()
+                    new_pokemon()
+                    if test_window is not None and pkmn_window is True:
+                        test_window.display_first_encounter()
+                    _ankimon_refresh_all_views()
+        except Exception as e:
+            _ankimon_log("ERROR", "AnkimonBattle", f"Error advancing Elite Four: {e}")
+        return
+
+    elif battle_state == "champion":
+        # Champion battle: advance to next pokemon or complete champion
+        _ankimon_log("INFO", "AnkimonBattle", "Champion pokemon defeated - advancing")
+        try:
+            conf = _ankimon_get_col_conf()
+            if conf:
+                enemy_ids = conf.get("ankimon_champion_enemy_ids") or []
+                pokemon_idx = int(conf.get("ankimon_champion_pokemon_index", 0))
+
+                if pokemon_idx >= len(enemy_ids) - 1:
+                    # Last Pokemon defeated - complete Champion battle
+                    complete_champion()
+                else:
+                    # More Pokemon remain - increment index and spawn next
+                    conf["ankimon_champion_pokemon_index"] = pokemon_idx + 1
+                    mw.col.setMod()
+                    new_pokemon()
+                    if test_window is not None and pkmn_window is True:
+                        test_window.display_first_encounter()
+                    _ankimon_refresh_all_views()
+        except Exception as e:
+            _ankimon_log("ERROR", "AnkimonBattle", f"Error advancing Champion: {e}")
+        return
+
+    # Default: wild or trainer battle - spawn new wild pokemon
+    _ankimon_log("INFO", "AnkimonBattle", f"Wild/trainer battle ended - spawning new pokemon (state={battle_state})")
     if pkmn_window is True:
         new_pokemon()  # Show a new random Pokémon
 
@@ -3260,6 +3326,10 @@ def spawn_next_gym_pokemon():
                     # Call immediately and again after short delay to ensure update
                     _update_window()
                     QTimer.singleShot(100, _update_window)
+
+                    # Central refresh after gym progression (Requirement G)
+                    QTimer.singleShot(200, _ankimon_refresh_all_views)
+                    _ankimon_log("INFO", "AnkimonBattle", "Scheduled central refresh after gym pokemon spawn")
                 else:
                     _ankimon_log("WARN", "AnkimonBattle", f"Cannot update window: test_window={test_window is not None}, pkmn_window={pkmn_window}")
             except Exception as e:
@@ -3293,19 +3363,25 @@ def complete_gym_battle():
     """Handler for completing gym battle - awards badge and spawns wild pokemon"""
     global test_window, pkmn_window, achievements
     try:
+        _ankimon_log("INFO", "AnkimonBattle", "=== complete_gym_battle() called ===")
+
         conf = _ankimon_get_col_conf()
         if not conf:
+            _ankimon_log("ERROR", "AnkimonBattle", "Config not available in complete_gym_battle")
             tooltipWithColour("Config not available", "#FF0000")
             return
 
         # Get current gym index before clearing
         current_gym_idx = int(conf.get("ankimon_gym_index", 0))
         gym_number = (current_gym_idx % 8) + 1
+        leader_name = conf.get("ankimon_gym_leader_name", "Unknown")
+        _ankimon_log("INFO", "AnkimonBattle", f"Completing gym {gym_number} vs {leader_name} (index={current_gym_idx})")
 
         # Clear gym state FIRST
         conf["ankimon_gym_active"] = False
         conf["ankimon_gym_enemy_ids"] = []
         conf["ankimon_gym_enemy_index"] = 0
+        _ankimon_log("INFO", "AnkimonBattle", "Cleared gym state flags")
 
         # Reset battle state to idle
         _ankimon_set_battle_state("idle")
@@ -3322,6 +3398,7 @@ def complete_gym_battle():
 
         # Save config immediately
         mw.col.setMod()
+        _ankimon_log("INFO", "AnkimonBattle", f"Gym index incremented to {current_gym_idx + 1}, counter reset to 0")
 
         # Track gym battle completion in progression stats
         try:
@@ -3363,6 +3440,7 @@ def complete_gym_battle():
 
         # Spawn new wild pokemon
         try:
+            _ankimon_log("INFO", "AnkimonBattle", "Spawning new wild pokemon after gym completion")
             new_pokemon()
             # Force window update with small delay to ensure refresh
             if test_window is not None and pkmn_window is True:
@@ -3380,6 +3458,10 @@ def complete_gym_battle():
                 # Call immediately and again after short delay to ensure update
                 _update_window()
                 QTimer.singleShot(100, _update_window)
+
+                # Central refresh after gym completion (Requirement G)
+                QTimer.singleShot(200, _ankimon_refresh_all_views)
+                _ankimon_log("INFO", "AnkimonBattle", "Scheduled central refresh after gym completion")
         except Exception as e:
             error_msg = f"Error spawning pokemon after gym: {str(e)}"
             tooltipWithColour(error_msg, "#FF0000")
@@ -13924,6 +14006,12 @@ def _ankimon_show_gym_leader_dialog(leader: dict):
             conf["ankimon_gym_enemy_index"] = 0
             conf["ankimon_gym_leader_key"] = leader.get("key")
             # Note: counter already reset when reaching 100, no need to reset again
+            mw.col.setMod()
+
+            # CRITICAL: Set battle state to gym BEFORE opening window
+            _ankimon_set_battle_state("gym")
+            _ankimon_log("INFO", "AnkimonBattle", f"Starting gym battle vs {leader.get('name', 'Gym Leader')}")
+
             dlg.accept()
             try:
                 open_test_window()
