@@ -572,17 +572,19 @@ def _ankimon_transition_to_gym(reason=""):
         _ankimon_set_battle_state("gym")
         _ankimon_log("INFO", "AnkimonBattle", "Battle state set to: gym")
 
-        # Step 3: Spawn first gym Pokemon (this updates all enemy vars naturally)
+        # Step 3: Spawn first gym Pokemon (bypasses battle lock)
         try:
             tooltipWithColour(f"Gym Battle vs {leader_name} Starting!", "#FFD700")
         except:
             pass
 
-        _ankimon_log("INFO", "AnkimonBattle", "Calling new_pokemon() to spawn first gym pokemon...")
-        new_pokemon()  # This will generate the first gym pokemon and update globals
+        _ankimon_log("INFO", "AnkimonBattle", "Spawning first gym Pokemon...")
+        if not _ankimon_spawn_special_battle_pokemon():
+            _ankimon_log("ERROR", "AnkimonBattle", "Failed to spawn gym Pokemon")
+            return False
 
         # Log the new enemy state for debugging
-        _ankimon_log("INFO", "AnkimonBattle", f"Post-spawn state: id={id}, name={name}, hp={hp}/{max_hp}")
+        _ankimon_log("INFO", "AnkimonBattle", f"Gym Pokemon spawned: id={id}, name={name}, hp={hp}/{max_hp}")
 
         # Step 4: Force complete refresh of ALL views (if external window enabled)
         if pkmn_window is True:
@@ -618,6 +620,101 @@ def _ankimon_transition_to_gym(reason=""):
 
     except Exception as e:
         _ankimon_log("ERROR", "AnkimonBattle", f"Error in gym transition: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def _ankimon_transition_to_elite_four(reason=""):
+    """
+    Atomic transition to Elite Four battle - ensures clean UI state transition.
+
+    This function handles the complete transition from wild/trainer battle to Elite Four battle:
+    1. Clears stale enemy sprites
+    2. Activates Elite Four and sets battle state
+    3. Spawns first Elite Four Pokemon (updates all enemy vars)
+    4. Forces complete UI refresh on all surfaces
+
+    Args:
+        reason: Description of why transition is happening (for logging)
+    """
+    global test_window, pkmn_window, id, name, hp, max_hp
+
+    try:
+        _ankimon_log("INFO", "AnkimonBattle", f"=== Transitioning to Elite Four battle ({reason}) ===")
+
+        # Get Elite Four configuration
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            _ankimon_log("ERROR", "AnkimonBattle", "Cannot transition to Elite Four - config not available")
+            return False
+
+        member_name = conf.get("ankimon_elite_four_member_name", "Unknown Member")
+        enemy_ids = conf.get("ankimon_elite_four_enemy_ids") or []
+
+        _ankimon_log("INFO", "AnkimonBattle", f"Elite Four transition: member={member_name}, team_size={len(enemy_ids)}, first_pokemon_id={enemy_ids[0] if enemy_ids else 'none'}")
+
+        # Step 1: Clear stale enemy sprites
+        _ankimon_clear_stale_enemy_sprites()
+
+        # Step 2: Activate Elite Four and set battle state BEFORE spawning
+        conf["ankimon_elite_four_active"] = True
+        conf["ankimon_elite_four_pending"] = False
+        conf["ankimon_elite_four_pokemon_index"] = 0
+        mw.col.setMod()
+        _ankimon_log("INFO", "AnkimonBattle", "Elite Four activated: active=True, pending=False, index=0")
+
+        # Set battle state to elite4
+        _ankimon_set_battle_state("elite4")
+        _ankimon_log("INFO", "AnkimonBattle", "Battle state set to: elite4")
+
+        # Step 3: Spawn first Elite Four Pokemon (bypasses battle lock)
+        try:
+            tooltipWithColour(f"Elite Four {member_name} Battle Starting!", "#FFD700")
+        except:
+            pass
+
+        _ankimon_log("INFO", "AnkimonBattle", "Spawning first Elite Four Pokemon...")
+        if not _ankimon_spawn_special_battle_pokemon():
+            _ankimon_log("ERROR", "AnkimonBattle", "Failed to spawn Elite Four Pokemon")
+            return False
+
+        # Log the new enemy state for debugging
+        _ankimon_log("INFO", "AnkimonBattle", f"Elite Four Pokemon spawned: id={id}, name={name}, hp={hp}/{max_hp}")
+
+        # Step 4: Force complete refresh of ALL views (if external window enabled)
+        if pkmn_window is True:
+            from aqt.qt import QTimer
+
+            # Immediate refresh
+            _ankimon_force_refresh_enemy_display()
+            _ankimon_log("INFO", "AnkimonUI", "Immediate refresh triggered")
+
+            # Delayed refreshes to ensure update propagates
+            def _delayed_refresh():
+                try:
+                    _ankimon_log("INFO", "AnkimonUI", "Delayed refresh executing")
+                    _ankimon_force_refresh_enemy_display()
+                except Exception as e:
+                    _ankimon_log("ERROR", "AnkimonUI", f"Delayed refresh error: {e}")
+
+            QTimer.singleShot(100, _delayed_refresh)
+            QTimer.singleShot(250, _delayed_refresh)
+
+            # Final complete refresh of all views
+            def _final_refresh():
+                try:
+                    _ankimon_log("INFO", "AnkimonUI", "Final complete refresh executing")
+                    _ankimon_refresh_all_views()
+                except Exception as e:
+                    _ankimon_log("ERROR", "AnkimonUI", f"Final refresh error: {e}")
+
+            QTimer.singleShot(300, _final_refresh)
+
+        _ankimon_log("INFO", "AnkimonBattle", "=== Elite Four transition complete ===")
+        return True
+
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonBattle", f"Error in Elite Four transition: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -1398,9 +1495,43 @@ def answerCard_after(rev, card, ease):
 aqt.gui_hooks.reviewer_did_answer_card.append(answerCard_after)
 
 def get_image_as_base64(path):
-    with open(path, 'rb') as image_file:
-        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
-    return encoded_string
+    """
+    Get image as base64, with fallback to default sprite if path is invalid.
+    Prevents crashes from invalid Pokemon IDs like [] or empty strings.
+    """
+    try:
+        # Validate path - check for invalid patterns
+        path_str = str(path)
+        if not path_str or '[' in path_str or ']' in path_str or path_str.endswith('/.gif') or path_str.endswith('/.png'):
+            _ankimon_log("WARN", "AnkimonSprite", f"Invalid sprite path detected: {path_str}, using fallback")
+            # Use fallback to Pikachu (ID 25)
+            import pathlib
+            addon_dir = pathlib.Path(__file__).parent
+            if '.gif' in path_str or 'front_default_gif' in path_str:
+                fallback_path = addon_dir / "user_files" / "sprites" / "front_default_gif" / "25.gif"
+            else:
+                fallback_path = addon_dir / "user_files" / "sprites" / "front_default" / "25.png"
+            path = str(fallback_path)
+
+        # Check if file exists
+        if not os.path.exists(path):
+            _ankimon_log("WARN", "AnkimonSprite", f"Sprite file not found: {path}, using fallback")
+            # Use fallback to Pikachu
+            import pathlib
+            addon_dir = pathlib.Path(__file__).parent
+            if '.gif' in str(path):
+                fallback_path = addon_dir / "user_files" / "sprites" / "front_default_gif" / "25.gif"
+            else:
+                fallback_path = addon_dir / "user_files" / "sprites" / "front_default" / "25.png"
+            path = str(fallback_path)
+
+        with open(path, 'rb') as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+        return encoded_string
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonSprite", f"Error loading sprite {path}: {e}")
+        # Return empty base64 as last resort
+        return ""
 
 if database_complete != False:
     def get_random_moves_for_pokemon(pokemon_name, level):
@@ -2287,32 +2418,19 @@ def kill_pokemon():
     try:
         conf = _ankimon_get_col_conf()
         if conf and conf.get("ankimon_elite_four_pending"):
-            _ankimon_log("INFO", "AnkimonBattle", "Starting queued Elite Four battle after current battle ended")
+            _ankimon_log("INFO", "AnkimonBattle", "Detected queued Elite Four battle after current battle ended")
 
-            # CRITICAL: Force-close any lingering post-battle UI
-            _ankimon_close_post_battle_ui("starting queued Elite Four battle")
-
-            # Start the Elite Four battle now that wild pokemon is defeated
-            conf["ankimon_elite_four_active"] = True
-            conf["ankimon_elite_four_pending"] = False
-            conf["ankimon_elite_four_pokemon_index"] = 0
-            mw.col.setMod()
-
-            # Set battle state to elite4
-            _ankimon_set_battle_state("elite4")
-
-            try:
-                member_name = conf.get("ankimon_elite_four_member_name", "Elite Four")
-                tooltipWithColour(f"Elite Four {member_name} Battle Starting!", "#FFD700")
-            except:
-                pass
-            if pkmn_window is True:
-                new_pokemon()  # Spawn first Elite Four pokemon
-                # Refresh all views to ensure UI is correct
-                _ankimon_refresh_all_views()
-            return
+            # Use atomic transition helper to ensure clean UI state
+            if _ankimon_transition_to_elite_four("queued start after defeat"):
+                _ankimon_log("INFO", "AnkimonBattle", "Elite Four transition successful")
+                return
+            else:
+                _ankimon_log("ERROR", "AnkimonBattle", "Elite Four transition failed")
+                # Fall through to normal flow if transition failed
     except Exception as e:
         _ankimon_log("ERROR", "AnkimonBattle", f"Error starting queued Elite Four battle: {e}")
+        import traceback
+        traceback.print_exc()
 
     # Check if Champion battle is pending and start it now
     try:
@@ -2369,9 +2487,10 @@ def kill_pokemon():
                     # More Pokemon remain - increment index and spawn next
                     conf["ankimon_elite_four_pokemon_index"] = pokemon_idx + 1
                     mw.col.setMod()
-                    new_pokemon()
-                    if test_window is not None and pkmn_window is True:
-                        test_window.display_first_encounter()
+                    _ankimon_log("INFO", "AnkimonBattle", f"Spawning next Elite Four Pokemon (index={pokemon_idx + 1})")
+                    if not _ankimon_spawn_special_battle_pokemon():
+                        _ankimon_log("ERROR", "AnkimonBattle", "Failed to spawn next Elite Four Pokemon")
+                    _ankimon_force_refresh_enemy_display()
                     _ankimon_refresh_all_views()
         except Exception as e:
             _ankimon_log("ERROR", "AnkimonBattle", f"Error advancing Elite Four: {e}")
@@ -2393,9 +2512,10 @@ def kill_pokemon():
                     # More Pokemon remain - increment index and spawn next
                     conf["ankimon_champion_pokemon_index"] = pokemon_idx + 1
                     mw.col.setMod()
-                    new_pokemon()
-                    if test_window is not None and pkmn_window is True:
-                        test_window.display_first_encounter()
+                    _ankimon_log("INFO", "AnkimonBattle", f"Spawning next Champion Pokemon (index={pokemon_idx + 1})")
+                    if not _ankimon_spawn_special_battle_pokemon():
+                        _ankimon_log("ERROR", "AnkimonBattle", "Failed to spawn next Champion Pokemon")
+                    _ankimon_force_refresh_enemy_display()
                     _ankimon_refresh_all_views()
         except Exception as e:
             _ankimon_log("ERROR", "AnkimonBattle", f"Error advancing Champion: {e}")
@@ -3350,6 +3470,48 @@ def start_enemy_trainer_battle(trainer_name, trainer_sprite, trainer_scene):
     reviewer = Container()
     reviewer.web = mw.reviewer.web
     update_life_bar(reviewer, 0, 0)
+
+def _ankimon_spawn_special_battle_pokemon():
+    """
+    Spawn Pokemon for special battles (gym/elite4/champion) - bypasses battle lock.
+    This is used during transitions to ensure the first opponent spawns correctly.
+    """
+    global name, id, level, hp, max_hp, ability, type, enemy_attacks, attacks, base_experience, stats, battlescene_file, ev, iv, gender, battle_status
+    global is_trainer_battle, current_trainer_name, current_trainer_sprite, test_window
+
+    try:
+        battle_state = _ankimon_get_battle_state()
+        _ankimon_log("INFO", "AnkimonBattle", f"Spawning special battle Pokemon (state={battle_state})")
+
+        # Reset trainer battle flags
+        is_trainer_battle = False
+        current_trainer_name = None
+        current_trainer_sprite = None
+        gender = None
+
+        # Generate Pokemon (will use gym/elite4/champion roster based on battle_state)
+        name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, hp, max_hp, ev, iv, gender, battle_status, battle_stats = generate_random_pokemon()
+
+        # Select battle scene
+        primary_type = type[0] if isinstance(type, list) and len(type) > 0 else None
+        battlescene_file = random_battle_scene(primary_type)
+        max_hp = calculate_hp(stats["hp"], level, ev, iv)
+
+        _ankimon_log("INFO", "AnkimonBattle", f"Special battle Pokemon spawned: id={id}, name={name}, hp={hp}/{max_hp}, level={level}")
+
+        # Clear stale sprites
+        _ankimon_clear_stale_enemy_sprites()
+
+        # Display in external window if enabled
+        if test_window is not None and hasattr(test_window, 'display_first_encounter'):
+            test_window.display_first_encounter()
+
+        return True
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonBattle", f"Error spawning special battle Pokemon: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 def new_pokemon():
     global name, id, level, hp, max_hp, ability, type, enemy_attacks, attacks, base_experience, stats, battlescene_file, ev, iv, gender, battle_status
