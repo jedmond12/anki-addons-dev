@@ -3471,6 +3471,34 @@ def start_enemy_trainer_battle(trainer_name, trainer_sprite, trainer_scene):
     reviewer.web = mw.reviewer.web
     update_life_bar(reviewer, 0, 0)
 
+def _ankimon_validate_enemy_id(enemy_id, enemy_name="unknown"):
+    """
+    Validate enemy ID is valid before using for sprite paths or other operations.
+    Returns (is_valid, safe_id, warning_message)
+    """
+    try:
+        # Check if enemy_id is valid type
+        if enemy_id is None:
+            return (False, 25, f"Enemy ID is None (name={enemy_name})")
+
+        # Check if it's a list/tuple (common error case)
+        if isinstance(enemy_id, (list, tuple)):
+            return (False, 25, f"Enemy ID is list/tuple: {enemy_id} (name={enemy_name})")
+
+        # Try to convert to int
+        try:
+            id_int = int(enemy_id)
+        except (ValueError, TypeError):
+            return (False, 25, f"Enemy ID cannot convert to int: {enemy_id} (name={enemy_name})")
+
+        # Check if in valid range [1..1025]
+        if id_int < 1 or id_int > 1025:
+            return (False, 25, f"Enemy ID out of range: {id_int} (name={enemy_name})")
+
+        return (True, id_int, None)
+    except Exception as e:
+        return (False, 25, f"Exception validating enemy ID: {e}")
+
 def _ankimon_spawn_special_battle_pokemon():
     """
     Spawn Pokemon for special battles (gym/elite4/champion) - bypasses battle lock.
@@ -3643,8 +3671,11 @@ def spawn_next_gym_pokemon():
                 # Clear any stale UI before spawning
                 _ankimon_clear_stale_enemy_sprites()
 
-                new_pokemon()
-                _ankimon_log("INFO", "AnkimonBattle", "new_pokemon() completed successfully")
+                # CRITICAL: Use special battle spawn to bypass battle lock
+                _ankimon_log("INFO", "AnkimonBattle", "Spawning next gym Pokemon (bypassing lock)...")
+                if not _ankimon_spawn_special_battle_pokemon():
+                    raise Exception("Failed to spawn gym Pokemon")
+                _ankimon_log("INFO", "AnkimonBattle", "Gym Pokemon spawn completed successfully")
 
                 # Verify the correct gym pokemon is now loaded
                 conf_verify = _ankimon_get_col_conf()
@@ -7644,16 +7675,24 @@ if database_complete != False and mainpokemon_empty is False:
     def update_life_bar(reviewer, card, ease):
         global hp, name, id, frontdefault, battle_status, user_path_sprites, show_mainpkmn_in_reviewer, mainpokemon_hp, mainpokemon_id, mainpokemon_name, mainpokemon_level, mainpokemon_stats, mainpokemon_ev, mainpokemon_iv, mainpokemon_xp, xp_bar_config
         global mainpokemon_level, icon_path, empty_icon_path, seconds, myseconds, view_main_front, pokeball
-        pokeball = check_pokecoll_in_list(search_pokedex(name.lower(), "num"))
+
+        # Validate enemy ID before building sprite paths
+        enemy_num = search_pokedex(name.lower(), "num")
+        is_valid, safe_id, warning = _ankimon_validate_enemy_id(enemy_num, name)
+        if not is_valid:
+            _ankimon_log("WARN", "AnkimonSprite", f"Invalid enemy ID in update_life_bar: {warning}, using fallback ID {safe_id}")
+            enemy_num = safe_id
+
+        pokeball = check_pokecoll_in_list(enemy_num)
         if reviewer_image_gif == False:
-            pokemon_imagefile = f'{search_pokedex(name.lower(), "num")}.png' #use for png files
+            pokemon_imagefile = f'{enemy_num}.png' #use for png files
             pokemon_image_file = os.path.join(frontdefault, pokemon_imagefile) #use for png files
             if show_mainpkmn_in_reviewer > 0:
                 main_pkmn_imagefile = f'{mainpokemon_id}.png' #use for png files
                 main_pkmn_imagefile_path = os.path.join(backdefault, main_pkmn_imagefile) #use for png files
         else:
             # Enemy Pokémon sprite (wild encounter)
-            pokemon_imagefile = f'{search_pokedex(name.lower(), "num")}.gif'
+            pokemon_imagefile = f'{enemy_num}.gif'
 
             # Check if this is a shiny encounter
             global current_wild_is_shiny, shiny_front_default
