@@ -9633,8 +9633,9 @@ class TestWindow(QWidget):
                 gym_index = conf.get("ankimon_gym_index", 0) % 8
                 gym_names = ["Roark", "Gardenia", "Maylene", "Crasher Wake", "Fantina", "Byron", "Candice", "Volkner"]
                 gym_name = gym_names[gym_index]
-                pct = int((gym_counter / ANKIMON_GYM_TARGET) * 100)
-                self.progress_label.setText(f"Next Gym ({gym_name}): {gym_counter}/{ANKIMON_GYM_TARGET} cards ({pct}%)")
+                gym_target = _ankimon_get_battle_interval_gym()
+                pct = int((gym_counter / gym_target) * 100)
+                self.progress_label.setText(f"Next Gym ({gym_name}): {gym_counter}/{gym_target} cards ({pct}%)")
                 self.progress_label.setVisible(True)
             elif not _ankimon_all_elite_four_defeated():
                 # Working on Elite Four
@@ -9642,14 +9643,16 @@ class TestWindow(QWidget):
                 member_idx = conf.get("ankimon_elite_four_index", 0) % 4
                 members = ["Aaron", "Bertha", "Flint", "Lucian"]
                 member_name = members[member_idx]
-                pct = int((elite_counter / ANKIMON_ELITE_FOUR_TARGET) * 100)
-                self.progress_label.setText(f"Elite Four ({member_name}): {elite_counter}/{ANKIMON_ELITE_FOUR_TARGET} cards ({pct}%)")
+                elite_target = _ankimon_get_battle_interval_elite_four()
+                pct = int((elite_counter / elite_target) * 100)
+                self.progress_label.setText(f"Elite Four ({member_name}): {elite_counter}/{elite_target} cards ({pct}%)")
                 self.progress_label.setVisible(True)
             else:
                 # Working on Champion
                 champion_counter = conf.get("ankimon_champion_counter", 0)
-                pct = int((champion_counter / ANKIMON_CHAMPION_TARGET) * 100)
-                self.progress_label.setText(f"Champion (Cynthia): {champion_counter}/{ANKIMON_CHAMPION_TARGET} cards ({pct}%)")
+                champion_target = _ankimon_get_battle_interval_champion()
+                pct = int((champion_counter / champion_target) * 100)
+                self.progress_label.setText(f"Champion (Cynthia): {champion_counter}/{champion_target} cards ({pct}%)")
                 self.progress_label.setVisible(True)
         except Exception as e:
             print(f"Error updating progress label: {e}")
@@ -14029,6 +14032,55 @@ if database_complete != False:
     # Confirmation log
     print("[DevMenu] Developer Mode actions added: purge/seed/self-test")
 
+    # Developer Mode: Fast Battle Testing Toggle
+    developer_menu.addSeparator()
+    try:
+        def toggle_fast_battle_testing():
+            """Toggle fast battle testing (10-card intervals instead of 100/150/200)"""
+            conf = _ankimon_get_col_conf()
+            if not conf:
+                tooltipWithColour("Failed to load configuration", "#FF0000")
+                return
+
+            current = conf.get("ankimon_fast_battle_testing", False)
+            new_value = not current
+            conf["ankimon_fast_battle_testing"] = new_value
+            _ankimon_set_col_conf(conf)
+
+            # Update checkbox state
+            fast_testing_action.setChecked(new_value)
+
+            if new_value:
+                tooltipWithColour("Fast Battle Testing: ON (10-card intervals)", "#00FF00")
+                print("[DevMode] Fast battle testing enabled: gym/elite/champion every 10 cards")
+            else:
+                tooltipWithColour("Fast Battle Testing: OFF (normal intervals)", "#888888")
+                print("[DevMode] Fast battle testing disabled: normal intervals restored")
+
+            # Refresh battle window if open
+            global test_window
+            if test_window is not None and hasattr(test_window, 'update_progress_label'):
+                try:
+                    test_window.update_progress_label()
+                except:
+                    pass
+
+        fast_testing_action = QAction("⚡ Fast Battle Testing (10-card)", mw)
+        fast_testing_action.setCheckable(True)
+
+        # Set initial state from config
+        conf = _ankimon_get_col_conf()
+        if conf and conf.get("ankimon_fast_battle_testing", False):
+            fast_testing_action.setChecked(True)
+
+        qconnect(fast_testing_action.triggered, toggle_fast_battle_testing)
+        developer_menu.addAction(fast_testing_action)
+        print("[DevMenu] Added: Fast Battle Testing (10-card)")
+    except Exception as e:
+        print(f"[DevMenu] ERROR: Could not add fast battle testing toggle: {e}")
+        import traceback
+        traceback.print_exc()
+
     # Add keyboard shortcut to toggle Developer Mode visibility
     from PyQt6.QtGui import QKeySequence, QShortcut
     from PyQt6.QtCore import Qt
@@ -14139,9 +14191,34 @@ from aqt.qt import QMessageBox
 from aqt import gui_hooks
 import json
 
+# Battle interval targets - can be overridden by dev mode
 ANKIMON_GYM_TARGET = 100
 ANKIMON_ELITE_FOUR_TARGET = 150
 ANKIMON_CHAMPION_TARGET = 200
+
+# Dev mode: Fast battle testing (10-card intervals)
+ANKIMON_FAST_TESTING_INTERVAL = 10
+
+def _ankimon_get_battle_interval_gym():
+    """Get gym battle interval (100 normal, 10 if fast testing enabled)"""
+    conf = _ankimon_get_col_conf()
+    if conf and conf.get("ankimon_fast_battle_testing", False):
+        return ANKIMON_FAST_TESTING_INTERVAL
+    return ANKIMON_GYM_TARGET
+
+def _ankimon_get_battle_interval_elite_four():
+    """Get Elite Four battle interval (150 normal, 10 if fast testing enabled)"""
+    conf = _ankimon_get_col_conf()
+    if conf and conf.get("ankimon_fast_battle_testing", False):
+        return ANKIMON_FAST_TESTING_INTERVAL
+    return ANKIMON_ELITE_FOUR_TARGET
+
+def _ankimon_get_battle_interval_champion():
+    """Get Champion battle interval (200 normal, 10 if fast testing enabled)"""
+    conf = _ankimon_get_col_conf()
+    if conf and conf.get("ankimon_fast_battle_testing", False):
+        return ANKIMON_FAST_TESTING_INTERVAL
+    return ANKIMON_CHAMPION_TARGET
 
 def _ankimon_gym_state():
     """Get the current gym card counter from persistent storage."""
@@ -14253,7 +14330,8 @@ def _get_champion_base_levels():
     return [58, 58, 58, 60, 60, 62]  # Spiritomb, Roserade, Togekiss, Lucario, Milotic, Garchomp
 
 def _ankimon_gym_overlay_html(count: int) -> str:
-    pct = int((count / ANKIMON_GYM_TARGET) * 100)
+    gym_target = _ankimon_get_battle_interval_gym()
+    pct = int((count / gym_target) * 100)
     if pct < 0:
         pct = 0
     if pct > 100:
@@ -14275,7 +14353,7 @@ def _ankimon_gym_overlay_html(count: int) -> str:
         ">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
         <div>Gym</div>
-        <div style="opacity:0.95;">{count}/{ANKIMON_GYM_TARGET}</div>
+        <div style="opacity:0.95;">{count}/{gym_target}</div>
       </div>
       <div style="margin-top:6px; height:6px; background: rgba(255,255,255,0.25); border-radius: 999px; overflow:hidden;">
         <div style="height:100%; width:{pct}%; background: rgba(255,255,255,0.9);"></div>
@@ -14761,7 +14839,8 @@ def _ankimon_gym_on_answer(*args):
         # Only increment gym counter if all gyms haven't been completed yet
         if not _ankimon_all_gym_badges_earned():
             c = _ankimon_gym_state() + 1
-            if c >= ANKIMON_GYM_TARGET:
+            gym_target = _ankimon_get_battle_interval_gym()
+            if c >= gym_target:
                 _ankimon_set_gym_state(0)
                 _ankimon_gym_ready_popup()
             else:
@@ -14769,7 +14848,8 @@ def _ankimon_gym_on_answer(*args):
         # After all gyms, check Elite Four
         elif _ankimon_all_gym_badges_earned() and not _ankimon_all_elite_four_defeated():
             e = _ankimon_elite_four_state() + 1
-            if e >= ANKIMON_ELITE_FOUR_TARGET:
+            elite_target = _ankimon_get_battle_interval_elite_four()
+            if e >= elite_target:
                 _ankimon_set_elite_four_state(0)
                 _ankimon_elite_four_ready_popup()
             else:
@@ -14777,7 +14857,8 @@ def _ankimon_gym_on_answer(*args):
         # After Elite Four, check Champion
         elif _ankimon_all_elite_four_defeated():
             ch = _ankimon_champion_state() + 1
-            if ch >= ANKIMON_CHAMPION_TARGET:
+            champion_target = _ankimon_get_battle_interval_champion()
+            if ch >= champion_target:
                 _ankimon_set_champion_state(0)
                 _ankimon_champion_ready_popup()
             else:
