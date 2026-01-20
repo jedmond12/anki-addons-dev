@@ -99,6 +99,22 @@ def _ankimon_get_champion_pokemon_index():
     except Exception:
         return 0
 
+def _ankimon_get_fainted_text_x():
+    """Get fainted text X position (default: 270)"""
+    conf = _ankimon_get_col_conf()
+    try:
+        return int(conf.get("ankimon_fainted_text_x", 270)) if conf else 270
+    except Exception:
+        return 270
+
+def _ankimon_get_fainted_text_y():
+    """Get fainted text Y position (default: 100)"""
+    conf = _ankimon_get_col_conf()
+    try:
+        return int(conf.get("ankimon_fainted_text_y", 100)) if conf else 100
+    except Exception:
+        return 100
+
 from aqt.qt import QDialog, QGridLayout, QLabel, QPixmap, QPainter, QFont, Qt, QVBoxLayout, QWidget, QAction
 import random
 import csv
@@ -9984,13 +10000,16 @@ class TestWindow(QWidget):
         painter = QPainter(pkmnpixmap_bckg)
         painter.drawPixmap(15, 15, pkmnpixmap)
 
-        # Draw fainted text
+        # Draw fainted text (using configurable position)
+        fainted_x = _ankimon_get_fainted_text_x()
+        fainted_y = _ankimon_get_fainted_text_y()
+
         font = QFont()
         font.setPointSize(24)
         font.setBold(True)
         painter.setFont(font)
         painter.setPen(QColor(255, 0, 0))  # Red color for "FAINTED"
-        painter.drawText(270, 100, "FAINTED!")
+        painter.drawText(fainted_x, fainted_y, "FAINTED!")
 
         # Draw remaining pokemon count
         font.setPointSize(16)
@@ -9998,10 +10017,10 @@ class TestWindow(QWidget):
         painter.setFont(font)
         painter.setPen(QColor(0, 0, 0))  # Black color
         if remaining > 0:
-            painter.drawText(270, 150, f"{gym_leader_name}")
-            painter.drawText(270, 180, f"{remaining} Pokémon left")
+            painter.drawText(fainted_x, fainted_y + 50, f"{gym_leader_name}")
+            painter.drawText(fainted_x, fainted_y + 80, f"{remaining} Pokémon left")
         else:
-            painter.drawText(270, 150, "Gym Complete!")
+            painter.drawText(fainted_x, fainted_y + 50, "Gym Complete!")
 
         painter.end()
         pkmnimage_label.setPixmap(pkmnpixmap_bckg)
