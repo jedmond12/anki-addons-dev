@@ -2473,52 +2473,14 @@ def kill_pokemon():
 
     elif battle_state == "elite4":
         # Elite Four battle: advance to next pokemon or complete member
-        _ankimon_log("INFO", "AnkimonBattle", "Elite Four pokemon defeated - advancing")
-        try:
-            conf = _ankimon_get_col_conf()
-            if conf:
-                enemy_ids = conf.get("ankimon_elite_four_enemy_ids") or []
-                pokemon_idx = int(conf.get("ankimon_elite_four_pokemon_index", 0))
-
-                if pokemon_idx >= len(enemy_ids) - 1:
-                    # Last Pokemon defeated - complete this Elite Four member
-                    complete_elite_four_member()
-                else:
-                    # More Pokemon remain - increment index and spawn next
-                    conf["ankimon_elite_four_pokemon_index"] = pokemon_idx + 1
-                    mw.col.setMod()
-                    _ankimon_log("INFO", "AnkimonBattle", f"Spawning next Elite Four Pokemon (index={pokemon_idx + 1})")
-                    if not _ankimon_spawn_special_battle_pokemon():
-                        _ankimon_log("ERROR", "AnkimonBattle", "Failed to spawn next Elite Four Pokemon")
-                    _ankimon_force_refresh_enemy_display()
-                    _ankimon_refresh_all_views()
-        except Exception as e:
-            _ankimon_log("ERROR", "AnkimonBattle", f"Error advancing Elite Four: {e}")
+        _ankimon_log("INFO", "AnkimonBattle", "Elite Four pokemon defeated - calling spawn_next_elite_four_pokemon()")
+        spawn_next_elite_four_pokemon()
         return
 
     elif battle_state == "champion":
         # Champion battle: advance to next pokemon or complete champion
-        _ankimon_log("INFO", "AnkimonBattle", "Champion pokemon defeated - advancing")
-        try:
-            conf = _ankimon_get_col_conf()
-            if conf:
-                enemy_ids = conf.get("ankimon_champion_enemy_ids") or []
-                pokemon_idx = int(conf.get("ankimon_champion_pokemon_index", 0))
-
-                if pokemon_idx >= len(enemy_ids) - 1:
-                    # Last Pokemon defeated - complete Champion battle
-                    complete_champion()
-                else:
-                    # More Pokemon remain - increment index and spawn next
-                    conf["ankimon_champion_pokemon_index"] = pokemon_idx + 1
-                    mw.col.setMod()
-                    _ankimon_log("INFO", "AnkimonBattle", f"Spawning next Champion Pokemon (index={pokemon_idx + 1})")
-                    if not _ankimon_spawn_special_battle_pokemon():
-                        _ankimon_log("ERROR", "AnkimonBattle", "Failed to spawn next Champion Pokemon")
-                    _ankimon_force_refresh_enemy_display()
-                    _ankimon_refresh_all_views()
-        except Exception as e:
-            _ankimon_log("ERROR", "AnkimonBattle", f"Error advancing Champion: {e}")
+        _ankimon_log("INFO", "AnkimonBattle", "Champion pokemon defeated - calling spawn_next_champion_pokemon()")
+        spawn_next_champion_pokemon()
         return
 
     # Default: wild or trainer battle - spawn new wild pokemon
@@ -3733,6 +3695,123 @@ def spawn_next_gym_pokemon():
         import traceback
         traceback.print_exc()
 
+def spawn_next_elite_four_pokemon():
+    """Handler for Next Pokemon button in Elite Four battles - spawns the next Elite Four pokemon"""
+    global test_window, pkmn_window
+    try:
+        _ankimon_log("INFO", "AnkimonBattle", "=== spawn_next_elite_four_pokemon() called ===")
+
+        # Set battle state to elite4
+        _ankimon_set_battle_state("elite4")
+
+        # Defensive: Force-close any lingering post-battle UI
+        _ankimon_close_post_battle_ui("failsafe - elite four pokemon spawn")
+
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            _ankimon_log("ERROR", "AnkimonBattle", "Config not available in spawn_next_elite_four_pokemon")
+            tooltipWithColour("Config not available", "#FF0000")
+            return
+
+        # Get current Elite Four state
+        elite_four_active = conf.get("ankimon_elite_four_active", False)
+        enemy_ids = conf.get("ankimon_elite_four_enemy_ids") or []
+        current_idx = int(conf.get("ankimon_elite_four_pokemon_index") or 0)
+        member_name = conf.get("ankimon_elite_four_member_name", "Unknown")
+        next_idx = current_idx + 1
+
+        _ankimon_log("INFO", "AnkimonBattle", f"Elite Four state: active={elite_four_active}, current_idx={current_idx}, next_idx={next_idx}, total={len(enemy_ids)}, member={member_name}")
+
+        if not elite_four_active:
+            _ankimon_log("WARN", "AnkimonBattle", "spawn_next_elite_four_pokemon called but Elite Four not active - aborting")
+            return
+
+        if not enemy_ids:
+            _ankimon_log("ERROR", "AnkimonBattle", "spawn_next_elite_four_pokemon called but no enemy_ids - corrupted state")
+            tooltipWithColour("Elite Four state corrupted - use Reset Battle", "#FF0000")
+            return
+
+        if next_idx < len(enemy_ids):
+            _ankimon_log("INFO", "AnkimonBattle", f"Spawning next Elite Four pokemon: index {next_idx}/{len(enemy_ids)}, ID={enemy_ids[next_idx] if next_idx < len(enemy_ids) else 'N/A'}")
+
+            # Show tooltip BEFORE incrementing index
+            try:
+                tooltipWithColour(f"{member_name} sends out next Pokémon! ({next_idx+1}/{len(enemy_ids)})", "#00FF00")
+            except:
+                pass
+
+            # Increment index BEFORE spawning (needed for generate_random_pokemon to use correct ID)
+            conf["ankimon_elite_four_pokemon_index"] = next_idx
+            mw.col.setMod()
+            _ankimon_log("INFO", "AnkimonBattle", f"Updated elite_four_pokemon_index to {next_idx}")
+
+            # Try to spawn next pokemon
+            try:
+                # Clear any stale UI before spawning
+                _ankimon_clear_stale_enemy_sprites()
+
+                # CRITICAL: Use special battle spawn to bypass battle lock
+                _ankimon_log("INFO", "AnkimonBattle", "Spawning next Elite Four Pokemon (bypassing lock)...")
+                if not _ankimon_spawn_special_battle_pokemon():
+                    raise Exception("Failed to spawn Elite Four Pokemon")
+                _ankimon_log("INFO", "AnkimonBattle", "Elite Four Pokemon spawn completed successfully")
+
+                # Verify the correct Elite Four pokemon is now loaded
+                conf_verify = _ankimon_get_col_conf()
+                if conf_verify:
+                    current_e4_idx = int(conf_verify.get("ankimon_elite_four_pokemon_index", 0))
+                    enemy_ids_verify = conf_verify.get("ankimon_elite_four_enemy_ids") or []
+                    expected_id = enemy_ids_verify[current_e4_idx] if current_e4_idx < len(enemy_ids_verify) else "unknown"
+                    _ankimon_log("INFO", "AnkimonBattle", f"Post-spawn verification - elite_four_pokemon_index={current_e4_idx}, expected_id={expected_id}, displayed_id={id}")
+
+                # Force window update with multiple retries to ensure refresh
+                if test_window is not None and pkmn_window is True:
+                    from aqt.qt import QTimer
+                    def _update_window():
+                        try:
+                            _ankimon_log("INFO", "AnkimonUI", "Updating Elite Four battle window display")
+                            _ankimon_force_refresh_enemy_display()
+                            _ankimon_log("INFO", "AnkimonUI", "Window update completed")
+                        except Exception as e:
+                            _ankimon_log("ERROR", "AnkimonUI", f"Window update error: {e}")
+                            tooltipWithColour(f"Window update error: {str(e)}", "#FF0000")
+                    # Call immediately and again after short delays to ensure update
+                    _update_window()
+                    QTimer.singleShot(100, _update_window)
+                    QTimer.singleShot(250, _update_window)
+
+                    # Central refresh after Elite Four progression
+                    QTimer.singleShot(300, _ankimon_refresh_all_views)
+                    _ankimon_log("INFO", "AnkimonBattle", "Scheduled central refresh after Elite Four pokemon spawn")
+                else:
+                    _ankimon_log("WARN", "AnkimonBattle", f"Cannot update window: test_window={test_window is not None}, pkmn_window={pkmn_window}")
+            except Exception as e:
+                # CRITICAL: If spawning fails, rollback the index to prevent state corruption
+                conf["ankimon_elite_four_pokemon_index"] = current_idx
+                mw.col.setMod()
+
+                error_msg = f"Error spawning next Elite Four pokemon: {str(e)}"
+                _ankimon_log("ERROR", "AnkimonBattle", error_msg)
+                tooltipWithColour(error_msg, "#FF0000")
+                import traceback
+                traceback.print_exc()
+
+                # Show user-friendly message
+                try:
+                    showWarning(f"Failed to spawn next Elite Four pokemon.\nUse Reset Battle from Ankimon menu to fix.\n\nError: {str(e)[:100]}")
+                except:
+                    pass
+        else:
+            # All pokemon defeated - complete this Elite Four member
+            _ankimon_log("INFO", "AnkimonBattle", "All Elite Four pokemon defeated, completing Elite Four member")
+            complete_elite_four_member()
+    except Exception as e:
+        error_msg = f"Error in spawn_next_elite_four_pokemon: {str(e)}"
+        _ankimon_log("ERROR", "AnkimonBattle", error_msg)
+        tooltipWithColour(error_msg, "#FF0000")
+        import traceback
+        traceback.print_exc()
+
 def complete_gym_battle():
     """Handler for completing gym battle - awards badge and spawns wild pokemon"""
     global test_window, pkmn_window, achievements
@@ -3925,6 +4004,122 @@ def complete_elite_four_member():
             traceback.print_exc()
     except Exception as e:
         error_msg = f"Error in complete_elite_four_member: {str(e)}"
+        tooltipWithColour(error_msg, "#FF0000")
+        import traceback
+        traceback.print_exc()
+
+def spawn_next_champion_pokemon():
+    """Handler for Next Pokemon button in Champion battles - spawns the next Champion pokemon"""
+    global test_window, pkmn_window
+    try:
+        _ankimon_log("INFO", "AnkimonBattle", "=== spawn_next_champion_pokemon() called ===")
+
+        # Set battle state to champion
+        _ankimon_set_battle_state("champion")
+
+        # Defensive: Force-close any lingering post-battle UI
+        _ankimon_close_post_battle_ui("failsafe - champion pokemon spawn")
+
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            _ankimon_log("ERROR", "AnkimonBattle", "Config not available in spawn_next_champion_pokemon")
+            tooltipWithColour("Config not available", "#FF0000")
+            return
+
+        # Get current Champion state
+        champion_active = conf.get("ankimon_champion_active", False)
+        enemy_ids = conf.get("ankimon_champion_enemy_ids") or []
+        current_idx = int(conf.get("ankimon_champion_pokemon_index") or 0)
+        next_idx = current_idx + 1
+
+        _ankimon_log("INFO", "AnkimonBattle", f"Champion state: active={champion_active}, current_idx={current_idx}, next_idx={next_idx}, total={len(enemy_ids)}")
+
+        if not champion_active:
+            _ankimon_log("WARN", "AnkimonBattle", "spawn_next_champion_pokemon called but Champion not active - aborting")
+            return
+
+        if not enemy_ids:
+            _ankimon_log("ERROR", "AnkimonBattle", "spawn_next_champion_pokemon called but no enemy_ids - corrupted state")
+            tooltipWithColour("Champion state corrupted - use Reset Battle", "#FF0000")
+            return
+
+        if next_idx < len(enemy_ids):
+            _ankimon_log("INFO", "AnkimonBattle", f"Spawning next Champion pokemon: index {next_idx}/{len(enemy_ids)}, ID={enemy_ids[next_idx] if next_idx < len(enemy_ids) else 'N/A'}")
+
+            # Show tooltip BEFORE incrementing index
+            try:
+                tooltipWithColour(f"Champion Cynthia sends out next Pokémon! ({next_idx+1}/{len(enemy_ids)})", "#00FF00")
+            except:
+                pass
+
+            # Increment index BEFORE spawning (needed for generate_random_pokemon to use correct ID)
+            conf["ankimon_champion_pokemon_index"] = next_idx
+            mw.col.setMod()
+            _ankimon_log("INFO", "AnkimonBattle", f"Updated champion_pokemon_index to {next_idx}")
+
+            # Try to spawn next pokemon
+            try:
+                # Clear any stale UI before spawning
+                _ankimon_clear_stale_enemy_sprites()
+
+                # CRITICAL: Use special battle spawn to bypass battle lock
+                _ankimon_log("INFO", "AnkimonBattle", "Spawning next Champion Pokemon (bypassing lock)...")
+                if not _ankimon_spawn_special_battle_pokemon():
+                    raise Exception("Failed to spawn Champion Pokemon")
+                _ankimon_log("INFO", "AnkimonBattle", "Champion Pokemon spawn completed successfully")
+
+                # Verify the correct Champion pokemon is now loaded
+                conf_verify = _ankimon_get_col_conf()
+                if conf_verify:
+                    current_champ_idx = int(conf_verify.get("ankimon_champion_pokemon_index", 0))
+                    enemy_ids_verify = conf_verify.get("ankimon_champion_enemy_ids") or []
+                    expected_id = enemy_ids_verify[current_champ_idx] if current_champ_idx < len(enemy_ids_verify) else "unknown"
+                    _ankimon_log("INFO", "AnkimonBattle", f"Post-spawn verification - champion_pokemon_index={current_champ_idx}, expected_id={expected_id}, displayed_id={id}")
+
+                # Force window update with multiple retries to ensure refresh
+                if test_window is not None and pkmn_window is True:
+                    from aqt.qt import QTimer
+                    def _update_window():
+                        try:
+                            _ankimon_log("INFO", "AnkimonUI", "Updating Champion battle window display")
+                            _ankimon_force_refresh_enemy_display()
+                            _ankimon_log("INFO", "AnkimonUI", "Window update completed")
+                        except Exception as e:
+                            _ankimon_log("ERROR", "AnkimonUI", f"Window update error: {e}")
+                            tooltipWithColour(f"Window update error: {str(e)}", "#FF0000")
+                    # Call immediately and again after short delays to ensure update
+                    _update_window()
+                    QTimer.singleShot(100, _update_window)
+                    QTimer.singleShot(250, _update_window)
+
+                    # Central refresh after Champion progression
+                    QTimer.singleShot(300, _ankimon_refresh_all_views)
+                    _ankimon_log("INFO", "AnkimonBattle", "Scheduled central refresh after Champion pokemon spawn")
+                else:
+                    _ankimon_log("WARN", "AnkimonBattle", f"Cannot update window: test_window={test_window is not None}, pkmn_window={pkmn_window}")
+            except Exception as e:
+                # CRITICAL: If spawning fails, rollback the index to prevent state corruption
+                conf["ankimon_champion_pokemon_index"] = current_idx
+                mw.col.setMod()
+
+                error_msg = f"Error spawning next Champion pokemon: {str(e)}"
+                _ankimon_log("ERROR", "AnkimonBattle", error_msg)
+                tooltipWithColour(error_msg, "#FF0000")
+                import traceback
+                traceback.print_exc()
+
+                # Show user-friendly message
+                try:
+                    showWarning(f"Failed to spawn next Champion pokemon.\nUse Reset Battle from Ankimon menu to fix.\n\nError: {str(e)[:100]}")
+                except:
+                    pass
+        else:
+            # All pokemon defeated - complete Champion battle
+            _ankimon_log("INFO", "AnkimonBattle", "All Champion pokemon defeated, completing Champion battle")
+            complete_champion_battle()
+    except Exception as e:
+        error_msg = f"Error in spawn_next_champion_pokemon: {str(e)}"
+        _ankimon_log("ERROR", "AnkimonBattle", error_msg)
         tooltipWithColour(error_msg, "#FF0000")
         import traceback
         traceback.print_exc()
@@ -14655,6 +14850,25 @@ def _ankimon_elite_four_ready_popup():
         title.setFont(font)
         outer.addWidget(title)
 
+        # Elite Four member GIF sprite
+        gif_path = os.path.join(os.path.dirname(__file__), "addon_sprites", "elite_four_champion_gif", f"{member['key']}.gif")
+        if os.path.exists(gif_path):
+            gif_label = QLabel()
+            gif_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            movie = QMovie(gif_path)
+            movie.start()
+            gif_label.setMovie(movie)
+            outer.addWidget(gif_label)
+            # keep refs alive
+            dlg._ankimon_movie = movie
+            dlg._ankimon_gif_label = gif_label
+        else:
+            # Fallback message if GIF not found
+            msg = QLabel(f"(GIF sprite for {member['name']} not found)\nPlace {member['key']}.gif in addon_sprites/elite_four_champion_gif/")
+            msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            msg.setStyleSheet("color: #888888; font-size: 10px; padding: 5px;")
+            outer.addWidget(msg)
+
         # Get current round for level scaling
         try:
             stats = _load_progression_stats()
@@ -14757,6 +14971,25 @@ def _ankimon_champion_ready_popup():
         font.setBold(True)
         title.setFont(font)
         outer.addWidget(title)
+
+        # Champion GIF sprite
+        gif_path = os.path.join(os.path.dirname(__file__), "addon_sprites", "elite_four_champion_gif", "cynthia.gif")
+        if os.path.exists(gif_path):
+            gif_label = QLabel()
+            gif_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            movie = QMovie(gif_path)
+            movie.start()
+            gif_label.setMovie(movie)
+            outer.addWidget(gif_label)
+            # keep refs alive
+            dlg._ankimon_movie = movie
+            dlg._ankimon_gif_label = gif_label
+        else:
+            # Fallback message if GIF not found
+            msg = QLabel("(GIF sprite for Champion Cynthia not found)\nPlace cynthia.gif in addon_sprites/elite_four_champion_gif/")
+            msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            msg.setStyleSheet("color: #888888; font-size: 10px; padding: 5px;")
+            outer.addWidget(msg)
 
         # Get current round for level scaling
         try:
