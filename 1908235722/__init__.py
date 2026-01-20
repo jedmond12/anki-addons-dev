@@ -99,22 +99,6 @@ def _ankimon_get_champion_pokemon_index():
     except Exception:
         return 0
 
-def _ankimon_get_fainted_text_x():
-    """Get fainted text X position (default: 270)"""
-    conf = _ankimon_get_col_conf()
-    try:
-        return int(conf.get("ankimon_fainted_text_x", 270)) if conf else 270
-    except Exception:
-        return 270
-
-def _ankimon_get_fainted_text_y():
-    """Get fainted text Y position (default: 100)"""
-    conf = _ankimon_get_col_conf()
-    try:
-        return int(conf.get("ankimon_fainted_text_y", 100)) if conf else 100
-    except Exception:
-        return 100
-
 from aqt.qt import QDialog, QGridLayout, QLabel, QPixmap, QPainter, QFont, Qt, QVBoxLayout, QWidget, QAction
 import random
 import csv
@@ -8422,9 +8406,15 @@ class PokemonPlacementTool(QDialog):
         self.enemy_y = 112
         self.enemy_size = 80
 
+        # Fainted text positioning data (load from config)
+        conf = _ankimon_get_col_conf()
+        self.fainted_x = int(conf.get("ankimon_fainted_text_x", 270)) if conf else 270
+        self.fainted_y = int(conf.get("ankimon_fainted_text_y", 100)) if conf else 100
+
         # Dragging state
         self.dragging_player = False
         self.dragging_enemy = False
+        self.dragging_fainted = False
         self.drag_offset_x = 0
         self.drag_offset_y = 0
 
@@ -8442,10 +8432,17 @@ class PokemonPlacementTool(QDialog):
     def init_ui(self):
         layout = QVBoxLayout()
 
-        # Info label
+        # Mode selector tabs
+        self.tab_widget = QTabWidget()
+
+        # Tab 1: Sprite positioning
+        sprite_tab = QWidget()
+        sprite_layout = QVBoxLayout()
+        sprite_tab.setLayout(sprite_layout)
+
         info_label = QLabel("Drag sprites to position them. Use +/- to adjust size.\nCoordinates shown below are for copying.")
         info_label.setWordWrap(True)
-        layout.addWidget(info_label)
+        sprite_layout.addWidget(info_label)
 
         # Battle scene display
         self.scene_label = QLabel()
@@ -8454,7 +8451,7 @@ class PokemonPlacementTool(QDialog):
         self.scene_label.mousePressEvent = self.mouse_press
         self.scene_label.mouseMoveEvent = self.mouse_move
         self.scene_label.mouseReleaseEvent = self.mouse_release
-        layout.addWidget(self.scene_label)
+        sprite_layout.addWidget(self.scene_label)
 
         # Control buttons
         controls_layout = QHBoxLayout()
@@ -8485,20 +8482,72 @@ class PokemonPlacementTool(QDialog):
         enemy_plus_btn.clicked.connect(lambda: self.adjust_size("enemy", 10))
         controls_layout.addWidget(enemy_plus_btn)
 
-        layout.addLayout(controls_layout)
+        sprite_layout.addLayout(controls_layout)
 
         # Coordinates display
         self.coords_text = QTextEdit()
         self.coords_text.setReadOnly(True)
         self.coords_text.setMaximumHeight(150)
-        layout.addWidget(self.coords_text)
+        sprite_layout.addWidget(self.coords_text)
 
-        # Close button
+        self.tab_widget.addTab(sprite_tab, "Battle Sprites")
+
+        # Tab 2: Fainted text positioning
+        fainted_tab = QWidget()
+        fainted_layout = QVBoxLayout()
+        fainted_tab.setLayout(fainted_layout)
+
+        fainted_info = QLabel("Drag the red 'FAINTED!' text to position it.\nClick 'Save Position' to apply changes to gym battles.")
+        fainted_info.setWordWrap(True)
+        fainted_layout.addWidget(fainted_info)
+
+        # Fainted screen preview
+        self.fainted_scene_label = QLabel()
+        self.fainted_scene_label.setFixedSize(555, 258)
+        self.fainted_scene_label.setStyleSheet("border: 2px solid black;")
+        self.fainted_scene_label.mousePressEvent = self.fainted_mouse_press
+        self.fainted_scene_label.mouseMoveEvent = self.fainted_mouse_move
+        self.fainted_scene_label.mouseReleaseEvent = self.fainted_mouse_release
+        fainted_layout.addWidget(self.fainted_scene_label)
+
+        # Fainted text controls
+        fainted_controls = QHBoxLayout()
+        fainted_controls.addWidget(QLabel("Position:"))
+
+        reset_fainted_btn = QPushButton("Reset to Default")
+        reset_fainted_btn.clicked.connect(self.reset_fainted_position)
+        fainted_controls.addWidget(reset_fainted_btn)
+
+        fainted_controls.addStretch()
+
+        save_fainted_btn = QPushButton("✓ Save Position")
+        save_fainted_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 5px 15px;")
+        save_fainted_btn.clicked.connect(self.save_fainted_position)
+        fainted_controls.addWidget(save_fainted_btn)
+
+        fainted_layout.addLayout(fainted_controls)
+
+        # Fainted coordinates display
+        self.fainted_coords_text = QTextEdit()
+        self.fainted_coords_text.setReadOnly(True)
+        self.fainted_coords_text.setMaximumHeight(100)
+        fainted_layout.addWidget(self.fainted_coords_text)
+
+        self.tab_widget.addTab(fainted_tab, "Fainted Text")
+
+        # Add tabs to main layout
+        layout.addWidget(self.tab_widget)
+
+        # Close button (outside tabs)
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.close)
         layout.addWidget(close_btn)
 
         self.setLayout(layout)
+
+        # Connect tab change signal to update the appropriate scene
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)
+
         self.update_scene()
 
     def adjust_size(self, sprite_type, delta):
@@ -8647,6 +8696,130 @@ CODE TO USE:
   enemy_size = {self.enemy_size}
 """
         self.coords_text.setText(coords_info)
+
+    def on_tab_changed(self, index):
+        """Handle tab change to update the appropriate scene"""
+        if index == 0:
+            self.update_scene()
+        elif index == 1:
+            self.update_fainted_scene()
+
+    def fainted_mouse_press(self, event):
+        """Handle mouse press for fainted text dragging"""
+        x, y = event.pos().x(), event.pos().y()
+
+        # Check if clicking near the fainted text (within 100px radius)
+        if abs(x - self.fainted_x) < 100 and abs(y - self.fainted_y) < 50:
+            self.dragging_fainted = True
+            self.drag_offset_x = x - self.fainted_x
+            self.drag_offset_y = y - self.fainted_y
+
+    def fainted_mouse_move(self, event):
+        """Handle mouse move for fainted text dragging"""
+        if not self.dragging_fainted:
+            return
+
+        x = event.pos().x() - self.drag_offset_x
+        y = event.pos().y() - self.drag_offset_y
+
+        # Keep within bounds
+        x = max(50, min(505, x))
+        y = max(30, min(228, y))
+
+        self.fainted_x = x
+        self.fainted_y = y
+
+        self.update_fainted_scene()
+
+    def fainted_mouse_release(self, event):
+        """Handle mouse release for fainted text dragging"""
+        self.dragging_fainted = False
+
+    def reset_fainted_position(self):
+        """Reset fainted text to default position"""
+        self.fainted_x = 270
+        self.fainted_y = 100
+        self.update_fainted_scene()
+        tooltipWithColour("Fainted text position reset to default", "#888888")
+
+    def save_fainted_position(self):
+        """Save fainted text position to config"""
+        try:
+            conf = _ankimon_get_col_conf()
+            if conf:
+                conf["ankimon_fainted_text_x"] = self.fainted_x
+                conf["ankimon_fainted_text_y"] = self.fainted_y
+                mw.col.setMod()
+                tooltipWithColour(f"Fainted text position saved! ({self.fainted_x}, {self.fainted_y})", "#00FF00")
+                print(f"[PlacementTool] Saved fainted text position: x={self.fainted_x}, y={self.fainted_y}")
+            else:
+                tooltipWithColour("Failed to save: Config not available", "#FF0000")
+        except Exception as e:
+            tooltipWithColour(f"Error saving position: {e}", "#FF0000")
+            print(f"[PlacementTool] Error saving fainted position: {e}")
+
+    def update_fainted_scene(self):
+        """Redraw the fainted screen preview with current text position"""
+        global addon_dir
+
+        # Create canvas matching the pokedex background size
+        canvas = QPixmap(555, 258)
+        canvas.fill(QColor(255, 255, 255))
+        painter = QPainter(canvas)
+
+        # Draw pokedex background if available
+        pokedex_bg_path = addon_dir / "addon_sprites" / "mypokemon" / "pokeball_icon.png"
+        if pokedex_bg_path.exists():
+            bg = QPixmap(str(pokedex_bg_path))
+            bg = bg.scaled(555, 258, Qt.AspectRatioMode.KeepAspectRatio)
+            painter.drawPixmap(0, 0, bg)
+        else:
+            # Fallback: draw a simple background
+            painter.fillRect(0, 0, 555, 258, QColor(240, 240, 240))
+
+        # Draw a sample Pokemon sprite (Pikachu for example)
+        sprite_folder = addon_dir / "user_files" / "sprites" / "front_default"
+        pikachu_path = sprite_folder / "25.png"
+        if pikachu_path.exists():
+            pokemon_pixmap = QPixmap(str(pikachu_path))
+            pokemon_pixmap = pokemon_pixmap.scaled(230, 230, Qt.AspectRatioMode.KeepAspectRatio)
+            painter.drawPixmap(15, 15, pokemon_pixmap)
+
+        # Draw the "FAINTED!" text at current position
+        font = QFont()
+        font.setPointSize(24)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(QColor(255, 0, 0))
+        painter.drawText(self.fainted_x, self.fainted_y, "FAINTED!")
+
+        # Draw crosshair at text position
+        painter.setPen(QPen(QColor(255, 0, 0, 150), 2))
+        painter.drawLine(self.fainted_x - 15, self.fainted_y, self.fainted_x + 15, self.fainted_y)
+        painter.drawLine(self.fainted_x, self.fainted_y - 15, self.fainted_x, self.fainted_y + 15)
+
+        # Draw sample leader name and remaining count
+        font.setPointSize(16)
+        font.setBold(False)
+        painter.setFont(font)
+        painter.setPen(QColor(0, 0, 0))
+        painter.drawText(self.fainted_x, self.fainted_y + 50, "Maylene")
+        painter.drawText(self.fainted_x, self.fainted_y + 80, "1 Pokémon left")
+
+        painter.end()
+        self.fainted_scene_label.setPixmap(canvas)
+
+        # Update coordinates display
+        coords_info = f"""FAINTED TEXT POSITION:
+  X: {self.fainted_x}
+  Y: {self.fainted_y}
+
+This position will be saved to config when you click "Save Position".
+The leader name and remaining count are positioned relative to this point:
+  • Leader name: Y + 50
+  • Remaining count: Y + 80
+"""
+        self.fainted_coords_text.setText(coords_info)
 
 
 # Global instance
@@ -9984,9 +10157,10 @@ class TestWindow(QWidget):
         painter = QPainter(pkmnpixmap_bckg)
         painter.drawPixmap(15, 15, pkmnpixmap)
 
-        # Draw fainted text (using configurable position)
-        fainted_x = _ankimon_get_fainted_text_x()
-        fainted_y = _ankimon_get_fainted_text_y()
+        # Draw fainted text (load position from config, defaults to 270, 100)
+        conf = _ankimon_get_col_conf()
+        fainted_x = int(conf.get("ankimon_fainted_text_x", 270)) if conf else 270
+        fainted_y = int(conf.get("ankimon_fainted_text_y", 100)) if conf else 100
 
         font = QFont()
         font.setPointSize(24)
@@ -14285,7 +14459,7 @@ if database_complete != False:
             current = conf.get("ankimon_fast_battle_testing", False)
             new_value = not current
             conf["ankimon_fast_battle_testing"] = new_value
-            _ankimon_set_col_conf(conf)
+            mw.col.setMod()  # Save config changes
 
             # Update checkbox state
             fast_testing_action.setChecked(new_value)
