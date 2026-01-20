@@ -2388,15 +2388,10 @@ def kill_pokemon():
 
             # After defeating Champion, enemy trainer battles have a chance to drop mega stones
             try:
-                # Check if Champion has been defeated at least once
-                if stats_data["lifetime"]["total_champion_battles"] > 0:
-                    # 30% chance to receive a mega stone from enemy trainer
-                    if random.random() < 0.30:
-                        mega_state = _load_mega_state()
-                        if mega_state.get("key_stone_unlocked", False):
-                            if _award_random_mega_stone():
-                                # Success message already shown by _award_random_mega_stone
-                                pass
+                # Award mega stone from trainer battles (5% drop chance, requires Key Stone)
+                mega_state = _load_mega_state()
+                if mega_state.get("key_stone_unlocked", False):
+                    _award_random_mega_stone("trainer")
             except Exception as e:
                 print(f"Error awarding mega stone from trainer: {e}")
         else:
@@ -3896,6 +3891,12 @@ def complete_gym_battle():
         except Exception:
             pass
 
+        # Award Mega Stone for defeating gym (10% drop chance)
+        try:
+            _award_random_mega_stone("gym")
+        except Exception as e:
+            print(f"Error awarding Mega Stone for gym: {e}")
+
         # Show completion message
         try:
             # Check if all 8 badges are earned (after gym 8)
@@ -3981,9 +3982,9 @@ def complete_elite_four_member():
         except Exception:
             pass
 
-        # Award Mega Stone for defeating Elite Four member
+        # Award Mega Stone for defeating Elite Four member (25% drop chance)
         try:
-            _award_random_mega_stone()
+            _award_random_mega_stone("elite4")
         except Exception as e:
             print(f"Error awarding Mega Stone for Elite Four: {e}")
 
@@ -4183,16 +4184,17 @@ def complete_champion_battle():
                 mega_state["key_stone_unlocked"] = True
                 _save_mega_state(mega_state)
 
-                # Add Key Stone to items bag
+                # Add Key Stone to items bag (only if not already present)
                 try:
                     with open(itembag_path, 'r') as json_file:
                         itembag_list = json.load(json_file)
                 except (FileNotFoundError, json.JSONDecodeError):
                     itembag_list = []
 
-                itembag_list.append("key_stone")
-                with open(itembag_path, 'w') as json_file:
-                    json.dump(itembag_list, json_file)
+                if "key_stone" not in itembag_list:
+                    itembag_list.append("key_stone")
+                    with open(itembag_path, 'w') as json_file:
+                        json.dump(itembag_list, json_file)
 
                 # Display Key Stone item popup
                 try:
@@ -4205,17 +4207,11 @@ def complete_champion_battle():
             except Exception as e:
                 print(f"Error unlocking Key Stone: {e}")
 
-        # Award Lucarionite on second completion
-        elif stats_data.get("lifetime", {}).get("total_champion_battles", 0) == 2:
-            try:
-                mega_state = _load_mega_state()
-                if "mega_stones" not in mega_state:
-                    mega_state["mega_stones"] = {}
-                mega_state["mega_stones"]["448"] = mega_state["mega_stones"].get("448", 0) + 1
-                _save_mega_state(mega_state)
-                tooltipWithColour("You obtained Lucarionite! (Lucario's Mega Stone)", "#FF00FF")
-            except Exception as e:
-                print(f"Error awarding Lucarionite: {e}")
+        # Award Mega Stone for defeating Champion (100% drop chance, guaranteed)
+        try:
+            _award_random_mega_stone("champion")
+        except Exception as e:
+            print(f"Error awarding Mega Stone for Champion: {e}")
 
         # Show completion message
         try:
@@ -4695,14 +4691,7 @@ def on_review_card(*args):
                     cards_in_battles += 1
                     stats_data["cards_in_wild_enemy_battles"] = cards_in_battles
 
-                    # Award mega stone every 500 cards
-                    if cards_in_battles > 0 and cards_in_battles % 500 == 0:
-                        try:
-                            mega_state = _load_mega_state()
-                            if mega_state.get("key_stone_unlocked", False):
-                                _award_random_mega_stone()
-                        except Exception as e:
-                            print(f"Error awarding mega stone: {e}")
+                    # NOTE: Mega stones now awarded from battles (gym/elite4/champion) instead of card milestones
 
             _save_progression_stats(stats_data)
         except Exception:
@@ -4741,12 +4730,7 @@ def on_review_card(*args):
                     receive_badge(4,achievements)
                     test_window.display_badge(4)
 
-        # Award Mega Stone every 500 cards
-        if card_counter > 0 and card_counter % 500 == 0:
-            try:
-                _award_random_mega_stone()
-            except Exception as e:
-                print(f"Error awarding Mega Stone at {card_counter} cards: {e}")
+        # NOTE: Mega stones now awarded from battles (gym/elite4/champion) instead of card milestones
 
         if card_counter == item_receive_value:
             test_window.display_item()
@@ -12929,26 +12913,62 @@ def _get_mega_stone_name(pokemon_id):
     }
     return stone_names.get(pokemon_id, f"Mega Stone #{pokemon_id}")
 
-def _award_random_mega_stone():
-    """Award a random mega stone for an owned Pokemon that can mega evolve"""
+def _award_random_mega_stone(battle_type="wild"):
+    """
+    Award a random mega stone for an owned Pokemon that can mega evolve.
+
+    Rules:
+    - Only 1 stone per Pokemon species (no duplicates)
+    - Drop chances: wild=0%, trainer=5%, gym=10%, elite4=25%, champion=100%
+    - Exhaustion: stops awarding when all eligible stones collected
+
+    Args:
+        battle_type: Type of battle (wild, trainer, gym, elite4, champion)
+
+    Returns:
+        True if stone awarded, False otherwise
+    """
     try:
+        # Drop chance by battle type
+        drop_chances = {
+            "wild": 0.0,
+            "trainer": 0.05,
+            "gym": 0.10,
+            "elite4": 0.25,
+            "champion": 1.0
+        }
+
+        drop_chance = drop_chances.get(battle_type, 0.0)
+
+        # Roll for drop (champion always drops)
+        if random.random() > drop_chance:
+            return False
+
+        # Get all owned mega-capable Pokemon
         eligible_ids = _get_owned_mega_capable_pokemon()
 
         if not eligible_ids:
             # No eligible Pokemon owned
-            tooltipWithColour("No Mega Evolution capable Pokemon owned yet!", "#FFD700")
             return False
 
-        # Choose a random eligible Pokemon
-        chosen_id = random.choice(eligible_ids)
-        stone_name = _get_mega_stone_name(chosen_id)
-
-        # Add mega stone to inventory
+        # Load mega state to check which stones already owned
         mega_state = _load_mega_state()
         if "mega_stones" not in mega_state:
             mega_state["mega_stones"] = {}
 
-        mega_state["mega_stones"][str(chosen_id)] = mega_state["mega_stones"].get(str(chosen_id), 0) + 1
+        # Filter out Pokemon that already have stones (1 per type rule)
+        unowned_ids = [id for id in eligible_ids if str(id) not in mega_state["mega_stones"]]
+
+        if not unowned_ids:
+            # All eligible stones already collected (exhaustion rule)
+            return False
+
+        # Choose a random eligible Pokemon that doesn't have a stone yet
+        chosen_id = random.choice(unowned_ids)
+        stone_name = _get_mega_stone_name(chosen_id)
+
+        # Add mega stone to inventory (set to 1, not increment)
+        mega_state["mega_stones"][str(chosen_id)] = 1
         _save_mega_state(mega_state)
 
         # Add mega stone to items bag so it appears in UI
@@ -12976,6 +12996,7 @@ def _award_random_mega_stone():
             print(f"Error displaying mega stone: {e}")
 
         tooltipWithColour(f"Received {stone_name} for {pokemon_name}!", "#FFD700")
+        print(f"[MegaStone] Awarded {stone_name} (#{chosen_id}) from {battle_type} battle")
         return True
     except Exception as e:
         print(f"Error awarding mega stone: {e}")
@@ -13274,9 +13295,11 @@ def _complete_legendary_capture(legendary_type):
         save_caught_pokemon(name)
         tooltipWithColour(f"{name} was captured!", "#FFD700")
     else:
-        # Re-battle - award mega stone instead
-        _award_random_mega_stone()
-        tooltipWithColour(f"{name} defeated! You received a Mega Stone!", "#FFD700")
+        # Re-battle - award mega stone instead (guaranteed drop for legendary re-battles)
+        if _award_random_mega_stone("champion"):
+            tooltipWithColour(f"{name} defeated! You received a Mega Stone!", "#FFD700")
+        else:
+            tooltipWithColour(f"{name} defeated!", "#FFD700")
 
 def _load_mypokemon_list():
     """Load Pokemon list with comprehensive error handling"""
