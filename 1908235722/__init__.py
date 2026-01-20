@@ -13059,25 +13059,28 @@ def _can_mega_evolve():
 
         pokemon_id = active_pokemon.get("id")
         pokemon_name = active_pokemon.get("name", "Unknown")
-        held_item = active_pokemon.get("held_item")
 
-        print(f"[Mega] Active Pokemon: {pokemon_name} (ID: {pokemon_id}), Held item: {held_item}")
+        print(f"[Mega] Active Pokemon: {pokemon_name} (ID: {pokemon_id})")
 
         # Check if Pokemon can mega evolve
         if pokemon_id not in _get_mega_capable_pokemon_ids():
             print(f"[Mega] FAIL: {pokemon_name} (ID: {pokemon_id}) cannot mega evolve")
             return False
 
-        # Check if Pokemon is holding the correct mega stone
+        # Check if player owns the corresponding mega stone (not tied to held item)
         expected_stone_name = _get_mega_stone_name(pokemon_id)
 
-        if held_item != expected_stone_name:
-            print(f"[Mega] FAIL: {pokemon_name} not holding {expected_stone_name}")
-            print(f"[Mega]   Expected: {expected_stone_name}")
-            print(f"[Mega]   Actual: {held_item}")
+        # Check if the mega stone is in the player's inventory
+        if "mega_stones" not in mega_state:
+            print(f"[Mega] FAIL: No mega stones owned yet")
             return False
 
-        print(f"[Mega] SUCCESS: {pokemon_name} can mega evolve with {expected_stone_name}!")
+        if str(pokemon_id) not in mega_state["mega_stones"]:
+            print(f"[Mega] FAIL: {expected_stone_name} not owned")
+            print(f"[Mega]   Need to obtain {expected_stone_name} for {pokemon_name}")
+            return False
+
+        print(f"[Mega] SUCCESS: {pokemon_name} can mega evolve with owned {expected_stone_name}!")
         return True
     except Exception as e:
         print(f"[Mega] ERROR checking mega evolution: {e}")
