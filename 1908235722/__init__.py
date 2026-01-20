@@ -99,6 +99,22 @@ def _ankimon_get_champion_pokemon_index():
     except Exception:
         return 0
 
+def _ankimon_get_fainted_text_x():
+    """Get fainted text X position (default: 270)"""
+    conf = _ankimon_get_col_conf()
+    try:
+        return int(conf.get("ankimon_fainted_text_x", 270)) if conf else 270
+    except Exception:
+        return 270
+
+def _ankimon_get_fainted_text_y():
+    """Get fainted text Y position (default: 100)"""
+    conf = _ankimon_get_col_conf()
+    try:
+        return int(conf.get("ankimon_fainted_text_y", 100)) if conf else 100
+    except Exception:
+        return 100
+
 from aqt.qt import QDialog, QGridLayout, QLabel, QPixmap, QPainter, QFont, Qt, QVBoxLayout, QWidget, QAction
 import random
 import csv
@@ -967,7 +983,7 @@ starters_path = addon_dir / "addon_files" / "starters.json"
 eff_chart_html_path = addon_dir / "addon_files" / "eff_chart_html.html"
 effectiveness_chart_file_path = addon_dir / "addon_files" / "eff_chart.json"
 table_gen_id_html_path = addon_dir / "addon_files" / "table_gen_id.html"
-icon_path = addon_dir / "addon_files" / "pokeball.png"
+icon_path = addon_dir / "addon_sprites" / "icons" / "poke.png"
 sound_list_path = addon_dir / "addon_files" / "sound_list.json"
 badges_list_path = addon_dir / "addon_files" / "badges.json"
 items_list_path = addon_dir / "addon_files" / "items.json"
@@ -2372,15 +2388,10 @@ def kill_pokemon():
 
             # After defeating Champion, enemy trainer battles have a chance to drop mega stones
             try:
-                # Check if Champion has been defeated at least once
-                if stats_data["lifetime"]["total_champion_battles"] > 0:
-                    # 30% chance to receive a mega stone from enemy trainer
-                    if random.random() < 0.30:
-                        mega_state = _load_mega_state()
-                        if mega_state.get("key_stone_unlocked", False):
-                            if _award_random_mega_stone():
-                                # Success message already shown by _award_random_mega_stone
-                                pass
+                # Award mega stone from trainer battles (5% drop chance, requires Key Stone)
+                mega_state = _load_mega_state()
+                if mega_state.get("key_stone_unlocked", False):
+                    _award_random_mega_stone("trainer")
             except Exception as e:
                 print(f"Error awarding mega stone from trainer: {e}")
         else:
@@ -2473,52 +2484,14 @@ def kill_pokemon():
 
     elif battle_state == "elite4":
         # Elite Four battle: advance to next pokemon or complete member
-        _ankimon_log("INFO", "AnkimonBattle", "Elite Four pokemon defeated - advancing")
-        try:
-            conf = _ankimon_get_col_conf()
-            if conf:
-                enemy_ids = conf.get("ankimon_elite_four_enemy_ids") or []
-                pokemon_idx = int(conf.get("ankimon_elite_four_pokemon_index", 0))
-
-                if pokemon_idx >= len(enemy_ids) - 1:
-                    # Last Pokemon defeated - complete this Elite Four member
-                    complete_elite_four_member()
-                else:
-                    # More Pokemon remain - increment index and spawn next
-                    conf["ankimon_elite_four_pokemon_index"] = pokemon_idx + 1
-                    mw.col.setMod()
-                    _ankimon_log("INFO", "AnkimonBattle", f"Spawning next Elite Four Pokemon (index={pokemon_idx + 1})")
-                    if not _ankimon_spawn_special_battle_pokemon():
-                        _ankimon_log("ERROR", "AnkimonBattle", "Failed to spawn next Elite Four Pokemon")
-                    _ankimon_force_refresh_enemy_display()
-                    _ankimon_refresh_all_views()
-        except Exception as e:
-            _ankimon_log("ERROR", "AnkimonBattle", f"Error advancing Elite Four: {e}")
+        _ankimon_log("INFO", "AnkimonBattle", "Elite Four pokemon defeated - calling spawn_next_elite_four_pokemon()")
+        spawn_next_elite_four_pokemon()
         return
 
     elif battle_state == "champion":
         # Champion battle: advance to next pokemon or complete champion
-        _ankimon_log("INFO", "AnkimonBattle", "Champion pokemon defeated - advancing")
-        try:
-            conf = _ankimon_get_col_conf()
-            if conf:
-                enemy_ids = conf.get("ankimon_champion_enemy_ids") or []
-                pokemon_idx = int(conf.get("ankimon_champion_pokemon_index", 0))
-
-                if pokemon_idx >= len(enemy_ids) - 1:
-                    # Last Pokemon defeated - complete Champion battle
-                    complete_champion()
-                else:
-                    # More Pokemon remain - increment index and spawn next
-                    conf["ankimon_champion_pokemon_index"] = pokemon_idx + 1
-                    mw.col.setMod()
-                    _ankimon_log("INFO", "AnkimonBattle", f"Spawning next Champion Pokemon (index={pokemon_idx + 1})")
-                    if not _ankimon_spawn_special_battle_pokemon():
-                        _ankimon_log("ERROR", "AnkimonBattle", "Failed to spawn next Champion Pokemon")
-                    _ankimon_force_refresh_enemy_display()
-                    _ankimon_refresh_all_views()
-        except Exception as e:
-            _ankimon_log("ERROR", "AnkimonBattle", f"Error advancing Champion: {e}")
+        _ankimon_log("INFO", "AnkimonBattle", "Champion pokemon defeated - calling spawn_next_champion_pokemon()")
+        spawn_next_champion_pokemon()
         return
 
     # Default: wild or trainer battle - spawn new wild pokemon
@@ -3733,6 +3706,123 @@ def spawn_next_gym_pokemon():
         import traceback
         traceback.print_exc()
 
+def spawn_next_elite_four_pokemon():
+    """Handler for Next Pokemon button in Elite Four battles - spawns the next Elite Four pokemon"""
+    global test_window, pkmn_window
+    try:
+        _ankimon_log("INFO", "AnkimonBattle", "=== spawn_next_elite_four_pokemon() called ===")
+
+        # Set battle state to elite4
+        _ankimon_set_battle_state("elite4")
+
+        # Defensive: Force-close any lingering post-battle UI
+        _ankimon_close_post_battle_ui("failsafe - elite four pokemon spawn")
+
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            _ankimon_log("ERROR", "AnkimonBattle", "Config not available in spawn_next_elite_four_pokemon")
+            tooltipWithColour("Config not available", "#FF0000")
+            return
+
+        # Get current Elite Four state
+        elite_four_active = conf.get("ankimon_elite_four_active", False)
+        enemy_ids = conf.get("ankimon_elite_four_enemy_ids") or []
+        current_idx = int(conf.get("ankimon_elite_four_pokemon_index") or 0)
+        member_name = conf.get("ankimon_elite_four_member_name", "Unknown")
+        next_idx = current_idx + 1
+
+        _ankimon_log("INFO", "AnkimonBattle", f"Elite Four state: active={elite_four_active}, current_idx={current_idx}, next_idx={next_idx}, total={len(enemy_ids)}, member={member_name}")
+
+        if not elite_four_active:
+            _ankimon_log("WARN", "AnkimonBattle", "spawn_next_elite_four_pokemon called but Elite Four not active - aborting")
+            return
+
+        if not enemy_ids:
+            _ankimon_log("ERROR", "AnkimonBattle", "spawn_next_elite_four_pokemon called but no enemy_ids - corrupted state")
+            tooltipWithColour("Elite Four state corrupted - use Reset Battle", "#FF0000")
+            return
+
+        if next_idx < len(enemy_ids):
+            _ankimon_log("INFO", "AnkimonBattle", f"Spawning next Elite Four pokemon: index {next_idx}/{len(enemy_ids)}, ID={enemy_ids[next_idx] if next_idx < len(enemy_ids) else 'N/A'}")
+
+            # Show tooltip BEFORE incrementing index
+            try:
+                tooltipWithColour(f"{member_name} sends out next Pokémon! ({next_idx+1}/{len(enemy_ids)})", "#00FF00")
+            except:
+                pass
+
+            # Increment index BEFORE spawning (needed for generate_random_pokemon to use correct ID)
+            conf["ankimon_elite_four_pokemon_index"] = next_idx
+            mw.col.setMod()
+            _ankimon_log("INFO", "AnkimonBattle", f"Updated elite_four_pokemon_index to {next_idx}")
+
+            # Try to spawn next pokemon
+            try:
+                # Clear any stale UI before spawning
+                _ankimon_clear_stale_enemy_sprites()
+
+                # CRITICAL: Use special battle spawn to bypass battle lock
+                _ankimon_log("INFO", "AnkimonBattle", "Spawning next Elite Four Pokemon (bypassing lock)...")
+                if not _ankimon_spawn_special_battle_pokemon():
+                    raise Exception("Failed to spawn Elite Four Pokemon")
+                _ankimon_log("INFO", "AnkimonBattle", "Elite Four Pokemon spawn completed successfully")
+
+                # Verify the correct Elite Four pokemon is now loaded
+                conf_verify = _ankimon_get_col_conf()
+                if conf_verify:
+                    current_e4_idx = int(conf_verify.get("ankimon_elite_four_pokemon_index", 0))
+                    enemy_ids_verify = conf_verify.get("ankimon_elite_four_enemy_ids") or []
+                    expected_id = enemy_ids_verify[current_e4_idx] if current_e4_idx < len(enemy_ids_verify) else "unknown"
+                    _ankimon_log("INFO", "AnkimonBattle", f"Post-spawn verification - elite_four_pokemon_index={current_e4_idx}, expected_id={expected_id}, displayed_id={id}")
+
+                # Force window update with multiple retries to ensure refresh
+                if test_window is not None and pkmn_window is True:
+                    from aqt.qt import QTimer
+                    def _update_window():
+                        try:
+                            _ankimon_log("INFO", "AnkimonUI", "Updating Elite Four battle window display")
+                            _ankimon_force_refresh_enemy_display()
+                            _ankimon_log("INFO", "AnkimonUI", "Window update completed")
+                        except Exception as e:
+                            _ankimon_log("ERROR", "AnkimonUI", f"Window update error: {e}")
+                            tooltipWithColour(f"Window update error: {str(e)}", "#FF0000")
+                    # Call immediately and again after short delays to ensure update
+                    _update_window()
+                    QTimer.singleShot(100, _update_window)
+                    QTimer.singleShot(250, _update_window)
+
+                    # Central refresh after Elite Four progression
+                    QTimer.singleShot(300, _ankimon_refresh_all_views)
+                    _ankimon_log("INFO", "AnkimonBattle", "Scheduled central refresh after Elite Four pokemon spawn")
+                else:
+                    _ankimon_log("WARN", "AnkimonBattle", f"Cannot update window: test_window={test_window is not None}, pkmn_window={pkmn_window}")
+            except Exception as e:
+                # CRITICAL: If spawning fails, rollback the index to prevent state corruption
+                conf["ankimon_elite_four_pokemon_index"] = current_idx
+                mw.col.setMod()
+
+                error_msg = f"Error spawning next Elite Four pokemon: {str(e)}"
+                _ankimon_log("ERROR", "AnkimonBattle", error_msg)
+                tooltipWithColour(error_msg, "#FF0000")
+                import traceback
+                traceback.print_exc()
+
+                # Show user-friendly message
+                try:
+                    showWarning(f"Failed to spawn next Elite Four pokemon.\nUse Reset Battle from Ankimon menu to fix.\n\nError: {str(e)[:100]}")
+                except:
+                    pass
+        else:
+            # All pokemon defeated - complete this Elite Four member
+            _ankimon_log("INFO", "AnkimonBattle", "All Elite Four pokemon defeated, completing Elite Four member")
+            complete_elite_four_member()
+    except Exception as e:
+        error_msg = f"Error in spawn_next_elite_four_pokemon: {str(e)}"
+        _ankimon_log("ERROR", "AnkimonBattle", error_msg)
+        tooltipWithColour(error_msg, "#FF0000")
+        import traceback
+        traceback.print_exc()
+
 def complete_gym_battle():
     """Handler for completing gym battle - awards badge and spawns wild pokemon"""
     global test_window, pkmn_window, achievements
@@ -3800,6 +3890,12 @@ def complete_gym_battle():
                     pass
         except Exception:
             pass
+
+        # Award Mega Stone for defeating gym (10% drop chance)
+        try:
+            _award_random_mega_stone("gym")
+        except Exception as e:
+            print(f"Error awarding Mega Stone for gym: {e}")
 
         # Show completion message
         try:
@@ -3886,9 +3982,9 @@ def complete_elite_four_member():
         except Exception:
             pass
 
-        # Award Mega Stone for defeating Elite Four member
+        # Award Mega Stone for defeating Elite Four member (25% drop chance)
         try:
-            _award_random_mega_stone()
+            _award_random_mega_stone("elite4")
         except Exception as e:
             print(f"Error awarding Mega Stone for Elite Four: {e}")
 
@@ -3925,6 +4021,122 @@ def complete_elite_four_member():
             traceback.print_exc()
     except Exception as e:
         error_msg = f"Error in complete_elite_four_member: {str(e)}"
+        tooltipWithColour(error_msg, "#FF0000")
+        import traceback
+        traceback.print_exc()
+
+def spawn_next_champion_pokemon():
+    """Handler for Next Pokemon button in Champion battles - spawns the next Champion pokemon"""
+    global test_window, pkmn_window
+    try:
+        _ankimon_log("INFO", "AnkimonBattle", "=== spawn_next_champion_pokemon() called ===")
+
+        # Set battle state to champion
+        _ankimon_set_battle_state("champion")
+
+        # Defensive: Force-close any lingering post-battle UI
+        _ankimon_close_post_battle_ui("failsafe - champion pokemon spawn")
+
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            _ankimon_log("ERROR", "AnkimonBattle", "Config not available in spawn_next_champion_pokemon")
+            tooltipWithColour("Config not available", "#FF0000")
+            return
+
+        # Get current Champion state
+        champion_active = conf.get("ankimon_champion_active", False)
+        enemy_ids = conf.get("ankimon_champion_enemy_ids") or []
+        current_idx = int(conf.get("ankimon_champion_pokemon_index") or 0)
+        next_idx = current_idx + 1
+
+        _ankimon_log("INFO", "AnkimonBattle", f"Champion state: active={champion_active}, current_idx={current_idx}, next_idx={next_idx}, total={len(enemy_ids)}")
+
+        if not champion_active:
+            _ankimon_log("WARN", "AnkimonBattle", "spawn_next_champion_pokemon called but Champion not active - aborting")
+            return
+
+        if not enemy_ids:
+            _ankimon_log("ERROR", "AnkimonBattle", "spawn_next_champion_pokemon called but no enemy_ids - corrupted state")
+            tooltipWithColour("Champion state corrupted - use Reset Battle", "#FF0000")
+            return
+
+        if next_idx < len(enemy_ids):
+            _ankimon_log("INFO", "AnkimonBattle", f"Spawning next Champion pokemon: index {next_idx}/{len(enemy_ids)}, ID={enemy_ids[next_idx] if next_idx < len(enemy_ids) else 'N/A'}")
+
+            # Show tooltip BEFORE incrementing index
+            try:
+                tooltipWithColour(f"Champion Cynthia sends out next Pokémon! ({next_idx+1}/{len(enemy_ids)})", "#00FF00")
+            except:
+                pass
+
+            # Increment index BEFORE spawning (needed for generate_random_pokemon to use correct ID)
+            conf["ankimon_champion_pokemon_index"] = next_idx
+            mw.col.setMod()
+            _ankimon_log("INFO", "AnkimonBattle", f"Updated champion_pokemon_index to {next_idx}")
+
+            # Try to spawn next pokemon
+            try:
+                # Clear any stale UI before spawning
+                _ankimon_clear_stale_enemy_sprites()
+
+                # CRITICAL: Use special battle spawn to bypass battle lock
+                _ankimon_log("INFO", "AnkimonBattle", "Spawning next Champion Pokemon (bypassing lock)...")
+                if not _ankimon_spawn_special_battle_pokemon():
+                    raise Exception("Failed to spawn Champion Pokemon")
+                _ankimon_log("INFO", "AnkimonBattle", "Champion Pokemon spawn completed successfully")
+
+                # Verify the correct Champion pokemon is now loaded
+                conf_verify = _ankimon_get_col_conf()
+                if conf_verify:
+                    current_champ_idx = int(conf_verify.get("ankimon_champion_pokemon_index", 0))
+                    enemy_ids_verify = conf_verify.get("ankimon_champion_enemy_ids") or []
+                    expected_id = enemy_ids_verify[current_champ_idx] if current_champ_idx < len(enemy_ids_verify) else "unknown"
+                    _ankimon_log("INFO", "AnkimonBattle", f"Post-spawn verification - champion_pokemon_index={current_champ_idx}, expected_id={expected_id}, displayed_id={id}")
+
+                # Force window update with multiple retries to ensure refresh
+                if test_window is not None and pkmn_window is True:
+                    from aqt.qt import QTimer
+                    def _update_window():
+                        try:
+                            _ankimon_log("INFO", "AnkimonUI", "Updating Champion battle window display")
+                            _ankimon_force_refresh_enemy_display()
+                            _ankimon_log("INFO", "AnkimonUI", "Window update completed")
+                        except Exception as e:
+                            _ankimon_log("ERROR", "AnkimonUI", f"Window update error: {e}")
+                            tooltipWithColour(f"Window update error: {str(e)}", "#FF0000")
+                    # Call immediately and again after short delays to ensure update
+                    _update_window()
+                    QTimer.singleShot(100, _update_window)
+                    QTimer.singleShot(250, _update_window)
+
+                    # Central refresh after Champion progression
+                    QTimer.singleShot(300, _ankimon_refresh_all_views)
+                    _ankimon_log("INFO", "AnkimonBattle", "Scheduled central refresh after Champion pokemon spawn")
+                else:
+                    _ankimon_log("WARN", "AnkimonBattle", f"Cannot update window: test_window={test_window is not None}, pkmn_window={pkmn_window}")
+            except Exception as e:
+                # CRITICAL: If spawning fails, rollback the index to prevent state corruption
+                conf["ankimon_champion_pokemon_index"] = current_idx
+                mw.col.setMod()
+
+                error_msg = f"Error spawning next Champion pokemon: {str(e)}"
+                _ankimon_log("ERROR", "AnkimonBattle", error_msg)
+                tooltipWithColour(error_msg, "#FF0000")
+                import traceback
+                traceback.print_exc()
+
+                # Show user-friendly message
+                try:
+                    showWarning(f"Failed to spawn next Champion pokemon.\nUse Reset Battle from Ankimon menu to fix.\n\nError: {str(e)[:100]}")
+                except:
+                    pass
+        else:
+            # All pokemon defeated - complete Champion battle
+            _ankimon_log("INFO", "AnkimonBattle", "All Champion pokemon defeated, completing Champion battle")
+            complete_champion_battle()
+    except Exception as e:
+        error_msg = f"Error in spawn_next_champion_pokemon: {str(e)}"
+        _ankimon_log("ERROR", "AnkimonBattle", error_msg)
         tooltipWithColour(error_msg, "#FF0000")
         import traceback
         traceback.print_exc()
@@ -3972,16 +4184,17 @@ def complete_champion_battle():
                 mega_state["key_stone_unlocked"] = True
                 _save_mega_state(mega_state)
 
-                # Add Key Stone to items bag
+                # Add Key Stone to items bag (only if not already present)
                 try:
                     with open(itembag_path, 'r') as json_file:
                         itembag_list = json.load(json_file)
                 except (FileNotFoundError, json.JSONDecodeError):
                     itembag_list = []
 
-                itembag_list.append("key_stone")
-                with open(itembag_path, 'w') as json_file:
-                    json.dump(itembag_list, json_file)
+                if "key_stone" not in itembag_list:
+                    itembag_list.append("key_stone")
+                    with open(itembag_path, 'w') as json_file:
+                        json.dump(itembag_list, json_file)
 
                 # Display Key Stone item popup
                 try:
@@ -3994,17 +4207,11 @@ def complete_champion_battle():
             except Exception as e:
                 print(f"Error unlocking Key Stone: {e}")
 
-        # Award Lucarionite on second completion
-        elif stats_data.get("lifetime", {}).get("total_champion_battles", 0) == 2:
-            try:
-                mega_state = _load_mega_state()
-                if "mega_stones" not in mega_state:
-                    mega_state["mega_stones"] = {}
-                mega_state["mega_stones"]["448"] = mega_state["mega_stones"].get("448", 0) + 1
-                _save_mega_state(mega_state)
-                tooltipWithColour("You obtained Lucarionite! (Lucario's Mega Stone)", "#FF00FF")
-            except Exception as e:
-                print(f"Error awarding Lucarionite: {e}")
+        # Award Mega Stone for defeating Champion (100% drop chance, guaranteed)
+        try:
+            _award_random_mega_stone("champion")
+        except Exception as e:
+            print(f"Error awarding Mega Stone for Champion: {e}")
 
         # Show completion message
         try:
@@ -4484,14 +4691,7 @@ def on_review_card(*args):
                     cards_in_battles += 1
                     stats_data["cards_in_wild_enemy_battles"] = cards_in_battles
 
-                    # Award mega stone every 500 cards
-                    if cards_in_battles > 0 and cards_in_battles % 500 == 0:
-                        try:
-                            mega_state = _load_mega_state()
-                            if mega_state.get("key_stone_unlocked", False):
-                                _award_random_mega_stone()
-                        except Exception as e:
-                            print(f"Error awarding mega stone: {e}")
+                    # NOTE: Mega stones now awarded from battles (gym/elite4/champion) instead of card milestones
 
             _save_progression_stats(stats_data)
         except Exception:
@@ -4530,12 +4730,7 @@ def on_review_card(*args):
                     receive_badge(4,achievements)
                     test_window.display_badge(4)
 
-        # Award Mega Stone every 500 cards
-        if card_counter > 0 and card_counter % 500 == 0:
-            try:
-                _award_random_mega_stone()
-            except Exception as e:
-                print(f"Error awarding Mega Stone at {card_counter} cards: {e}")
+        # NOTE: Mega stones now awarded from battles (gym/elite4/champion) instead of card milestones
 
         if card_counter == item_receive_value:
             test_window.display_item()
@@ -9633,8 +9828,9 @@ class TestWindow(QWidget):
                 gym_index = conf.get("ankimon_gym_index", 0) % 8
                 gym_names = ["Roark", "Gardenia", "Maylene", "Crasher Wake", "Fantina", "Byron", "Candice", "Volkner"]
                 gym_name = gym_names[gym_index]
-                pct = int((gym_counter / ANKIMON_GYM_TARGET) * 100)
-                self.progress_label.setText(f"Next Gym ({gym_name}): {gym_counter}/{ANKIMON_GYM_TARGET} cards ({pct}%)")
+                gym_target = _ankimon_get_battle_interval_gym()
+                pct = int((gym_counter / gym_target) * 100)
+                self.progress_label.setText(f"Next Gym ({gym_name}): {gym_counter}/{gym_target} cards ({pct}%)")
                 self.progress_label.setVisible(True)
             elif not _ankimon_all_elite_four_defeated():
                 # Working on Elite Four
@@ -9642,14 +9838,16 @@ class TestWindow(QWidget):
                 member_idx = conf.get("ankimon_elite_four_index", 0) % 4
                 members = ["Aaron", "Bertha", "Flint", "Lucian"]
                 member_name = members[member_idx]
-                pct = int((elite_counter / ANKIMON_ELITE_FOUR_TARGET) * 100)
-                self.progress_label.setText(f"Elite Four ({member_name}): {elite_counter}/{ANKIMON_ELITE_FOUR_TARGET} cards ({pct}%)")
+                elite_target = _ankimon_get_battle_interval_elite_four()
+                pct = int((elite_counter / elite_target) * 100)
+                self.progress_label.setText(f"Elite Four ({member_name}): {elite_counter}/{elite_target} cards ({pct}%)")
                 self.progress_label.setVisible(True)
             else:
                 # Working on Champion
                 champion_counter = conf.get("ankimon_champion_counter", 0)
-                pct = int((champion_counter / ANKIMON_CHAMPION_TARGET) * 100)
-                self.progress_label.setText(f"Champion (Cynthia): {champion_counter}/{ANKIMON_CHAMPION_TARGET} cards ({pct}%)")
+                champion_target = _ankimon_get_battle_interval_champion()
+                pct = int((champion_counter / champion_target) * 100)
+                self.progress_label.setText(f"Champion (Cynthia): {champion_counter}/{champion_target} cards ({pct}%)")
                 self.progress_label.setVisible(True)
         except Exception as e:
             print(f"Error updating progress label: {e}")
@@ -9786,13 +9984,16 @@ class TestWindow(QWidget):
         painter = QPainter(pkmnpixmap_bckg)
         painter.drawPixmap(15, 15, pkmnpixmap)
 
-        # Draw fainted text
+        # Draw fainted text (using configurable position)
+        fainted_x = _ankimon_get_fainted_text_x()
+        fainted_y = _ankimon_get_fainted_text_y()
+
         font = QFont()
         font.setPointSize(24)
         font.setBold(True)
         painter.setFont(font)
         painter.setPen(QColor(255, 0, 0))  # Red color for "FAINTED"
-        painter.drawText(270, 100, "FAINTED!")
+        painter.drawText(fainted_x, fainted_y, "FAINTED!")
 
         # Draw remaining pokemon count
         font.setPointSize(16)
@@ -9800,10 +10001,10 @@ class TestWindow(QWidget):
         painter.setFont(font)
         painter.setPen(QColor(0, 0, 0))  # Black color
         if remaining > 0:
-            painter.drawText(270, 150, f"{gym_leader_name}")
-            painter.drawText(270, 180, f"{remaining} Pokémon left")
+            painter.drawText(fainted_x, fainted_y + 50, f"{gym_leader_name}")
+            painter.drawText(fainted_x, fainted_y + 80, f"{remaining} Pokémon left")
         else:
-            painter.drawText(270, 150, "Gym Complete!")
+            painter.drawText(fainted_x, fainted_y + 50, "Gym Complete!")
 
         painter.end()
         pkmnimage_label.setPixmap(pkmnpixmap_bckg)
@@ -12712,26 +12913,62 @@ def _get_mega_stone_name(pokemon_id):
     }
     return stone_names.get(pokemon_id, f"Mega Stone #{pokemon_id}")
 
-def _award_random_mega_stone():
-    """Award a random mega stone for an owned Pokemon that can mega evolve"""
+def _award_random_mega_stone(battle_type="wild"):
+    """
+    Award a random mega stone for an owned Pokemon that can mega evolve.
+
+    Rules:
+    - Only 1 stone per Pokemon species (no duplicates)
+    - Drop chances: wild=0%, trainer=5%, gym=10%, elite4=25%, champion=100%
+    - Exhaustion: stops awarding when all eligible stones collected
+
+    Args:
+        battle_type: Type of battle (wild, trainer, gym, elite4, champion)
+
+    Returns:
+        True if stone awarded, False otherwise
+    """
     try:
+        # Drop chance by battle type
+        drop_chances = {
+            "wild": 0.0,
+            "trainer": 0.05,
+            "gym": 0.10,
+            "elite4": 0.25,
+            "champion": 1.0
+        }
+
+        drop_chance = drop_chances.get(battle_type, 0.0)
+
+        # Roll for drop (champion always drops)
+        if random.random() > drop_chance:
+            return False
+
+        # Get all owned mega-capable Pokemon
         eligible_ids = _get_owned_mega_capable_pokemon()
 
         if not eligible_ids:
             # No eligible Pokemon owned
-            tooltipWithColour("No Mega Evolution capable Pokemon owned yet!", "#FFD700")
             return False
 
-        # Choose a random eligible Pokemon
-        chosen_id = random.choice(eligible_ids)
-        stone_name = _get_mega_stone_name(chosen_id)
-
-        # Add mega stone to inventory
+        # Load mega state to check which stones already owned
         mega_state = _load_mega_state()
         if "mega_stones" not in mega_state:
             mega_state["mega_stones"] = {}
 
-        mega_state["mega_stones"][str(chosen_id)] = mega_state["mega_stones"].get(str(chosen_id), 0) + 1
+        # Filter out Pokemon that already have stones (1 per type rule)
+        unowned_ids = [id for id in eligible_ids if str(id) not in mega_state["mega_stones"]]
+
+        if not unowned_ids:
+            # All eligible stones already collected (exhaustion rule)
+            return False
+
+        # Choose a random eligible Pokemon that doesn't have a stone yet
+        chosen_id = random.choice(unowned_ids)
+        stone_name = _get_mega_stone_name(chosen_id)
+
+        # Add mega stone to inventory (set to 1, not increment)
+        mega_state["mega_stones"][str(chosen_id)] = 1
         _save_mega_state(mega_state)
 
         # Add mega stone to items bag so it appears in UI
@@ -12759,6 +12996,7 @@ def _award_random_mega_stone():
             print(f"Error displaying mega stone: {e}")
 
         tooltipWithColour(f"Received {stone_name} for {pokemon_name}!", "#FFD700")
+        print(f"[MegaStone] Awarded {stone_name} (#{chosen_id}) from {battle_type} battle")
         return True
     except Exception as e:
         print(f"Error awarding mega stone: {e}")
@@ -12821,25 +13059,28 @@ def _can_mega_evolve():
 
         pokemon_id = active_pokemon.get("id")
         pokemon_name = active_pokemon.get("name", "Unknown")
-        held_item = active_pokemon.get("held_item")
 
-        print(f"[Mega] Active Pokemon: {pokemon_name} (ID: {pokemon_id}), Held item: {held_item}")
+        print(f"[Mega] Active Pokemon: {pokemon_name} (ID: {pokemon_id})")
 
         # Check if Pokemon can mega evolve
         if pokemon_id not in _get_mega_capable_pokemon_ids():
             print(f"[Mega] FAIL: {pokemon_name} (ID: {pokemon_id}) cannot mega evolve")
             return False
 
-        # Check if Pokemon is holding the correct mega stone
+        # Check if player owns the corresponding mega stone (not tied to held item)
         expected_stone_name = _get_mega_stone_name(pokemon_id)
 
-        if held_item != expected_stone_name:
-            print(f"[Mega] FAIL: {pokemon_name} not holding {expected_stone_name}")
-            print(f"[Mega]   Expected: {expected_stone_name}")
-            print(f"[Mega]   Actual: {held_item}")
+        # Check if the mega stone is in the player's inventory
+        if "mega_stones" not in mega_state:
+            print(f"[Mega] FAIL: No mega stones owned yet")
             return False
 
-        print(f"[Mega] SUCCESS: {pokemon_name} can mega evolve with {expected_stone_name}!")
+        if str(pokemon_id) not in mega_state["mega_stones"]:
+            print(f"[Mega] FAIL: {expected_stone_name} not owned")
+            print(f"[Mega]   Need to obtain {expected_stone_name} for {pokemon_name}")
+            return False
+
+        print(f"[Mega] SUCCESS: {pokemon_name} can mega evolve with owned {expected_stone_name}!")
         return True
     except Exception as e:
         print(f"[Mega] ERROR checking mega evolution: {e}")
@@ -13057,9 +13298,11 @@ def _complete_legendary_capture(legendary_type):
         save_caught_pokemon(name)
         tooltipWithColour(f"{name} was captured!", "#FFD700")
     else:
-        # Re-battle - award mega stone instead
-        _award_random_mega_stone()
-        tooltipWithColour(f"{name} defeated! You received a Mega Stone!", "#FFD700")
+        # Re-battle - award mega stone instead (guaranteed drop for legendary re-battles)
+        if _award_random_mega_stone("champion"):
+            tooltipWithColour(f"{name} defeated! You received a Mega Stone!", "#FFD700")
+        else:
+            tooltipWithColour(f"{name} defeated!", "#FFD700")
 
 def _load_mypokemon_list():
     """Load Pokemon list with comprehensive error handling"""
@@ -14029,6 +14272,55 @@ if database_complete != False:
     # Confirmation log
     print("[DevMenu] Developer Mode actions added: purge/seed/self-test")
 
+    # Developer Mode: Fast Battle Testing Toggle
+    developer_menu.addSeparator()
+    try:
+        def toggle_fast_battle_testing():
+            """Toggle fast battle testing (10-card intervals instead of 100/150/200)"""
+            conf = _ankimon_get_col_conf()
+            if not conf:
+                tooltipWithColour("Failed to load configuration", "#FF0000")
+                return
+
+            current = conf.get("ankimon_fast_battle_testing", False)
+            new_value = not current
+            conf["ankimon_fast_battle_testing"] = new_value
+            _ankimon_set_col_conf(conf)
+
+            # Update checkbox state
+            fast_testing_action.setChecked(new_value)
+
+            if new_value:
+                tooltipWithColour("Fast Battle Testing: ON (10-card intervals)", "#00FF00")
+                print("[DevMode] Fast battle testing enabled: gym/elite/champion every 10 cards")
+            else:
+                tooltipWithColour("Fast Battle Testing: OFF (normal intervals)", "#888888")
+                print("[DevMode] Fast battle testing disabled: normal intervals restored")
+
+            # Refresh battle window if open
+            global test_window
+            if test_window is not None and hasattr(test_window, 'update_progress_label'):
+                try:
+                    test_window.update_progress_label()
+                except:
+                    pass
+
+        fast_testing_action = QAction("⚡ Fast Battle Testing (10-card)", mw)
+        fast_testing_action.setCheckable(True)
+
+        # Set initial state from config
+        conf = _ankimon_get_col_conf()
+        if conf and conf.get("ankimon_fast_battle_testing", False):
+            fast_testing_action.setChecked(True)
+
+        qconnect(fast_testing_action.triggered, toggle_fast_battle_testing)
+        developer_menu.addAction(fast_testing_action)
+        print("[DevMenu] Added: Fast Battle Testing (10-card)")
+    except Exception as e:
+        print(f"[DevMenu] ERROR: Could not add fast battle testing toggle: {e}")
+        import traceback
+        traceback.print_exc()
+
     # Add keyboard shortcut to toggle Developer Mode visibility
     from PyQt6.QtGui import QKeySequence, QShortcut
     from PyQt6.QtCore import Qt
@@ -14139,9 +14431,34 @@ from aqt.qt import QMessageBox
 from aqt import gui_hooks
 import json
 
+# Battle interval targets - can be overridden by dev mode
 ANKIMON_GYM_TARGET = 100
 ANKIMON_ELITE_FOUR_TARGET = 150
 ANKIMON_CHAMPION_TARGET = 200
+
+# Dev mode: Fast battle testing (10-card intervals)
+ANKIMON_FAST_TESTING_INTERVAL = 10
+
+def _ankimon_get_battle_interval_gym():
+    """Get gym battle interval (100 normal, 10 if fast testing enabled)"""
+    conf = _ankimon_get_col_conf()
+    if conf and conf.get("ankimon_fast_battle_testing", False):
+        return ANKIMON_FAST_TESTING_INTERVAL
+    return ANKIMON_GYM_TARGET
+
+def _ankimon_get_battle_interval_elite_four():
+    """Get Elite Four battle interval (150 normal, 10 if fast testing enabled)"""
+    conf = _ankimon_get_col_conf()
+    if conf and conf.get("ankimon_fast_battle_testing", False):
+        return ANKIMON_FAST_TESTING_INTERVAL
+    return ANKIMON_ELITE_FOUR_TARGET
+
+def _ankimon_get_battle_interval_champion():
+    """Get Champion battle interval (200 normal, 10 if fast testing enabled)"""
+    conf = _ankimon_get_col_conf()
+    if conf and conf.get("ankimon_fast_battle_testing", False):
+        return ANKIMON_FAST_TESTING_INTERVAL
+    return ANKIMON_CHAMPION_TARGET
 
 def _ankimon_gym_state():
     """Get the current gym card counter from persistent storage."""
@@ -14253,7 +14570,8 @@ def _get_champion_base_levels():
     return [58, 58, 58, 60, 60, 62]  # Spiritomb, Roserade, Togekiss, Lucario, Milotic, Garchomp
 
 def _ankimon_gym_overlay_html(count: int) -> str:
-    pct = int((count / ANKIMON_GYM_TARGET) * 100)
+    gym_target = _ankimon_get_battle_interval_gym()
+    pct = int((count / gym_target) * 100)
     if pct < 0:
         pct = 0
     if pct > 100:
@@ -14275,7 +14593,7 @@ def _ankimon_gym_overlay_html(count: int) -> str:
         ">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
         <div>Gym</div>
-        <div style="opacity:0.95;">{count}/{ANKIMON_GYM_TARGET}</div>
+        <div style="opacity:0.95;">{count}/{gym_target}</div>
       </div>
       <div style="margin-top:6px; height:6px; background: rgba(255,255,255,0.25); border-radius: 999px; overflow:hidden;">
         <div style="height:100%; width:{pct}%; background: rgba(255,255,255,0.9);"></div>
@@ -14577,6 +14895,25 @@ def _ankimon_elite_four_ready_popup():
         title.setFont(font)
         outer.addWidget(title)
 
+        # Elite Four member GIF sprite
+        gif_path = os.path.join(os.path.dirname(__file__), "addon_sprites", "elite_four_champion_gif", f"{member['key']}.gif")
+        if os.path.exists(gif_path):
+            gif_label = QLabel()
+            gif_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            movie = QMovie(gif_path)
+            movie.start()
+            gif_label.setMovie(movie)
+            outer.addWidget(gif_label)
+            # keep refs alive
+            dlg._ankimon_movie = movie
+            dlg._ankimon_gif_label = gif_label
+        else:
+            # Fallback message if GIF not found
+            msg = QLabel(f"(GIF sprite for {member['name']} not found)\nPlace {member['key']}.gif in addon_sprites/elite_four_champion_gif/")
+            msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            msg.setStyleSheet("color: #888888; font-size: 10px; padding: 5px;")
+            outer.addWidget(msg)
+
         # Get current round for level scaling
         try:
             stats = _load_progression_stats()
@@ -14680,6 +15017,25 @@ def _ankimon_champion_ready_popup():
         title.setFont(font)
         outer.addWidget(title)
 
+        # Champion GIF sprite
+        gif_path = os.path.join(os.path.dirname(__file__), "addon_sprites", "elite_four_champion_gif", "cynthia.gif")
+        if os.path.exists(gif_path):
+            gif_label = QLabel()
+            gif_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            movie = QMovie(gif_path)
+            movie.start()
+            gif_label.setMovie(movie)
+            outer.addWidget(gif_label)
+            # keep refs alive
+            dlg._ankimon_movie = movie
+            dlg._ankimon_gif_label = gif_label
+        else:
+            # Fallback message if GIF not found
+            msg = QLabel("(GIF sprite for Champion Cynthia not found)\nPlace cynthia.gif in addon_sprites/elite_four_champion_gif/")
+            msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            msg.setStyleSheet("color: #888888; font-size: 10px; padding: 5px;")
+            outer.addWidget(msg)
+
         # Get current round for level scaling
         try:
             stats = _load_progression_stats()
@@ -14761,7 +15117,8 @@ def _ankimon_gym_on_answer(*args):
         # Only increment gym counter if all gyms haven't been completed yet
         if not _ankimon_all_gym_badges_earned():
             c = _ankimon_gym_state() + 1
-            if c >= ANKIMON_GYM_TARGET:
+            gym_target = _ankimon_get_battle_interval_gym()
+            if c >= gym_target:
                 _ankimon_set_gym_state(0)
                 _ankimon_gym_ready_popup()
             else:
@@ -14769,7 +15126,8 @@ def _ankimon_gym_on_answer(*args):
         # After all gyms, check Elite Four
         elif _ankimon_all_gym_badges_earned() and not _ankimon_all_elite_four_defeated():
             e = _ankimon_elite_four_state() + 1
-            if e >= ANKIMON_ELITE_FOUR_TARGET:
+            elite_target = _ankimon_get_battle_interval_elite_four()
+            if e >= elite_target:
                 _ankimon_set_elite_four_state(0)
                 _ankimon_elite_four_ready_popup()
             else:
@@ -14777,7 +15135,8 @@ def _ankimon_gym_on_answer(*args):
         # After Elite Four, check Champion
         elif _ankimon_all_elite_four_defeated():
             ch = _ankimon_champion_state() + 1
-            if ch >= ANKIMON_CHAMPION_TARGET:
+            champion_target = _ankimon_get_battle_interval_champion()
+            if ch >= champion_target:
                 _ankimon_set_champion_state(0)
                 _ankimon_champion_ready_popup()
             else:
