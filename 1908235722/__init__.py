@@ -4155,7 +4155,7 @@ def complete_gym_battle():
         try:
             # Check if all 8 badges are earned (after gym 8)
             if _ankimon_all_gym_badges_earned():
-                completion_msg = f"Gym {gym_number} battle complete!\n\n🏆 All 8 badges earned! Moving on to Elite Four.\n\nDefeat 100 Pokemon to challenge the first Elite Four member!"
+                completion_msg = f"Gym {gym_number} battle complete!\n\n🏆 All 8 badges earned! Moving on to Elite Four.\n\nDefeat 150 Pokemon to challenge the first Elite Four member!"
             else:
                 completion_msg = f"Gym {gym_number} battle complete! Collect 100 more cards for the next gym."
             tooltipWithColour(completion_msg, "#FFD700")
@@ -9364,10 +9364,29 @@ def show_progression_stats():
         scroll.setWidget(scroll_content)
         layout.addWidget(scroll)
 
+        # Button layout
+        button_layout = QHBoxLayout()
+
+        # Reset Progression button (only show if Developer Mode is enabled)
+        try:
+            global developer_menu
+            if developer_menu and developer_menu.menuAction().isVisible():
+                reset_btn = QPushButton("🔄 Reset Progression")
+                reset_btn.setStyleSheet("background-color: #D32F2F; color: white; font-weight: bold;")
+                def reset_and_close():
+                    _reset_progression()
+                    dlg.close()
+                reset_btn.clicked.connect(reset_and_close)
+                button_layout.addWidget(reset_btn)
+        except Exception:
+            pass
+
         # Close button
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(dlg.close)
-        layout.addWidget(close_btn)
+        button_layout.addWidget(close_btn)
+
+        layout.addLayout(button_layout)
 
         dlg.exec()
 
@@ -9518,7 +9537,7 @@ class TestWindow(QWidget):
 
         # Set icon for the button
         try:
-            icon_path = str(addon_dir / "addon_sprites" / "icons" / "travel-trunk.png")
+            icon_path = str(addon_dir / "addon_sprites" / "icons" / "poke.png")
             itembag_btn.setIcon(QIcon(icon_path))
         except Exception as e:
             print(f"[UI] Failed to load itembag icon: {e}")
@@ -12761,7 +12780,9 @@ class ItemWindow(QWidget):
                             except Exception as e:
                                 print(f"[Mega] Transition animation failed: {e}")
 
-                            tooltipWithColour(f"⚡ {pkmn_name} transformed into Mega {pkmn_name}!", "#FF00FF")
+                            # Show detailed popup (same as Dev Mode)
+                            tooltipWithColour(f"⚡ {pkmn_name} is now MEGA!", "#FF00FF")
+                            showInfo(f"✓ {pkmn_name} transformed to Mega form!\n\nStats boosted:\n• Outgoing damage: +25%\n• Incoming damage: -15%")
                         else:
                             pokemon['is_mega'] = False
                     break
@@ -13942,9 +13963,9 @@ def _trigger_mega_evolution():
         except Exception as e:
             print(f"[Mega] Window refresh failed: {e}")
 
-        # Show mega evolution message
-        stone_name = _get_mega_stone_name(pokemon_id)
-        tooltipWithColour(f"⚡ {pokemon_name} Mega Evolved using {stone_name}!", "#FF00FF")
+        # Show mega evolution message (same as Dev Mode)
+        tooltipWithColour(f"⚡ {pokemon_name} is now MEGA!", "#FF00FF")
+        showInfo(f"✓ {pokemon_name} transformed to Mega form!\n\nStats boosted:\n• Outgoing damage: +25%\n• Incoming damage: -15%")
         print(f"[Mega] SUCCESS: {pokemon_name} mega evolved!")
 
         return True
@@ -14237,6 +14258,116 @@ try:
 except Exception:
     pass
 # ---------------------------------------------------------
+
+# DEVELOPER MODE: RESET PROGRESSION
+def _reset_progression():
+    """Reset progression stats and counters for a clean start"""
+    try:
+        from aqt.qt import QMessageBox
+
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            mw,
+            "Reset Progression",
+            "Reset progression stats?\n\n"
+            "This will reset:\n"
+            "• Gym progression (badges, rounds)\n"
+            "• Elite Four progression\n"
+            "• Champion progression\n"
+            "• Cards-until-next-boss counters\n"
+            "• Resume battle states\n\n"
+            "This will NOT delete:\n"
+            "• Your Pokémon collection\n"
+            "• Party\n"
+            "• Items\n"
+            "• Settings/config",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            print("[ResetProgression] User cancelled reset")
+            return
+
+        print("[ResetProgression] Starting progression reset...")
+
+        # Get collection config
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            showWarning("Could not access collection config")
+            return
+
+        # Reset gym progression
+        conf["ankimon_gym_counter"] = 0
+        if "ankimon_gym_badges" in conf:
+            conf["ankimon_gym_badges"] = []
+
+        # Reset Elite Four progression
+        conf["ankimon_elite_four_index"] = 0
+        conf["ankimon_elite_four_counter"] = 0
+        conf["ankimon_elite_four_active"] = False
+
+        # Reset Champion progression
+        conf["ankimon_champion_counter"] = 0
+        conf["ankimon_champion_active"] = False
+
+        # Reset progression stats JSON
+        stats = _load_progression_stats()
+
+        # Reset current round stats (but keep lifetime stats intact)
+        stats["current_round"] = {
+            "round_number": 1,
+            "cards_reviewed": 0,
+            "battles_won": 0,
+            "gyms_defeated": 0,
+            "elite_four_defeated": 0,
+            "champion_defeated": False,
+            "pokemon_caught": 0,
+            "items_obtained": 0,
+            "mega_evolutions_used": 0
+        }
+
+        # Reset lifetime current round counter to 1
+        if "lifetime" in stats:
+            stats["lifetime"]["current_round"] = 1
+
+        # Save updated stats
+        _save_progression_stats(stats)
+
+        # Save collection config
+        if hasattr(mw, 'col') and mw.col:
+            mw.col.set_config_bool("ankimon_elite_four_active", False)
+            mw.col.set_config_bool("ankimon_champion_active", False)
+
+        print("[ResetProgression] ✓ Reset complete")
+        print(f"[ResetProgression] - Gym counter: {conf.get('ankimon_gym_counter', 0)}")
+        print(f"[ResetProgression] - Elite Four index: {conf.get('ankimon_elite_four_index', 0)}")
+        print(f"[ResetProgression] - Elite Four counter: {conf.get('ankimon_elite_four_counter', 0)}")
+        print(f"[ResetProgression] - Champion counter: {conf.get('ankimon_champion_counter', 0)}")
+        print(f"[ResetProgression] - Current round stats reset")
+
+        # Force refresh UI
+        try:
+            global test_window
+            if test_window and test_window.isVisible():
+                test_window.display_first_encounter()
+                print("[ResetProgression] - Refreshed test window")
+        except Exception as e:
+            print(f"[ResetProgression] Warning: Could not refresh test window: {e}")
+
+        showInfo(
+            "✓ Progression reset complete!\n\n"
+            "Your journey starts fresh:\n"
+            "• All gym/Elite Four/Champion progress cleared\n"
+            "• Pokémon and items preserved\n\n"
+            "Review 100 cards to challenge the first gym!"
+        )
+
+    except Exception as e:
+        print(f"[ResetProgression] ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        showWarning(f"Reset progression failed: {e}")
 
 # DEVELOPER MODE: MEGA TOGGLE (NO CRASHES GUARANTEED)
 def _dev_toggle_mega_for_active():
@@ -14963,6 +15094,11 @@ if database_complete != False:
     placement_tool_action = QAction("Pokémon Placement Tool", mw)
     qconnect(placement_tool_action.triggered, show_placement_tool)
     developer_menu.addAction(placement_tool_action)
+
+    # Developer Mode: Reset Progression
+    reset_progression_action = QAction("🔄 Reset Progression", mw)
+    qconnect(reset_progression_action.triggered, _reset_progression)
+    developer_menu.addAction(reset_progression_action)
 
     # Developer Mode: Ankimon Configure Menu
     try:
