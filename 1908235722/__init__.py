@@ -9696,6 +9696,14 @@ class TestWindow(QWidget):
         attack_counter = 0
         caught = 0
 
+        # Safety check: if name is None or empty, this shouldn't happen
+        if not name:
+            _ankimon_log("ERROR", "AnkimonBattle", "pokemon_display_first_encounter called with empty name!")
+            # Fallback: generate a new Pokemon
+            new_pokemon()
+            # Recursively call this function with the new Pokemon data
+            return self.pokemon_display_first_encounter()
+
         # Special handling for Shadow Mewtwo (and other variants)
         if name == "Shadow Mewtwo":
             # Use base Mewtwo for Pokedex lookups but keep display name
@@ -9703,8 +9711,8 @@ class TestWindow(QWidget):
             lookup_name = "mewtwo"
             # id is already set globally to 150
         else:
-            display_name = name.capitalize()
-            lookup_name = name.lower()
+            display_name = name.capitalize() if name else "Unknown"
+            lookup_name = name.lower() if name else "pikachu"
             id = int(search_pokedex(lookup_name, "num"))
 
         lang_name = get_pokemon_diff_lang_name(int(id))
@@ -10556,20 +10564,33 @@ class TestWindow(QWidget):
             return
 
         # Check if this is a legendary Pokemon or Shadow Mewtwo - auto-capture instead of showing dialog
-        global name, current_wild_variant
+        global name, current_wild_variant, id
         try:
             legendary_names = ['Groudon-Primal', 'Kyogre-Primal', 'Rayquaza-Mega']
 
             # Check for Shadow Mewtwo
             if name == "Shadow Mewtwo" or (current_wild_variant == "shadow" and id == 150):
                 _ankimon_log("INFO", "ShadowMewtwo", "Shadow Mewtwo defeated, auto-capturing")
-                # Auto-capture Shadow Mewtwo
-                catch_pokemon("Shadow Mewtwo")
-                # Reset variant
+
+                # Auto-capture Shadow Mewtwo using save_caught_pokemon directly
+                try:
+                    save_caught_pokemon("Shadow Mewtwo")
+                    _ankimon_log("INFO", "ShadowMewtwo", "Shadow Mewtwo successfully saved to collection")
+                except Exception as e:
+                    _ankimon_log("ERROR", "ShadowMewtwo", f"Error saving Shadow Mewtwo: {e}")
+
+                # Reset ALL shadow state before spawning new Pokemon
                 current_wild_variant = None
+
                 tooltipWithColour("Shadow Mewtwo has been captured!", "#8B008B")
-                # Spawn new Pokemon after capture
+
+                # Spawn new Pokemon after capture (this will update name, id, etc.)
                 new_pokemon()
+
+                # Log the new Pokemon for debugging
+                _ankimon_log("INFO", "ShadowMewtwo", f"After capture, spawned new Pokemon: name={name}, id={id}")
+
+                # Display should now show the new Pokemon (not Shadow Mewtwo)
                 self.display_first_encounter()
                 return
 
