@@ -31,9 +31,11 @@ Thumbs.db
 1908235722/user_files/party.json
 1908235722/user_files/rate_this.json
 1908235722/user_files/backup_*/
+
 .DS_Store
 **/.DS_Store
-.DS_Store
-**/.DS_Store
-.DS_Store
-1908235722/user_files/sprites/
+
+# Previously ignored sprites - now tracked
+# 1908235722/user_files/sprites/
+
+
