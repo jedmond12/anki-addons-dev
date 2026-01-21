@@ -13772,7 +13772,7 @@ class ShadowMewtwoPopup(QDialog):
         title_label = QLabel("A Shadow presence approaches…")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_label.setFont(QFont("Arial", 20, QFont.Weight.Bold))
-        title_label.setStyleSheet("color: #8B008B; padding: 10px;")
+        title_label.setStyleSheet("color: #BB86FC; padding: 10px;")  # Purple for dark mode
         layout.addWidget(title_label)
 
         # Shadow Mewtwo popup image
@@ -13796,7 +13796,7 @@ class ShadowMewtwoPopup(QDialog):
         desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         desc_label.setFont(QFont("Arial", 14))
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("padding: 15px;")
+        desc_label.setStyleSheet("padding: 15px; color: #E0E0E0;")  # Light gray text for dark mode
         layout.addWidget(desc_label)
 
         # Buttons
@@ -13809,13 +13809,15 @@ class ShadowMewtwoPopup(QDialog):
         start_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
         start_button.setStyleSheet("""
             QPushButton {
-                background-color: #8B008B;
-                color: white;
+                background-color: #BB86FC;
+                color: #000000;
                 border-radius: 8px;
                 padding: 10px;
+                border: 2px solid #BB86FC;
             }
             QPushButton:hover {
-                background-color: #9932CC;
+                background-color: #CF6BDD;
+                border: 2px solid #CF6BDD;
             }
         """)
         qconnect(start_button.clicked, self.accept_battle)
@@ -13827,13 +13829,15 @@ class ShadowMewtwoPopup(QDialog):
         cancel_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
         cancel_button.setStyleSheet("""
             QPushButton {
-                background-color: #808080;
-                color: white;
+                background-color: #3A3A3A;
+                color: #E0E0E0;
                 border-radius: 8px;
                 padding: 10px;
+                border: 2px solid #555555;
             }
             QPushButton:hover {
-                background-color: #696969;
+                background-color: #505050;
+                border: 2px solid #777777;
             }
         """)
         qconnect(cancel_button.clicked, self.reject)
@@ -13842,7 +13846,12 @@ class ShadowMewtwoPopup(QDialog):
         layout.addLayout(button_layout)
 
         self.setLayout(layout)
-        self.setStyleSheet("background-color: #F0F0F0;")
+        # Dark mode styling
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #1E1E1E;
+            }
+        """)
 
     def accept_battle(self):
         """User accepted the battle"""
@@ -13937,7 +13946,12 @@ def _spawn_shadow_mewtwo():
         hp = max_hp
 
         # Generate powerful moveset
-        enemy_attacks = generate_attacks(id, level)
+        enemy_attacks_list = get_all_pokemon_moves("mewtwo", level)
+        enemy_attacks = []
+        if len(enemy_attacks_list) <= 4:
+            enemy_attacks = enemy_attacks_list
+        else:
+            enemy_attacks = random.sample(enemy_attacks_list, 4)
 
         # Set gender and battle status
         gender = "genderless"
