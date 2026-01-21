@@ -2460,22 +2460,15 @@ def kill_pokemon():
     # Route based on battle_state (Requirement D)
     battle_state = _ankimon_get_battle_state()
 
-    if battle_state == "gym":
-        # Gym battle: advance to next pokemon or complete gym
-        _ankimon_log("INFO", "AnkimonBattle", "Gym pokemon defeated - calling spawn_next_gym_pokemon()")
-        spawn_next_gym_pokemon()
-        return
-
-    elif battle_state == "elite4":
-        # Elite Four battle: advance to next pokemon or complete member
-        _ankimon_log("INFO", "AnkimonBattle", "Elite Four pokemon defeated - calling spawn_next_elite_four_pokemon()")
-        spawn_next_elite_four_pokemon()
-        return
-
-    elif battle_state == "champion":
-        # Champion battle: advance to next pokemon or complete champion
-        _ankimon_log("INFO", "AnkimonBattle", "Champion pokemon defeated - calling spawn_next_champion_pokemon()")
-        spawn_next_champion_pokemon()
+    # HARD GATE: For roster battles (gym/elite4/champion), DO NOT auto-advance
+    # Roster advancement should ONLY happen via Next button handler
+    # This prevents "skip every other pokemon" bug from double-advancement
+    if battle_state in ["gym", "elite4", "champion"]:
+        _ankimon_log("INFO", "AnkimonBattle", f"[HARD GATE] {battle_state} pokemon defeated - NOT auto-advancing (fainted panel controls advancement)")
+        _ankimon_log("INFO", "AnkimonBattle", f"[HARD GATE] User must click Next button to advance roster (prevents double-advancement)")
+        # XP already awarded above, battle stats tracked
+        # Fainted panel is showing (set by enemy HP <= 0 detection)
+        # Next button will call spawn_next_*() to advance roster
         return
 
     # Default: wild or trainer battle - spawn new wild pokemon
@@ -5002,33 +4995,35 @@ def on_review_card(*args):
                                     return
                                 pass
 
-                            # --- Elite Four battles: show fainted display with Next Pokemon button ---
+                            # --- Elite Four battles: show fainted display with Next Pokemon button (GYM-STYLE FLOW) ---
                             try:
                                 if _ankimon_is_elite_four_active():
-                                    conf = _ankimon_get_col_conf()
-                                    if conf:
-                                        enemy_ids = conf.get("ankimon_elite_four_enemy_ids") or []
-                                        pokemon_idx = int(conf.get("ankimon_elite_four_pokemon_index", 0))
+                                    print("[Elite4Faint] Enemy fainted - showing fainted panel (NO auto-advance)")
 
-                                        # Check if this was the last Pokemon
-                                        if pokemon_idx >= len(enemy_ids) - 1:
-                                            # Last Pokemon defeated - complete this Elite Four member
-                                            complete_elite_four_member()
-                                            return
-                                        else:
-                                            # More Pokemon remain - increment index and spawn next
-                                            conf["ankimon_elite_four_pokemon_index"] = pokemon_idx + 1
-                                            mw.col.setMod()
-                                            try:
-                                                member_name = conf.get("ankimon_elite_four_member_name", "Elite Four")
-                                                remaining = len(enemy_ids) - (pokemon_idx + 1)
-                                                tooltipWithColour(f"{member_name} has {remaining} Pokemon remaining!", "#FFD700")
-                                            except:
-                                                pass
-                                            new_pokemon()
-                                            if test_window is not None and pkmn_window is True:
-                                                test_window.display_first_encounter()
-                                            return
+                                    # Show fainted display with button instead of auto-advancing
+                                    try:
+                                        if test_window is not None and pkmn_window is True:
+                                            def _update_fainted_window():
+                                                test_window.display_elite_four_pokemon_fainted()
+                                                test_window.show()
+                                                test_window.raise_()
+                                                test_window.activateWindow()
+                                                test_window.update()
+                                                test_window.repaint()
+                                            # Call immediately
+                                            _update_fainted_window()
+                                            # Call again after short delay to ensure update
+                                            from aqt.qt import QTimer
+                                            QTimer.singleShot(100, _update_fainted_window)
+                                    except Exception as e:
+                                        try:
+                                            error_msg = f"Error displaying fainted Elite Four pokemon: {str(e)}"
+                                            tooltipWithColour(error_msg, "#FF0000")
+                                            import traceback
+                                            traceback.print_exc()
+                                        except:
+                                            pass
+                                    return
                             except Exception as e:
                                 if _ankimon_is_elite_four_active():
                                     try:
@@ -5041,32 +5036,35 @@ def on_review_card(*args):
                                     return
                                 pass
 
-                            # --- Champion battles: show fainted display with Next Pokemon button ---
+                            # --- Champion battles: show fainted display with Next Pokemon button (GYM-STYLE FLOW) ---
                             try:
                                 if _ankimon_is_champion_active():
-                                    conf = _ankimon_get_col_conf()
-                                    if conf:
-                                        enemy_ids = conf.get("ankimon_champion_enemy_ids") or []
-                                        pokemon_idx = int(conf.get("ankimon_champion_pokemon_index", 0))
+                                    print("[ChampionFaint] Enemy fainted - showing fainted panel (NO auto-advance)")
 
-                                        # Check if this was the last Pokemon
-                                        if pokemon_idx >= len(enemy_ids) - 1:
-                                            # Last Pokemon defeated - complete Champion battle
-                                            complete_champion_battle()
-                                            return
-                                        else:
-                                            # More Pokemon remain - increment index and spawn next
-                                            conf["ankimon_champion_pokemon_index"] = pokemon_idx + 1
-                                            mw.col.setMod()
-                                            try:
-                                                remaining = len(enemy_ids) - (pokemon_idx + 1)
-                                                tooltipWithColour(f"Champion Cynthia has {remaining} Pokemon remaining!", "#FFD700")
-                                            except:
-                                                pass
-                                            new_pokemon()
-                                            if test_window is not None and pkmn_window is True:
-                                                test_window.display_first_encounter()
-                                            return
+                                    # Show fainted display with button instead of auto-advancing
+                                    try:
+                                        if test_window is not None and pkmn_window is True:
+                                            def _update_fainted_window():
+                                                test_window.display_champion_pokemon_fainted()
+                                                test_window.show()
+                                                test_window.raise_()
+                                                test_window.activateWindow()
+                                                test_window.update()
+                                                test_window.repaint()
+                                            # Call immediately
+                                            _update_fainted_window()
+                                            # Call again after short delay to ensure update
+                                            from aqt.qt import QTimer
+                                            QTimer.singleShot(100, _update_fainted_window)
+                                    except Exception as window_error:
+                                        try:
+                                            error_msg = f"Champion fainted window error: {str(window_error)}"
+                                            print(error_msg)
+                                            import traceback
+                                            traceback.print_exc()
+                                        except:
+                                            pass
+                                    return
                             except Exception as e:
                                 if _ankimon_is_champion_active():
                                     try:
@@ -8411,10 +8409,21 @@ class PokemonPlacementTool(QDialog):
         self.fainted_x = int(conf.get("ankimon_fainted_text_x", 270)) if conf else 270
         self.fainted_y = int(conf.get("ankimon_fainted_text_y", 100)) if conf else 100
 
+        # Separate positions for each text element
+        self.leader_name_x = int(conf.get("ankimon_gym_leader_name_x", 270)) if conf else 270
+        self.leader_name_y = int(conf.get("ankimon_gym_leader_name_y", 150)) if conf else 150
+        self.remaining_text_x = int(conf.get("ankimon_gym_remaining_text_x", 270)) if conf else 270
+        self.remaining_text_y = int(conf.get("ankimon_gym_remaining_text_y", 180)) if conf else 180
+        self.complete_text_x = int(conf.get("ankimon_gym_complete_text_x", 270)) if conf else 270
+        self.complete_text_y = int(conf.get("ankimon_gym_complete_text_y", 150)) if conf else 150
+
         # Dragging state
         self.dragging_player = False
         self.dragging_enemy = False
         self.dragging_fainted = False
+        self.dragging_leader_name = False
+        self.dragging_remaining_text = False
+        self.dragging_complete_text = False
         self.drag_offset_x = 0
         self.drag_offset_y = 0
 
@@ -8497,7 +8506,7 @@ class PokemonPlacementTool(QDialog):
         fainted_layout = QVBoxLayout()
         fainted_tab.setLayout(fainted_layout)
 
-        fainted_info = QLabel("Drag the red 'FAINTED!' text to position it.\nClick 'Save Position' to apply changes to gym battles.")
+        fainted_info = QLabel("Drag each text element independently (click near any text to drag it):\n• RED 'FAINTED!' • BLUE Leader Name • GREEN Remaining Count • PURPLE Complete Message\nClick 'Save Position' to apply to all gym battles.")
         fainted_info.setWordWrap(True)
         fainted_layout.addWidget(fainted_info)
 
@@ -8705,18 +8714,30 @@ CODE TO USE:
             self.update_fainted_scene()
 
     def fainted_mouse_press(self, event):
-        """Handle mouse press for fainted text dragging"""
+        """Handle mouse press for fainted text dragging - supports dragging each element separately"""
         x, y = event.pos().x(), event.pos().y()
 
-        # Check if clicking near the fainted text (within 100px radius)
-        if abs(x - self.fainted_x) < 100 and abs(y - self.fainted_y) < 50:
+        # Check which text element is being clicked (priority: fainted > leader > remaining > complete)
+        if abs(x - self.fainted_x) < 100 and abs(y - self.fainted_y) < 25:
             self.dragging_fainted = True
             self.drag_offset_x = x - self.fainted_x
             self.drag_offset_y = y - self.fainted_y
+        elif abs(x - self.leader_name_x) < 100 and abs(y - self.leader_name_y) < 25:
+            self.dragging_leader_name = True
+            self.drag_offset_x = x - self.leader_name_x
+            self.drag_offset_y = y - self.leader_name_y
+        elif abs(x - self.remaining_text_x) < 100 and abs(y - self.remaining_text_y) < 25:
+            self.dragging_remaining_text = True
+            self.drag_offset_x = x - self.remaining_text_x
+            self.drag_offset_y = y - self.remaining_text_y
+        elif abs(x - self.complete_text_x) < 100 and abs(y - self.complete_text_y) < 25:
+            self.dragging_complete_text = True
+            self.drag_offset_x = x - self.complete_text_x
+            self.drag_offset_y = y - self.complete_text_y
 
     def fainted_mouse_move(self, event):
         """Handle mouse move for fainted text dragging"""
-        if not self.dragging_fainted:
+        if not (self.dragging_fainted or self.dragging_leader_name or self.dragging_remaining_text or self.dragging_complete_text):
             return
 
         x = event.pos().x() - self.drag_offset_x
@@ -8726,32 +8747,62 @@ CODE TO USE:
         x = max(50, min(505, x))
         y = max(30, min(228, y))
 
-        self.fainted_x = x
-        self.fainted_y = y
+        if self.dragging_fainted:
+            self.fainted_x = x
+            self.fainted_y = y
+        elif self.dragging_leader_name:
+            self.leader_name_x = x
+            self.leader_name_y = y
+        elif self.dragging_remaining_text:
+            self.remaining_text_x = x
+            self.remaining_text_y = y
+        elif self.dragging_complete_text:
+            self.complete_text_x = x
+            self.complete_text_y = y
 
         self.update_fainted_scene()
 
     def fainted_mouse_release(self, event):
         """Handle mouse release for fainted text dragging"""
         self.dragging_fainted = False
+        self.dragging_leader_name = False
+        self.dragging_remaining_text = False
+        self.dragging_complete_text = False
 
     def reset_fainted_position(self):
-        """Reset fainted text to default position"""
+        """Reset all fainted text elements to default positions"""
         self.fainted_x = 270
         self.fainted_y = 100
+        self.leader_name_x = 270
+        self.leader_name_y = 150
+        self.remaining_text_x = 270
+        self.remaining_text_y = 180
+        self.complete_text_x = 270
+        self.complete_text_y = 150
         self.update_fainted_scene()
-        tooltipWithColour("Fainted text position reset to default", "#888888")
+        tooltipWithColour("All text positions reset to default", "#888888")
 
     def save_fainted_position(self):
-        """Save fainted text position to config"""
+        """Save all fainted text positions to config"""
         try:
             conf = _ankimon_get_col_conf()
             if conf:
+                # Save all text element positions
                 conf["ankimon_fainted_text_x"] = self.fainted_x
                 conf["ankimon_fainted_text_y"] = self.fainted_y
+                conf["ankimon_gym_leader_name_x"] = self.leader_name_x
+                conf["ankimon_gym_leader_name_y"] = self.leader_name_y
+                conf["ankimon_gym_remaining_text_x"] = self.remaining_text_x
+                conf["ankimon_gym_remaining_text_y"] = self.remaining_text_y
+                conf["ankimon_gym_complete_text_x"] = self.complete_text_x
+                conf["ankimon_gym_complete_text_y"] = self.complete_text_y
                 mw.col.setMod()
-                tooltipWithColour(f"Fainted text position saved! ({self.fainted_x}, {self.fainted_y})", "#00FF00")
-                print(f"[PlacementTool] Saved fainted text position: x={self.fainted_x}, y={self.fainted_y}")
+                tooltipWithColour("All text positions saved!", "#00FF00")
+                print(f"[PlacementTool] Saved text positions:")
+                print(f"  FAINTED: ({self.fainted_x}, {self.fainted_y})")
+                print(f"  Leader Name: ({self.leader_name_x}, {self.leader_name_y})")
+                print(f"  Remaining: ({self.remaining_text_x}, {self.remaining_text_y})")
+                print(f"  Complete: ({self.complete_text_x}, {self.complete_text_y})")
             else:
                 tooltipWithColour("Failed to save: Config not available", "#FF0000")
         except Exception as e:
@@ -8793,31 +8844,54 @@ CODE TO USE:
         painter.setPen(QColor(255, 0, 0))
         painter.drawText(self.fainted_x, self.fainted_y, "FAINTED!")
 
-        # Draw crosshair at text position
+        # Draw crosshair at FAINTED text position (red)
         painter.setPen(QPen(QColor(255, 0, 0, 150), 2))
         painter.drawLine(self.fainted_x - 15, self.fainted_y, self.fainted_x + 15, self.fainted_y)
         painter.drawLine(self.fainted_x, self.fainted_y - 15, self.fainted_x, self.fainted_y + 15)
 
-        # Draw sample leader name and remaining count
+        # Draw leader name text with independent position (blue crosshair)
         font.setPointSize(16)
         font.setBold(False)
         painter.setFont(font)
         painter.setPen(QColor(0, 0, 0))
-        painter.drawText(self.fainted_x, self.fainted_y + 50, "Maylene")
-        painter.drawText(self.fainted_x, self.fainted_y + 80, "1 Pokémon left")
+        painter.drawText(self.leader_name_x, self.leader_name_y, "Maylene")
+
+        # Draw crosshair for leader name (blue)
+        painter.setPen(QPen(QColor(0, 0, 255, 150), 2))
+        painter.drawLine(self.leader_name_x - 15, self.leader_name_y, self.leader_name_x + 15, self.leader_name_y)
+        painter.drawLine(self.leader_name_x, self.leader_name_y - 15, self.leader_name_x, self.leader_name_y + 15)
+
+        # Draw remaining text with independent position (green crosshair)
+        painter.setPen(QColor(0, 0, 0))
+        painter.drawText(self.remaining_text_x, self.remaining_text_y, "1 Pokémon left")
+
+        # Draw crosshair for remaining text (green)
+        painter.setPen(QPen(QColor(0, 255, 0, 150), 2))
+        painter.drawLine(self.remaining_text_x - 15, self.remaining_text_y, self.remaining_text_x + 15, self.remaining_text_y)
+        painter.drawLine(self.remaining_text_x, self.remaining_text_y - 15, self.remaining_text_x, self.remaining_text_y + 15)
+
+        # Draw complete text with independent position (purple crosshair) - overlayed but not visible unless testing
+        painter.setPen(QColor(0, 0, 0, 100))  # Semi-transparent
+        painter.drawText(self.complete_text_x, self.complete_text_y, "Gym Complete!")
+
+        # Draw crosshair for complete text (purple)
+        painter.setPen(QPen(QColor(128, 0, 128, 100), 2))
+        painter.drawLine(self.complete_text_x - 15, self.complete_text_y, self.complete_text_x + 15, self.complete_text_y)
+        painter.drawLine(self.complete_text_x, self.complete_text_y - 15, self.complete_text_x, self.complete_text_y + 15)
 
         painter.end()
         self.fainted_scene_label.setPixmap(canvas)
 
         # Update coordinates display
-        coords_info = f"""FAINTED TEXT POSITION:
-  X: {self.fainted_x}
-  Y: {self.fainted_y}
+        coords_info = f"""INDEPENDENT TEXT POSITIONS (drag each separately):
 
-This position will be saved to config when you click "Save Position".
-The leader name and remaining count are positioned relative to this point:
-  • Leader name: Y + 50
-  • Remaining count: Y + 80
+FAINTED!: ({self.fainted_x}, {self.fainted_y}) [RED crosshair]
+Leader Name: ({self.leader_name_x}, {self.leader_name_y}) [BLUE crosshair]
+Remaining: ({self.remaining_text_x}, {self.remaining_text_y}) [GREEN crosshair]
+Complete: ({self.complete_text_x}, {self.complete_text_y}) [PURPLE crosshair]
+
+Click "Save Position" to apply to all gym battles.
+Each text element can be positioned independently!
 """
         self.fainted_coords_text.setText(coords_info)
 
@@ -10169,16 +10243,26 @@ class TestWindow(QWidget):
         painter.setPen(QColor(255, 0, 0))  # Red color for "FAINTED"
         painter.drawText(fainted_x, fainted_y, "FAINTED!")
 
-        # Draw remaining pokemon count
+        # Draw remaining pokemon count or complete message (each with independent positioning)
         font.setPointSize(16)
         font.setBold(False)
         painter.setFont(font)
         painter.setPen(QColor(0, 0, 0))  # Black color
         if remaining > 0:
-            painter.drawText(fainted_x, fainted_y + 50, f"{gym_leader_name}")
-            painter.drawText(fainted_x, fainted_y + 80, f"{remaining} Pokémon left")
+            # Gym leader name position (independent)
+            leader_x = int(conf.get("ankimon_gym_leader_name_x", 270)) if conf else 270
+            leader_y = int(conf.get("ankimon_gym_leader_name_y", 150)) if conf else 150
+            painter.drawText(leader_x, leader_y, f"{gym_leader_name}")
+
+            # Remaining text position (independent)
+            remaining_x = int(conf.get("ankimon_gym_remaining_text_x", 270)) if conf else 270
+            remaining_y = int(conf.get("ankimon_gym_remaining_text_y", 180)) if conf else 180
+            painter.drawText(remaining_x, remaining_y, f"{remaining} Pokémon left")
         else:
-            painter.drawText(fainted_x, fainted_y + 50, "Gym Complete!")
+            # Complete text position (independent)
+            complete_x = int(conf.get("ankimon_gym_complete_text_x", 270)) if conf else 270
+            complete_y = int(conf.get("ankimon_gym_complete_text_y", 150)) if conf else 150
+            painter.drawText(complete_x, complete_y, "Gym Complete!")
 
         painter.end()
         pkmnimage_label.setPixmap(pkmnpixmap_bckg)
@@ -10230,6 +10314,239 @@ class TestWindow(QWidget):
         self.setStyleSheet("background-color: rgb(177,147,209);")
         self.setMaximumWidth(500)
         self.setMaximumHeight(400)  # Increased to accommodate buttons
+
+    def display_elite_four_pokemon_fainted(self):
+        """Display fainted Elite Four pokemon with Next Pokemon button - mirrors gym flow"""
+        # Clear only the content area, not the button bar
+        self.clear_layout(self.content_layout)
+
+        # Get Elite Four battle info
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            return
+
+        enemy_ids = conf.get("ankimon_elite_four_enemy_ids") or []
+        current_idx = int(conf.get("ankimon_elite_four_pokemon_index") or 0)
+        member_name = conf.get("ankimon_elite_four_member_name") or "Elite Four Member"
+
+        # Calculate how many pokemon are left
+        remaining = len(enemy_ids) - (current_idx + 1)
+
+        # Create display widget
+        global name, id, frontdefault, pokedex_image_path
+
+        # Display the fainted Pokémon image
+        pkmnimage_file = f"{id}.png"
+        pkmnimage_path = frontdefault / pkmnimage_file
+        pkmnimage_label = QLabel()
+        pkmnpixmap = QPixmap()
+        pkmnpixmap.load(str(pkmnimage_path))
+        pkmnpixmap_bckg = QPixmap()
+        pkmnpixmap_bckg.load(str(pokedex_image_path))
+        pkmnpixmap = pkmnpixmap.scaled(230, 230)
+
+        # Create a painter to add text on top of the image
+        painter = QPainter(pkmnpixmap_bckg)
+        painter.drawPixmap(15, 15, pkmnpixmap)
+
+        # Draw fainted text (load position from config)
+        fainted_x = int(conf.get("ankimon_fainted_text_x", 270)) if conf else 270
+        fainted_y = int(conf.get("ankimon_fainted_text_y", 100)) if conf else 100
+
+        font = QFont()
+        font.setPointSize(24)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(QColor(255, 0, 0))
+        painter.drawText(fainted_x, fainted_y, "FAINTED!")
+
+        # Draw remaining pokemon count or complete message
+        font.setPointSize(16)
+        font.setBold(False)
+        painter.setFont(font)
+        painter.setPen(QColor(0, 0, 0))
+        if remaining > 0:
+            # Elite Four member name position
+            leader_x = int(conf.get("ankimon_gym_leader_name_x", 270)) if conf else 270
+            leader_y = int(conf.get("ankimon_gym_leader_name_y", 150)) if conf else 150
+            painter.drawText(leader_x, leader_y, f"{member_name}")
+
+            # Remaining text position
+            remaining_x = int(conf.get("ankimon_gym_remaining_text_x", 270)) if conf else 270
+            remaining_y = int(conf.get("ankimon_gym_remaining_text_y", 180)) if conf else 180
+            painter.drawText(remaining_x, remaining_y, f"{remaining} Pokémon left")
+        else:
+            # Complete text position
+            complete_x = int(conf.get("ankimon_gym_complete_text_x", 270)) if conf else 270
+            complete_y = int(conf.get("ankimon_gym_complete_text_y", 150)) if conf else 150
+            painter.drawText(complete_x, complete_y, f"{member_name} defeated!")
+
+        painter.end()
+        pkmnimage_label.setPixmap(pkmnpixmap_bckg)
+        pkmnimage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.content_layout.addWidget(pkmnimage_label)
+
+        # Create button widget
+        button_widget = QWidget()
+        button_layout = QHBoxLayout()
+
+        if remaining > 0:
+            # Next Pokemon button
+            next_button = QPushButton("▶ Next Pokémon")
+            next_button.setFixedSize(200, 40)
+            next_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+            next_button.setStyleSheet("""
+                QPushButton {
+                    background-color: rgb(76, 175, 80);
+                    color: white;
+                    border-radius: 5px;
+                }
+                QPushButton:hover {
+                    background-color: rgb(56, 142, 60);
+                }
+            """)
+            qconnect(next_button.clicked, lambda: spawn_next_elite_four_pokemon())
+            button_layout.addWidget(next_button)
+        else:
+            # Elite Four Member Complete button
+            complete_button = QPushButton(f"{member_name} Complete!")
+            complete_button.setFixedSize(250, 40)
+            complete_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+            complete_button.setStyleSheet("""
+                QPushButton {
+                    background-color: rgb(255, 215, 0);
+                    color: black;
+                    border-radius: 5px;
+                }
+                QPushButton:hover {
+                    background-color: rgb(218, 165, 32);
+                }
+            """)
+            qconnect(complete_button.clicked, lambda: complete_elite_four_member())
+            button_layout.addWidget(complete_button)
+
+        button_widget.setLayout(button_layout)
+        self.content_layout.addWidget(button_widget)
+
+        self.setStyleSheet("background-color: rgb(177,147,209);")
+        self.setMaximumWidth(500)
+        self.setMaximumHeight(400)
+
+    def display_champion_pokemon_fainted(self):
+        """Display fainted Champion pokemon with Next Pokemon button - mirrors gym flow"""
+        # Clear only the content area, not the button bar
+        self.clear_layout(self.content_layout)
+
+        # Get Champion battle info
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            return
+
+        enemy_ids = conf.get("ankimon_champion_enemy_ids") or []
+        current_idx = int(conf.get("ankimon_champion_pokemon_index") or 0)
+
+        # Calculate how many pokemon are left
+        remaining = len(enemy_ids) - (current_idx + 1)
+
+        # Create display widget
+        global name, id, frontdefault, pokedex_image_path
+
+        # Display the fainted Pokémon image
+        pkmnimage_file = f"{id}.png"
+        pkmnimage_path = frontdefault / pkmnimage_file
+        pkmnimage_label = QLabel()
+        pkmnpixmap = QPixmap()
+        pkmnpixmap.load(str(pkmnimage_path))
+        pkmnpixmap_bckg = QPixmap()
+        pkmnpixmap_bckg.load(str(pokedex_image_path))
+        pkmnpixmap = pkmnpixmap.scaled(230, 230)
+
+        # Create a painter to add text on top of the image
+        painter = QPainter(pkmnpixmap_bckg)
+        painter.drawPixmap(15, 15, pkmnpixmap)
+
+        # Draw fainted text (load position from config)
+        fainted_x = int(conf.get("ankimon_fainted_text_x", 270)) if conf else 270
+        fainted_y = int(conf.get("ankimon_fainted_text_y", 100)) if conf else 100
+
+        font = QFont()
+        font.setPointSize(24)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(QColor(255, 0, 0))
+        painter.drawText(fainted_x, fainted_y, "FAINTED!")
+
+        # Draw remaining pokemon count or complete message
+        font.setPointSize(16)
+        font.setBold(False)
+        painter.setFont(font)
+        painter.setPen(QColor(0, 0, 0))
+        if remaining > 0:
+            # Champion name position
+            leader_x = int(conf.get("ankimon_gym_leader_name_x", 270)) if conf else 270
+            leader_y = int(conf.get("ankimon_gym_leader_name_y", 150)) if conf else 150
+            painter.drawText(leader_x, leader_y, "Champion Cynthia")
+
+            # Remaining text position
+            remaining_x = int(conf.get("ankimon_gym_remaining_text_x", 270)) if conf else 270
+            remaining_y = int(conf.get("ankimon_gym_remaining_text_y", 180)) if conf else 180
+            painter.drawText(remaining_x, remaining_y, f"{remaining} Pokémon left")
+        else:
+            # Complete text position
+            complete_x = int(conf.get("ankimon_gym_complete_text_x", 270)) if conf else 270
+            complete_y = int(conf.get("ankimon_gym_complete_text_y", 150)) if conf else 150
+            painter.drawText(complete_x, complete_y, "Champion defeated!")
+
+        painter.end()
+        pkmnimage_label.setPixmap(pkmnpixmap_bckg)
+        pkmnimage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.content_layout.addWidget(pkmnimage_label)
+
+        # Create button widget
+        button_widget = QWidget()
+        button_layout = QHBoxLayout()
+
+        if remaining > 0:
+            # Next Pokemon button
+            next_button = QPushButton("▶ Next Pokémon")
+            next_button.setFixedSize(200, 40)
+            next_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+            next_button.setStyleSheet("""
+                QPushButton {
+                    background-color: rgb(76, 175, 80);
+                    color: white;
+                    border-radius: 5px;
+                }
+                QPushButton:hover {
+                    background-color: rgb(56, 142, 60);
+                }
+            """)
+            qconnect(next_button.clicked, lambda: spawn_next_champion_pokemon())
+            button_layout.addWidget(next_button)
+        else:
+            # Champion Complete button
+            complete_button = QPushButton("Champion Defeated!")
+            complete_button.setFixedSize(250, 40)
+            complete_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+            complete_button.setStyleSheet("""
+                QPushButton {
+                    background-color: rgb(255, 215, 0);
+                    color: black;
+                    border-radius: 5px;
+                }
+                QPushButton:hover {
+                    background-color: rgb(218, 165, 32);
+                }
+            """)
+            qconnect(complete_button.clicked, lambda: complete_champion_battle())
+            button_layout.addWidget(complete_button)
+
+        button_widget.setLayout(button_layout)
+        self.content_layout.addWidget(button_widget)
+
+        self.setStyleSheet("background-color: rgb(177,147,209);")
+        self.setMaximumWidth(500)
+        self.setMaximumHeight(400)
 
     def keyPressEvent(self, event):
         global test, pokemon_encounter, pokedex_image_path, system, ankimon_key
