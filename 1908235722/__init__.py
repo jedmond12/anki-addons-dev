@@ -719,6 +719,259 @@ def _ankimon_transition_to_elite_four(reason=""):
         traceback.print_exc()
         return False
 
+def _ankimon_transition_to_champion(reason=""):
+    """
+    Atomic transition to Champion battle - ensures clean UI state transition.
+
+    This function handles the complete transition from wild/trainer battle to Champion battle:
+    1. Clears stale enemy sprites
+    2. Activates Champion and sets battle state
+    3. Spawns first Champion Pokemon (updates all enemy vars)
+    4. Forces complete UI refresh on all surfaces
+
+    Args:
+        reason: Description of why transition is happening (for logging)
+    """
+    global test_window, pkmn_window, id, name, hp, max_hp
+
+    try:
+        _ankimon_log("INFO", "AnkimonBattle", f"=== Transitioning to Champion battle ({reason}) ===")
+
+        # Get Champion configuration
+        conf = _ankimon_get_col_conf()
+        if not conf:
+            _ankimon_log("ERROR", "AnkimonBattle", "Cannot transition to Champion - config not available")
+            return False
+
+        enemy_ids = conf.get("ankimon_champion_enemy_ids") or []
+
+        _ankimon_log("INFO", "AnkimonBattle", f"Champion transition: team_size={len(enemy_ids)}, first_pokemon_id={enemy_ids[0] if enemy_ids else 'none'}, enemy_id_before={id}, enemy_name_before={name}, enemy_hp_before={hp}")
+
+        # Step 1: Clear stale enemy sprites
+        _ankimon_log("INFO", "AnkimonBattle", "Clearing stale enemy sprites...")
+        _ankimon_clear_stale_enemy_sprites()
+
+        # Step 2: CRITICAL - Close any lingering post-battle UI
+        _ankimon_log("INFO", "AnkimonBattle", "Closing post-battle UI...")
+        _ankimon_close_post_battle_ui("starting Champion battle")
+
+        # Step 3: Activate Champion and set battle state BEFORE spawning
+        conf["ankimon_champion_active"] = True
+        conf["ankimon_champion_pending"] = False
+        conf["ankimon_champion_pokemon_index"] = 0
+        mw.col.setMod()
+        _ankimon_log("INFO", "AnkimonBattle", "Champion activated: active=True, pending=False, index=0")
+
+        # Set battle state to champion
+        _ankimon_set_battle_state("champion")
+        _ankimon_log("INFO", "AnkimonBattle", "Battle state set to: champion")
+
+        # Step 4: Spawn first Champion Pokemon (bypasses battle lock)
+        try:
+            tooltipWithColour("Champion Cynthia Battle Starting!", "#FFD700")
+        except:
+            pass
+
+        _ankimon_log("INFO", "AnkimonBattle", "Spawning first Champion Pokemon...")
+        if not _ankimon_spawn_special_battle_pokemon():
+            _ankimon_log("ERROR", "AnkimonBattle", "Failed to spawn Champion Pokemon")
+            return False
+
+        # Log the new enemy state for debugging
+        _ankimon_log("INFO", "AnkimonBattle", f"Champion Pokemon spawned: id={id}, name={name}, hp={hp}/{max_hp}")
+
+        # Step 5: Force complete refresh of ALL views (if external window enabled)
+        if pkmn_window is True:
+            from aqt.qt import QTimer
+
+            # Immediate refresh
+            _ankimon_force_refresh_enemy_display()
+            _ankimon_log("INFO", "AnkimonUI", "Immediate refresh triggered")
+
+            # Delayed refreshes to ensure update propagates
+            def _delayed_refresh():
+                try:
+                    _ankimon_log("INFO", "AnkimonUI", "Delayed refresh executing")
+                    _ankimon_force_refresh_enemy_display()
+                except Exception as e:
+                    _ankimon_log("ERROR", "AnkimonUI", f"Delayed refresh error: {e}")
+
+            QTimer.singleShot(100, _delayed_refresh)
+            QTimer.singleShot(250, _delayed_refresh)
+
+            # Final complete refresh of all views
+            def _final_refresh():
+                try:
+                    _ankimon_log("INFO", "AnkimonUI", "Final complete refresh executing")
+                    _ankimon_refresh_all_views()
+                except Exception as e:
+                    _ankimon_log("ERROR", "AnkimonUI", f"Final refresh error: {e}")
+
+            QTimer.singleShot(400, _final_refresh)
+
+        _ankimon_log("INFO", "AnkimonBattle", "Champion transition completed successfully")
+        return True
+
+    except Exception as e:
+        _ankimon_log("ERROR", "AnkimonBattle", f"Error in Champion transition: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+# ============================================================================
+# ROSTER VALIDATOR (DEV TOOL)
+# ============================================================================
+
+def _ankimon_validate_rosters():
+    """
+    Dev tool to validate all Elite Four and Champion rosters for duplicates.
+    Prints results to console and shows summary dialog.
+    """
+    try:
+        print("\n" + "="*60)
+        print("ANKIMON ROSTER VALIDATOR")
+        print("="*60)
+
+        errors = []
+        warnings = []
+
+        # Elite Four rosters
+        elite_four_members = [
+            {"key": "aaron", "name": "Aaron", "type": "Bug", "team": [269, 212, 416, 214, 452]},
+            {"key": "bertha", "name": "Bertha", "type": "Ground", "team": [195, 185, 340, 450, 31]},
+            {"key": "flint", "name": "Flint", "type": "Fire", "team": [392, 229, 78, 136, 467]},
+            {"key": "lucian", "name": "Lucian", "type": "Psychic", "team": [122, 437, 178, 561, 475]}
+        ]
+
+        print("\nELITE FOUR ROSTERS:")
+        print("-" * 60)
+        for member in elite_four_members:
+            team = member["team"]
+            print(f"\n{member['name']} ({member['type']} type):")
+            print(f"  Roster: {team}")
+            print(f"  Count: {len(team)} Pokemon")
+
+            # Check for duplicates
+            if len(team) != len(set(team)):
+                duplicates = [x for i, x in enumerate(team) if x in team[:i]]
+                error_msg = f"  ⚠️  DUPLICATE IDs FOUND: {duplicates}"
+                print(error_msg)
+                errors.append(f"{member['name']}: Duplicate Pokemon IDs {duplicates}")
+            else:
+                print("  ✅ No duplicates")
+
+            # Check for empty roster
+            if not team:
+                warning_msg = "  ⚠️  WARNING: Empty roster"
+                print(warning_msg)
+                warnings.append(f"{member['name']}: Empty roster")
+
+        # Champion roster
+        champion_team = [442, 407, 350, 445, 59, 448]  # Spiritomb, Roserade, Milotic, Garchomp, Arcanine, Lucario
+
+        print("\n" + "-" * 60)
+        print("\nCHAMPION ROSTER:")
+        print("-" * 60)
+        print(f"\nChampion Cynthia:")
+        print(f"  Roster: {champion_team}")
+        print(f"  Count: {len(champion_team)} Pokemon")
+
+        # Check for duplicates
+        if len(champion_team) != len(set(champion_team)):
+            duplicates = [x for i, x in enumerate(champion_team) if x in champion_team[:i]]
+            error_msg = f"  ⚠️  DUPLICATE IDs FOUND: {duplicates}"
+            print(error_msg)
+            errors.append(f"Champion Cynthia: Duplicate Pokemon IDs {duplicates}")
+        else:
+            print("  ✅ No duplicates")
+
+        # Check for empty roster
+        if not champion_team:
+            warning_msg = "  ⚠️  WARNING: Empty roster"
+            print(warning_msg)
+            warnings.append("Champion Cynthia: Empty roster")
+
+        # Check current battle rosters (if in config)
+        print("\n" + "-" * 60)
+        print("\nCURRENT BATTLE STATE:")
+        print("-" * 60)
+        conf = _ankimon_get_col_conf()
+        if conf:
+            # Elite Four active roster
+            e4_ids = conf.get("ankimon_elite_four_enemy_ids", [])
+            if e4_ids:
+                print(f"\nElite Four (active): {e4_ids}")
+                if len(e4_ids) != len(set(e4_ids)):
+                    duplicates = [x for i, x in enumerate(e4_ids) if x in e4_ids[:i]]
+                    error_msg = f"  ⚠️  ACTIVE BATTLE HAS DUPLICATES: {duplicates}"
+                    print(error_msg)
+                    errors.append(f"Elite Four (active battle): Duplicate IDs {duplicates}")
+                else:
+                    print("  ✅ No duplicates")
+
+            # Champion active roster
+            champ_ids = conf.get("ankimon_champion_enemy_ids", [])
+            if champ_ids:
+                print(f"\nChampion (active): {champ_ids}")
+                if len(champ_ids) != len(set(champ_ids)):
+                    duplicates = [x for i, x in enumerate(champ_ids) if x in champ_ids[:i]]
+                    error_msg = f"  ⚠️  ACTIVE BATTLE HAS DUPLICATES: {duplicates}"
+                    print(error_msg)
+                    errors.append(f"Champion (active battle): Duplicate IDs {duplicates}")
+                else:
+                    print("  ✅ No duplicates")
+
+            if not e4_ids and not champ_ids:
+                print("\nNo active battles")
+
+        print("\n" + "="*60)
+        print("VALIDATION SUMMARY:")
+        print("="*60)
+
+        if errors:
+            print(f"\n❌ ERRORS FOUND: {len(errors)}")
+            for error in errors:
+                print(f"  - {error}")
+        else:
+            print("\n✅ No errors found")
+
+        if warnings:
+            print(f"\n⚠️  WARNINGS: {len(warnings)}")
+            for warning in warnings:
+                print(f"  - {warning}")
+
+        print("\n" + "="*60 + "\n")
+
+        # Show summary dialog
+        summary = "ROSTER VALIDATION RESULTS\n\n"
+        if errors:
+            summary += f"❌ {len(errors)} ERROR(S) FOUND:\n"
+            for error in errors:
+                summary += f"  • {error}\n"
+        else:
+            summary += "✅ No duplicate Pokemon found in rosters\n"
+
+        if warnings:
+            summary += f"\n⚠️  {len(warnings)} WARNING(S):\n"
+            for warning in warnings:
+                summary += f"  • {warning}\n"
+
+        summary += "\nSee console for full details."
+
+        from aqt.utils import showInfo
+        showInfo(summary, title="Roster Validator")
+
+    except Exception as e:
+        error_msg = f"Error during roster validation: {e}"
+        print(error_msg)
+        import traceback
+        traceback.print_exc()
+        try:
+            from aqt.utils import showWarning
+            showWarning(error_msg)
+        except:
+            pass
+
 # ============================================================================
 # DEBUG BUNDLE EXPORT
 # ============================================================================
@@ -2431,31 +2684,19 @@ def kill_pokemon():
     try:
         conf = _ankimon_get_col_conf()
         if conf and conf.get("ankimon_champion_pending"):
-            _ankimon_log("INFO", "AnkimonBattle", "Starting queued Champion battle after current battle ended")
+            _ankimon_log("INFO", "AnkimonBattle", "Detected queued Champion battle after current battle ended")
 
-            # CRITICAL: Force-close any lingering post-battle UI
-            _ankimon_close_post_battle_ui("starting queued Champion battle")
-
-            # Start the Champion battle now that wild pokemon is defeated
-            conf["ankimon_champion_active"] = True
-            conf["ankimon_champion_pending"] = False
-            conf["ankimon_champion_pokemon_index"] = 0
-            mw.col.setMod()
-
-            # Set battle state to champion
-            _ankimon_set_battle_state("champion")
-
-            try:
-                tooltipWithColour("Champion Cynthia Battle Starting!", "#FFD700")
-            except:
-                pass
-            if pkmn_window is True:
-                new_pokemon()  # Spawn first Champion pokemon
-                # Refresh all views to ensure UI is correct
-                _ankimon_refresh_all_views()
-            return
+            # Use atomic transition helper to ensure clean UI state
+            if _ankimon_transition_to_champion("queued start after defeat"):
+                _ankimon_log("INFO", "AnkimonBattle", "Champion transition successful")
+                return
+            else:
+                _ankimon_log("ERROR", "AnkimonBattle", "Champion transition failed")
+                # Fall through to normal flow if transition failed
     except Exception as e:
         _ankimon_log("ERROR", "AnkimonBattle", f"Error starting queued Champion battle: {e}")
+        import traceback
+        traceback.print_exc()
 
     # Route based on battle_state (Requirement D)
     battle_state = _ankimon_get_battle_state()
@@ -3207,6 +3448,42 @@ def catch_pokemon(nickname):
                     # Fall through to spawn new pokemon if transition failed
         except Exception as e:
             _ankimon_log("ERROR", "AnkimonBattle", f"Error in gym transition after catch: {e}")
+            import traceback
+            traceback.print_exc()
+
+        # Check if Elite Four battle is pending and start it now
+        try:
+            conf = _ankimon_get_col_conf()
+            if conf and conf.get("ankimon_elite_four_pending"):
+                _ankimon_log("INFO", "AnkimonBattle", "Detected queued Elite Four battle after catching pokemon")
+
+                # Use atomic transition helper to ensure clean UI state
+                if _ankimon_transition_to_elite_four("queued start after catch"):
+                    _ankimon_log("INFO", "AnkimonBattle", "Elite Four transition successful after catch")
+                    return
+                else:
+                    _ankimon_log("ERROR", "AnkimonBattle", "Elite Four transition failed after catch")
+                    # Fall through to spawn new pokemon if transition failed
+        except Exception as e:
+            _ankimon_log("ERROR", "AnkimonBattle", f"Error in Elite Four transition after catch: {e}")
+            import traceback
+            traceback.print_exc()
+
+        # Check if Champion battle is pending and start it now
+        try:
+            conf = _ankimon_get_col_conf()
+            if conf and conf.get("ankimon_champion_pending"):
+                _ankimon_log("INFO", "AnkimonBattle", "Detected queued Champion battle after catching pokemon")
+
+                # Use atomic transition helper to ensure clean UI state
+                if _ankimon_transition_to_champion("queued start after catch"):
+                    _ankimon_log("INFO", "AnkimonBattle", "Champion transition successful after catch")
+                    return
+                else:
+                    _ankimon_log("ERROR", "AnkimonBattle", "Champion transition failed after catch")
+                    # Fall through to spawn new pokemon if transition failed
+        except Exception as e:
+            _ankimon_log("ERROR", "AnkimonBattle", f"Error in Champion transition after catch: {e}")
             import traceback
             traceback.print_exc()
 
@@ -14667,6 +14944,11 @@ if database_complete != False:
     mw.pokemenu.addMenu(developer_menu)
     developer_menu.menuAction().setVisible(False)  # Hidden by default
 
+    # Developer Mode: Validate Rosters
+    validate_rosters_action = QAction("🔍 Validate Rosters", mw)
+    qconnect(validate_rosters_action.triggered, _ankimon_validate_rosters)
+    developer_menu.addAction(validate_rosters_action)
+
     # Developer Mode: Export Debug Bundle
     export_debug_action = QAction("📦 Export Debug Bundle", mw)
     qconnect(export_debug_action.triggered, _ankimon_export_debug_bundle)
@@ -15356,7 +15638,7 @@ def _ankimon_elite_four_ready_popup():
         # Elite Four members (Sinnoh)
         members = [
             {"key": "aaron", "name": "Aaron", "type": "Bug", "team": [269, 212, 416, 214, 452]},  # Dustox, Scizor, Vespiquen, Heracross, Drapion
-            {"key": "bertha", "name": "Bertha", "type": "Ground", "team": [450, 195, 340, 450, 31]},  # Hippowdon, Quagsire, Whiscash, Hippowdon, Nidoqueen
+            {"key": "bertha", "name": "Bertha", "type": "Ground", "team": [195, 185, 340, 450, 31]},  # Quagsire, Sudowoodo, Whiscash, Hippowdon, Nidoqueen
             {"key": "flint", "name": "Flint", "type": "Fire", "team": [392, 229, 78, 136, 467]},  # Infernape, Houndoom, Rapidash, Flareon, Magmortar
             {"key": "lucian", "name": "Lucian", "type": "Psychic", "team": [122, 437, 178, 561, 475]}  # Mr. Mime, Bronzong, Xatu, Sigilyph, Gallade
         ]
@@ -15458,7 +15740,21 @@ def _ankimon_elite_four_ready_popup():
             conf["ankimon_elite_four_member_name"] = member["name"]
             conf["ankimon_elite_four_member_type"] = member["type"]
             conf["ankimon_elite_four_index"] = member_index
-            conf["ankimon_elite_four_enemy_ids"] = member.get("team", [])
+
+            # Validate roster for duplicates
+            team = member.get("team", [])
+            if len(team) != len(set(team)):
+                duplicates = [x for i, x in enumerate(team) if x in team[:i]]
+                _ankimon_log("ERROR", "AnkimonBattle", f"Elite Four {member['name']} roster contains duplicates: {duplicates}")
+                print(f"[ROSTER ERROR] {member['name']} has duplicate Pokemon IDs: {duplicates}")
+                print(f"[ROSTER ERROR] Full roster: {team}")
+                # Remove duplicates while preserving order
+                seen = set()
+                team = [x for x in team if not (x in seen or seen.add(x))]
+                _ankimon_log("WARN", "AnkimonBattle", f"Removed duplicates, new roster: {team}")
+                print(f"[ROSTER FIX] Deduplicated roster: {team}")
+
+            conf["ankimon_elite_four_enemy_ids"] = team
             mw.col.setMod()
             _ankimon_log("INFO", "AnkimonBattle", f"Elite Four battle queued: {member['name']} - will start after current battle")
             dlg.accept()
@@ -15580,7 +15876,21 @@ def _ankimon_champion_ready_popup():
 
         def _start():
             conf["ankimon_champion_pending"] = True
-            conf["ankimon_champion_enemy_ids"] = champion_team
+
+            # Validate Champion roster for duplicates
+            team = champion_team[:]  # Make a copy
+            if len(team) != len(set(team)):
+                duplicates = [x for i, x in enumerate(team) if x in team[:i]]
+                _ankimon_log("ERROR", "AnkimonBattle", f"Champion Cynthia roster contains duplicates: {duplicates}")
+                print(f"[ROSTER ERROR] Champion has duplicate Pokemon IDs: {duplicates}")
+                print(f"[ROSTER ERROR] Full roster: {team}")
+                # Remove duplicates while preserving order
+                seen = set()
+                team = [x for x in team if not (x in seen or seen.add(x))]
+                _ankimon_log("WARN", "AnkimonBattle", f"Removed duplicates, new roster: {team}")
+                print(f"[ROSTER FIX] Deduplicated roster: {team}")
+
+            conf["ankimon_champion_enemy_ids"] = team
             mw.col.setMod()
             _ankimon_log("INFO", "AnkimonBattle", "Champion battle queued: Cynthia - will start after current battle")
             dlg.accept()
