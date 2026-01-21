@@ -5787,6 +5787,7 @@ class PokemonCollectionDialog(QDialog):
                         pokemon_growth_rate = pokemon['growth_rate']
                         pokemon_ev = pokemon['ev']
                         pokemon_iv = pokemon['iv']
+                        pokemon_variant = pokemon.get('variant', None)  # Get variant field
                         pokemon_description = search_pokeapi_db_by_id(pokemon_id, "description")
                         if gif_in_collection is True:
                             # Check if Pokemon is in Mega form (with hard Key Stone gate)
@@ -5799,12 +5800,16 @@ class PokemonCollectionDialog(QDialog):
                             # Check if Pokemon is shiny
                             is_shiny = pokemon.get('is_shiny', False)
 
-                            # Priority: Mega > Shiny > Normal
+                            # Priority: Mega > Shadow > Shiny > Normal
                             if is_mega_unlocked and pokemon.get('is_mega', False):
                                 pkmn_image_path = str(user_path_sprites / "front_mega_pokemon_gif" / f"{pokemon_id}.gif")
                                 # Fallback to normal if mega sprite doesn't exist
                                 if not os.path.exists(pkmn_image_path):
                                     pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
+                            elif pokemon_variant == "shadow" and pokemon_id == 150:
+                                # Shadow Mewtwo variant
+                                pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}_shadow_front.gif")
+                                _ankimon_log("INFO", "ShadowMewtwo", f"Collection list using Shadow Mewtwo GIF: {pkmn_image_path}")
                             elif is_shiny:
                                 # Try shiny sprite
                                 global shiny_front_default
@@ -5816,9 +5821,13 @@ class PokemonCollectionDialog(QDialog):
                                 pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
                             splash_label = MovieSplashLabel(pkmn_image_path)
                         else:
-                            # PNG mode - check for shiny
+                            # PNG mode - check for shadow > shiny > normal
                             is_shiny = pokemon.get('is_shiny', False)
-                            if is_shiny:
+                            if pokemon_variant == "shadow" and pokemon_id == 150:
+                                # Shadow Mewtwo variant (PNG)
+                                pkmn_image_path = str(user_path_sprites / "front_default" / f"{pokemon_id}_shadow_front.png")
+                                _ankimon_log("INFO", "ShadowMewtwo", f"Collection list using Shadow Mewtwo PNG: {pkmn_image_path}")
+                            elif is_shiny:
                                 # Try shiny PNG (if exists)
                                 shiny_png_path = str(user_path_sprites / "shiny_front_default" / f"{pokemon_id}.png")
                                 if os.path.exists(shiny_png_path):
@@ -5938,9 +5947,9 @@ class PokemonCollectionDialog(QDialog):
                         pokemon_button = QPushButton("Show me Details")
                         pokemon_button.setIconSize(pixmap.size())
                         if len(pokemon_type) > 1:
-                            pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0], pokemon_type[1]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname))
+                            pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0], pokemon_type[1]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname, variant=pokemon_variant: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant))
                         else:
-                            pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname))
+                            pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname, variant=pokemon_variant: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant))
 
                         slot_combo = QComboBox()
                         slot_combo.addItem("Assign to Slot...", -1)
@@ -6076,6 +6085,7 @@ class PokemonCollectionDialog(QDialog):
                             pokemon_growth_rate = pokemon['growth_rate']
                             pokemon_ev = pokemon['ev']
                             pokemon_iv = pokemon['iv']
+                            pokemon_variant = pokemon.get('variant', None)  # Get variant field
                             pokemon_description = search_pokeapi_db_by_id(pokemon_id, "description")
                             if gif_in_collection is True:
                                 # Check if Pokemon is in Mega form (with hard Key Stone gate)
@@ -6085,16 +6095,26 @@ class PokemonCollectionDialog(QDialog):
                                 except (NameError, Exception):
                                     is_mega_unlocked = False  # Default to locked if function not yet defined
 
+                                # Priority: Mega > Shadow > Normal
                                 if is_mega_unlocked and pokemon.get('is_mega', False):
                                     pkmn_image_path = str(user_path_sprites / "front_mega_pokemon_gif" / f"{pokemon_id}.gif")
                                     # Fallback to normal if mega sprite doesn't exist
                                     if not os.path.exists(pkmn_image_path):
                                         pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
+                                elif pokemon_variant == "shadow" and pokemon_id == 150:
+                                    # Shadow Mewtwo variant
+                                    pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}_shadow_front.gif")
+                                    _ankimon_log("INFO", "ShadowMewtwo", f"Filtered collection using Shadow Mewtwo GIF: {pkmn_image_path}")
                                 else:
                                     pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
                                 splash_label = MovieSplashLabel(pkmn_image_path)
                             else:
-                                pkmn_image_path = str(frontdefault / f"{pokemon_id}.png")
+                                # PNG mode - check for shadow variant
+                                if pokemon_variant == "shadow" and pokemon_id == 150:
+                                    pkmn_image_path = str(user_path_sprites / "front_default" / f"{pokemon_id}_shadow_front.png")
+                                    _ankimon_log("INFO", "ShadowMewtwo", f"Filtered collection using Shadow Mewtwo PNG: {pkmn_image_path}")
+                                else:
+                                    pkmn_image_path = str(frontdefault / f"{pokemon_id}.png")
                             pixmap.load(pkmn_image_path)
 
                             # Calculate the new dimensions to maintain the aspect ratio
@@ -6184,9 +6204,9 @@ class PokemonCollectionDialog(QDialog):
                             pokemon_button = QPushButton("Show me Details")
                             pokemon_button.setIconSize(pixmap.size())
                             if len(pokemon_type) > 1:
-                                pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0], pokemon_type[1]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname))
+                                pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0], pokemon_type[1]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname, variant=pokemon_variant: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant))
                             else:
-                                pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname))
+                                pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname, variant=pokemon_variant: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant))
 
                             slot_combo = QComboBox()
                             slot_combo.addItem("Assign to Slot...", -1)
@@ -6301,7 +6321,7 @@ def rename_pkmn(nickname, pkmn_name):
     except Exception as e:
         showWarning(f"An error occured: {e}")
 
-def PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname):
+def PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant=None):
     global frontdefault, type_style_file, language, icon_path, gif_in_collection
     # Create the dialog
     try:
@@ -6321,14 +6341,24 @@ def PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attac
         layout = QVBoxLayout()
         typelayout = QHBoxLayout()
         attackslayout = QVBoxLayout()
-        # Display the Pokémon image
+        # Display the Pokémon image (check for variant first)
         pkmnimage_label = QLabel()
         pkmnpixmap = QPixmap()
         if gif_in_collection is True:
-            pkmnimage_path = str(user_path_sprites / "front_default_gif" / f"{int(id)}.gif")
+            # Check for shadow variant
+            if variant == "shadow" and id == 150:
+                pkmnimage_path = str(user_path_sprites / "front_default_gif" / f"{int(id)}_shadow_front.gif")
+                _ankimon_log("INFO", "ShadowMewtwo", f"Collection Details using Shadow Mewtwo GIF: {pkmnimage_path}")
+            else:
+                pkmnimage_path = str(user_path_sprites / "front_default_gif" / f"{int(id)}.gif")
             pkmnimage_label = MovieSplashLabel(pkmnimage_path)
         else:
-            pkmnimage_path = str(frontdefault / f"{int(id)}.png")
+            # Check for shadow variant (PNG)
+            if variant == "shadow" and id == 150:
+                pkmnimage_path = str(user_path_sprites / "front_default" / f"{int(id)}_shadow_front.png")
+                _ankimon_log("INFO", "ShadowMewtwo", f"Collection Details using Shadow Mewtwo PNG: {pkmnimage_path}")
+            else:
+                pkmnimage_path = str(frontdefault / f"{int(id)}.png")
             pkmnpixmap.load(str(pkmnimage_path))
             # Calculate the new dimensions to maintain the aspect ratio
             max_width = 150
@@ -6376,9 +6406,19 @@ def PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attac
         description_formated = '\n'.join(result)
         description_txt = f"Description: \n {description_formated}"
         #curr_hp_txt = (f"Current Hp:{current_hp}")
-        growth_rate_txt = (f"Growth Rate: {growth_rate.capitalize()}")
+
+        # Safe capitalize for growth_rate and ability (handle None)
+        if growth_rate:
+            growth_rate_txt = (f"Growth Rate: {growth_rate.capitalize()}")
+        else:
+            growth_rate_txt = (f"Growth Rate: Unknown")
+
         lvl = (f" Level: {level}")
-        ability_txt = (f" Ability: {ability.capitalize()}")
+
+        if ability:
+            ability_txt = (f" Ability: {ability.capitalize()}")
+        else:
+            ability_txt = (f" Ability: Unknown")
         type_txt = (f" Type:")
         stats_list = [
             detail_stats["hp"],
