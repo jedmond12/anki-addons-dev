@@ -2205,8 +2205,11 @@ if item_sprites != False:
 caught_pokemon = {} #pokemon not caught
 
 def check_min_generate_level(pkmn_name):
-    evoType = search_pokedex(name.lower(), "evoType")
-    evoLevel = search_pokedex(name.lower(), "evoLevel")
+    # Handle special variants (Shadow Mewtwo, etc.) - use base Pokemon for lookups
+    lookup_name = "mewtwo" if name == "Shadow Mewtwo" else name.lower()
+
+    evoType = search_pokedex(lookup_name, "evoType")
+    evoLevel = search_pokedex(lookup_name, "evoLevel")
     if evoLevel is not None:
         return int(evoLevel)
     elif evoType is not None:
@@ -2924,7 +2927,10 @@ def save_caught_pokemon(nickname):
                 achievements = receive_badge(10,achievements)
                 test_window.display_badge(10)
 
-    stats = search_pokedex(name.lower(),"baseStats")
+    # Handle special variants (Shadow Mewtwo, etc.) - use base Pokemon for lookups
+    lookup_name = "mewtwo" if name == "Shadow Mewtwo" else name.lower()
+
+    stats = search_pokedex(lookup_name,"baseStats")
     stats["xp"] = 0
     ev = {
       "hp": 0,
@@ -2934,7 +2940,7 @@ def save_caught_pokemon(nickname):
       "spd": 0,
       "spe": 0
     }
-    evos = search_pokedex(name, "evos")
+    evos = search_pokedex(lookup_name, "evos")
     if evos is None:
         evos = ""
 
@@ -2950,7 +2956,7 @@ def save_caught_pokemon(nickname):
         "nickname": nickname,
         "level": level,
         "gender": gender,
-        "id": search_pokedex(name.lower(),'num'),
+        "id": search_pokedex(lookup_name,'num'),
         "ability": ability,
         "type": type,
         "stats": stats,
@@ -3039,8 +3045,12 @@ def save_main_pokemon_progress(mainpokemon_path, mainpokemon_level, mainpokemon_
             showInfo(f"{msg}")
         mainpokemon_xp = int(mainpokemon_xp) - int(experience)
         name = f"{mainpokemon_name}"
+
+        # Handle special variants (Shadow Mewtwo, etc.) - use base Pokemon for lookups
+        lookup_name = "mewtwo" if name == "Shadow Mewtwo" else name.lower()
+
         # Update mainpokemon_evolution and handle evolution logic
-        mainpokemon_evolution = search_pokedex(name.lower(), "evos")
+        mainpokemon_evolution = search_pokedex(lookup_name, "evos")
         if mainpokemon_evolution:
             for pokemon in mainpokemon_evolution:
                 min_level = search_pokedex(pokemon.lower(), "evoLevel")
@@ -7716,8 +7726,16 @@ if database_complete != False and mainpokemon_empty is False:
         global hp_bar_thickness, xp_bar_config, xp_bar_location, hp_bar_config, xp_bar_spacer, hp_only_spacer, wild_hp_spacer, seconds, myseconds, view_main_front
 
         experience_for_next_lvl = find_experience_for_level(mainpokemon_growth_rate, mainpokemon_level)
+
+        # Handle special variants (Shadow Mewtwo, etc.) - use base Pokemon for lookups
+        lookup_name = "mewtwo" if name == "Shadow Mewtwo" else name.lower()
+
         if reviewer_image_gif == False:
-            pokemon_imagefile = f'{search_pokedex(name.lower(), "num")}.png' #use for png files
+            # For Shadow Mewtwo, use the id directly since it's already set
+            if name == "Shadow Mewtwo":
+                pokemon_imagefile = f'{id}_shadow_front.png'
+            else:
+                pokemon_imagefile = f'{search_pokedex(lookup_name, "num")}.png' #use for png files
             pokemon_image_file = os.path.join(frontdefault, pokemon_imagefile) #use for png files
             if show_mainpkmn_in_reviewer > 0:
                 main_pkmn_imagefile = f'{mainpokemon_id}.png' #use for png files
@@ -7729,7 +7747,7 @@ if database_complete != False and mainpokemon_empty is False:
                 pokemon_imagefile = f'{id}_shadow_front.gif'
                 _ankimon_log("INFO", "ShadowMewtwo", f"Using Shadow Mewtwo sprite: {pokemon_imagefile}")
             else:
-                pokemon_imagefile = f'{search_pokedex(name.lower(), "num")}.gif'
+                pokemon_imagefile = f'{search_pokedex(lookup_name, "num")}.gif'
             pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
 
             # Fallback to PNG if GIF doesn't exist
@@ -7776,7 +7794,8 @@ if database_complete != False and mainpokemon_empty is False:
             pokemon_hp_percent = int((hp / max_hp) * 100)
         is_reviewer = mw.state == "review"
         # Inject CSS and the life bar only if not injected before and in the reviewer
-        pokeball = check_pokecoll_in_list(search_pokedex(name.lower(), "num"))
+        # Use lookup_name for Shadow Mewtwo compatibility
+        pokeball = check_pokecoll_in_list(search_pokedex(lookup_name, "num"))
         if not life_bar_injected and is_reviewer:
             css = """
             """
@@ -8149,8 +8168,11 @@ if database_complete != False and mainpokemon_empty is False:
         global hp, name, id, frontdefault, battle_status, user_path_sprites, show_mainpkmn_in_reviewer, mainpokemon_hp, mainpokemon_id, mainpokemon_name, mainpokemon_level, mainpokemon_stats, mainpokemon_ev, mainpokemon_iv, mainpokemon_xp, xp_bar_config
         global mainpokemon_level, icon_path, empty_icon_path, seconds, myseconds, view_main_front, pokeball
 
+        # Handle special variants (Shadow Mewtwo, etc.) - use base Pokemon for lookups
+        lookup_name = "mewtwo" if name == "Shadow Mewtwo" else name.lower()
+
         # Validate enemy ID before building sprite paths
-        enemy_num = search_pokedex(name.lower(), "num")
+        enemy_num = search_pokedex(lookup_name, "num")
         is_valid, safe_id, warning = _ankimon_validate_enemy_id(enemy_num, name)
         if not is_valid:
             _ankimon_log("WARN", "AnkimonSprite", f"Invalid enemy ID in update_life_bar: {warning}, using fallback ID {safe_id}")
@@ -8165,26 +8187,32 @@ if database_complete != False and mainpokemon_empty is False:
                 main_pkmn_imagefile_path = os.path.join(backdefault, main_pkmn_imagefile) #use for png files
         else:
             # Enemy Pokémon sprite (wild encounter)
-            pokemon_imagefile = f'{enemy_num}.gif'
-
-            # Check if this is a shiny encounter
-            global current_wild_is_shiny, shiny_front_default
-            if current_wild_is_shiny:
-                # Try shiny sprite first
-                shiny_sprite_path = shiny_front_default / pokemon_imagefile
-                if shiny_sprite_path.exists():
-                    pokemon_image_file = str(shiny_sprite_path)
-                    # Debug log
-                    try:
-                        if developer_menu and developer_menu.menuAction().isVisible():
-                            print(f"[Shiny] Reviewer enemy sprite: id={search_pokedex(name.lower(), 'num')} is_shiny=True path={pokemon_image_file}")
-                    except:
-                        pass
-                else:
-                    # Fallback to normal sprite
-                    pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
-            else:
+            # Check for shadow variant first
+            global current_wild_is_shiny, shiny_front_default, current_wild_variant
+            if current_wild_variant == "shadow" and enemy_num == 150:
+                pokemon_imagefile = f'{enemy_num}_shadow_front.gif'
                 pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
+                _ankimon_log("INFO", "ShadowMewtwo", f"Reviewer overlay using Shadow Mewtwo sprite: {pokemon_imagefile}")
+            else:
+                pokemon_imagefile = f'{enemy_num}.gif'
+
+                # Check if this is a shiny encounter
+                if current_wild_is_shiny:
+                    # Try shiny sprite first
+                    shiny_sprite_path = shiny_front_default / pokemon_imagefile
+                    if shiny_sprite_path.exists():
+                        pokemon_image_file = str(shiny_sprite_path)
+                        # Debug log
+                        try:
+                            if developer_menu and developer_menu.menuAction().isVisible():
+                                print(f"[Shiny] Reviewer enemy sprite: id={search_pokedex(lookup_name, 'num')} is_shiny=True path={pokemon_image_file}")
+                        except:
+                            pass
+                    else:
+                        # Fallback to normal sprite
+                        pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
+                else:
+                    pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
 
             if show_mainpkmn_in_reviewer > 0:
                 main_pkmn_imagefile = f'{mainpokemon_id}.gif'
@@ -9667,9 +9695,20 @@ class TestWindow(QWidget):
         global is_trainer_battle, current_trainer_name, current_trainer_sprite, enemy_battles_path
         attack_counter = 0
         caught = 0
-        id = int(search_pokedex(name.lower(), "num"))
+
+        # Special handling for Shadow Mewtwo (and other variants)
+        if name == "Shadow Mewtwo":
+            # Use base Mewtwo for Pokedex lookups but keep display name
+            display_name = "Shadow Mewtwo"
+            lookup_name = "mewtwo"
+            # id is already set globally to 150
+        else:
+            display_name = name.capitalize()
+            lookup_name = name.lower()
+            id = int(search_pokedex(lookup_name, "num"))
+
         lang_name = get_pokemon_diff_lang_name(int(id))
-        name = name.capitalize()
+        name = display_name
         max_hp = calculate_hp(stats["hp"], level, ev, iv)
         mainpkmn_max_hp = calculate_hp(mainpokemon_stats["hp"], mainpokemon_level, mainpokemon_ev, mainpokemon_iv)
 
@@ -10345,8 +10384,12 @@ class TestWindow(QWidget):
         # Create the dialog
         lang_name = get_pokemon_diff_lang_name(int(id))
         window_title = (f"Would you want let the  wild {lang_name} free or catch the wild {lang_name} ?")
+
+        # Handle special variants (Shadow Mewtwo, etc.) - use base Pokemon for lookups
+        lookup_name = "mewtwo" if name == "Shadow Mewtwo" else name.lower()
+
         # Display the Pokémon image
-        pkmnimage_file = f"{int(search_pokedex(name.lower(),'num'))}.png"
+        pkmnimage_file = f"{int(search_pokedex(lookup_name,'num'))}.png"
         pkmnimage_path = frontdefault / pkmnimage_file
         pkmnimage_label = QLabel()
         pkmnpixmap = QPixmap()
