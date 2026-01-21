@@ -2939,8 +2939,11 @@ def save_caught_pokemon(nickname):
         evos = ""
 
     # Capture shiny status from current wild encounter
-    global current_wild_is_shiny
+    global current_wild_is_shiny, current_wild_variant
     is_shiny = current_wild_is_shiny if current_wild_is_shiny else False
+
+    # Capture variant (e.g., "shadow", "primal", etc.)
+    variant = current_wild_variant if current_wild_variant else None
 
     caught_pokemon = {
         "name": name.capitalize(),
@@ -2958,7 +2961,8 @@ def save_caught_pokemon(nickname):
         "current_hp": calculate_hp(int(stats["hp"]),level, ev, iv),
         "growth_rate": growth_rate,
         "evos": evos,
-        "is_shiny": is_shiny
+        "is_shiny": is_shiny,
+        "variant": variant
     }
     # Load existing Pokémon data if it exists
     if mypokemon_path.is_file():
@@ -3770,7 +3774,7 @@ def _ankimon_spawn_special_battle_pokemon():
 
 def new_pokemon():
     global name, id, level, hp, max_hp, ability, type, enemy_attacks, attacks, base_experience, stats, battlescene_file, ev, iv, gender, battle_status
-    global is_trainer_battle, current_trainer_name, current_trainer_sprite
+    global is_trainer_battle, current_trainer_name, current_trainer_sprite, current_wild_variant
 
     # BATTLE LOCK: Check if important battle is in progress
     if _ankimon_is_battle_locked():
@@ -3781,11 +3785,12 @@ def new_pokemon():
     if not _ankimon_is_gym_active() and not _ankimon_is_elite_four_active() and not _ankimon_is_champion_active():
         _ankimon_set_battle_state("wild")
 
-    # new pokemon - reset trainer battle flag
+    # new pokemon - reset trainer battle flag and variant
     is_trainer_battle = False
     current_trainer_name = None
     current_trainer_sprite = None
     gender = None
+    current_wild_variant = None  # Reset variant for new encounters
 
     # Check for legendary battles (priority order: Primal Groudon > Primal Kyogre > Mega Rayquaza)
     try:
@@ -7718,8 +7723,22 @@ if database_complete != False and mainpokemon_empty is False:
                 main_pkmn_imagefile = f'{mainpokemon_id}.png' #use for png files
                 main_pkmn_imagefile_path = os.path.join(backdefault, main_pkmn_imagefile) #use for png files
         else:
-            pokemon_imagefile = f'{search_pokedex(name.lower(), "num")}.gif'
+            # Check for shadow variant
+            global current_wild_variant
+            if current_wild_variant == "shadow" and id == 150:
+                pokemon_imagefile = f'{id}_shadow_front.gif'
+                _ankimon_log("INFO", "ShadowMewtwo", f"Using Shadow Mewtwo sprite: {pokemon_imagefile}")
+            else:
+                pokemon_imagefile = f'{search_pokedex(name.lower(), "num")}.gif'
             pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
+
+            # Fallback to PNG if GIF doesn't exist
+            if not os.path.exists(pokemon_image_file):
+                pokemon_imagefile_png = pokemon_imagefile.replace('.gif', '.png')
+                pokemon_image_file_fallback = os.path.join((user_path_sprites / "front_default"), pokemon_imagefile_png)
+                if os.path.exists(pokemon_image_file_fallback):
+                    _ankimon_log("INFO", "SpriteLoad", f"GIF not found, using PNG fallback: {pokemon_imagefile_png}")
+                    pokemon_image_file = pokemon_image_file_fallback
             if show_mainpkmn_in_reviewer > 0:
                 main_pkmn_imagefile = f'{mainpokemon_id}.gif'
 
@@ -9798,15 +9817,29 @@ class TestWindow(QWidget):
 
         # Fallback to normal sprites ONLY if shiny sprite doesn't exist
         if not sprite_loaded:
-            wild_gif_path = frontdefault_gif / f"{id}.gif"
+            # Check for shadow variant
+            global current_wild_variant
+            if current_wild_variant == "shadow" and id == 150:
+                wild_gif_path = frontdefault_gif / f"{id}_shadow_front.gif"
+                _ankimon_log("INFO", "ShadowMewtwo", f"Loading Shadow Mewtwo sprite: {wild_gif_path}")
+            else:
+                wild_gif_path = frontdefault_gif / f"{id}.gif"
+
             if wild_gif_path.exists():
                 wild_movie = QMovie(str(wild_gif_path))
                 wild_movie.setScaledSize(QSize(wild_size, wild_size))
                 wild_pkmn_label.setMovie(wild_movie)
                 wild_movie.start()
+                _ankimon_log("INFO", "SpriteLoad", f"Loaded GIF sprite: {wild_gif_path}")
             else:
                 # Fallback to PNG
-                wild_pixmap = QPixmap(str(frontdefault / f"{id}.png"))
+                if current_wild_variant == "shadow" and id == 150:
+                    wild_pixmap_path = frontdefault / f"{id}_shadow_front.png"
+                    _ankimon_log("INFO", "ShadowMewtwo", f"GIF not found, using PNG: {wild_pixmap_path}")
+                else:
+                    wild_pixmap_path = frontdefault / f"{id}.png"
+
+                wild_pixmap = QPixmap(str(wild_pixmap_path))
                 wild_pixmap = wild_pixmap.scaled(wild_size, wild_size, Qt.AspectRatioMode.KeepAspectRatio)
                 wild_pkmn_label.setPixmap(wild_pixmap)
 
@@ -9852,14 +9885,40 @@ class TestWindow(QWidget):
         except:
             pass
 
-        # Priority: Mega > Shiny > Normal
+        # Check if player's active Pokemon is Shadow variant
+        player_is_shadow_variant = False
+        try:
+            my_list = _load_mypokemon_list()
+            party = _load_party()
+            active_slot = party.get("active_slot", 0)
+            slots = party.get("slots", [0, 1, 2, 3])
+            if 0 <= active_slot < len(slots):
+                party_index = slots[active_slot]
+                if 0 <= party_index < len(my_list):
+                    active_pokemon = my_list[party_index]
+                    if active_pokemon.get("id") == 150 and active_pokemon.get("variant") == "shadow":
+                        player_is_shadow_variant = True
+                        _ankimon_log("INFO", "ShadowMewtwo", "Player's active Pokemon is Shadow Mewtwo")
+        except Exception as e:
+            pass
+
+        # Priority: Mega > Shadow > Shiny > Normal
         # Use mega sprite if Pokemon is in Mega form
         if player_is_mega:
             player_gif_path = user_path_sprites / "back_mega_pokemon_gif" / f"{mainpokemon_id}.gif"
             if not player_gif_path.exists():
                 player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
             print(f"[Sprite] player id={mainpokemon_id} shiny={player_is_shiny} mega=True -> {player_gif_path.name}")
-        # Use shiny sprite if Pokemon is shiny (and not mega)
+        # Use shadow sprite if Pokemon is Shadow variant
+        elif player_is_shadow_variant:
+            player_gif_path = backdefault_gif / f"{mainpokemon_id}_shadow_back.gif"
+            if not player_gif_path.exists():
+                player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
+                print(f"[Sprite] player id={mainpokemon_id} shadow=True -> back_default_gif (shadow sprite not found)")
+            else:
+                print(f"[Sprite] player id={mainpokemon_id} shadow=True -> shadow_back_default_gif")
+                _ankimon_log("INFO", "ShadowMewtwo", f"Using Shadow Mewtwo back sprite: {player_gif_path}")
+        # Use shiny sprite if Pokemon is shiny (and not mega or shadow)
         elif player_is_shiny:
             global shiny_back_default_gif
             player_gif_path = shiny_back_default_gif / f"{mainpokemon_id}.gif"
@@ -10453,10 +10512,25 @@ class TestWindow(QWidget):
             kill_pokemon()
             return
 
-        # Check if this is a legendary Pokemon - auto-capture instead of showing dialog
-        global name
+        # Check if this is a legendary Pokemon or Shadow Mewtwo - auto-capture instead of showing dialog
+        global name, current_wild_variant
         try:
             legendary_names = ['Groudon-Primal', 'Kyogre-Primal', 'Rayquaza-Mega']
+
+            # Check for Shadow Mewtwo
+            if name == "Shadow Mewtwo" or (current_wild_variant == "shadow" and id == 150):
+                _ankimon_log("INFO", "ShadowMewtwo", "Shadow Mewtwo defeated, auto-capturing")
+                # Auto-capture Shadow Mewtwo
+                catch_pokemon("Shadow Mewtwo")
+                # Reset variant
+                current_wild_variant = None
+                tooltipWithColour("Shadow Mewtwo has been captured!", "#8B008B")
+                # Spawn new Pokemon after capture
+                new_pokemon()
+                self.display_first_encounter()
+                return
+
+            # Check for other legendaries
             if name in legendary_names:
                 # Determine legendary type
                 legendary_type = None
@@ -12522,7 +12596,21 @@ class ItemWindow(QWidget):
         item_frame.addWidget(item_picture_label)
         item_frame.addWidget(item_name_label)
         item_name = item_name.lower()
-        if item_name in self.hp_heal_items :
+        if item_name == "shadow-synergy-stone":
+            # Special handling for Shadow Synergy Stone
+            use_item_button = QPushButton("Challenge Shadow Mewtwo")
+            use_item_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #8B008B;
+                    color: white;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #9932CC;
+                }
+            """)
+            use_item_button.clicked.connect(lambda: self.Use_Shadow_Synergy_Stone())
+        elif item_name in self.hp_heal_items :
             use_item_button = QPushButton("Heal Mainpokemon")
             global mainpokemon_name
             hp_heal = self.hp_heal_items[item_name]
@@ -12611,6 +12699,35 @@ class ItemWindow(QWidget):
         self.delete_item(item_name)
         play_effect_sound("HpHeal")
         showInfo(f"{pkmn_name} was healed for {heal_points}")
+
+    def Use_Shadow_Synergy_Stone(self):
+        """Trigger Shadow Mewtwo encounter when stone is used"""
+        global test_window, pkmn_window
+        try:
+            _ankimon_log("INFO", "ShadowMewtwo", "Shadow Synergy Stone used from item bag")
+
+            # Close item bag
+            self.close()
+
+            # Open battle window if not already open
+            if not pkmn_window:
+                test_window.show()
+
+            # Trigger the encounter
+            success = _trigger_shadow_mewtwo_encounter()
+
+            if success:
+                # Battle started successfully
+                _ankimon_log("INFO", "ShadowMewtwo", "Shadow Mewtwo encounter started from item bag")
+            else:
+                # Encounter failed or was cancelled
+                _ankimon_log("INFO", "ShadowMewtwo", "Shadow Mewtwo encounter cancelled or failed")
+
+        except Exception as e:
+            _ankimon_log("ERROR", "ShadowMewtwo", f"Error using Shadow Synergy Stone: {e}")
+            import traceback
+            traceback.print_exc()
+            showWarning(f"Error triggering Shadow Mewtwo encounter: {e}")
 
     def Check_Evo_Item(self, pkmn_name, item_name):
         try:
@@ -13586,6 +13703,268 @@ def _trigger_legendary_battle(legendary_type):
         print(f"Error triggering legendary battle: {e}")
         import traceback
         traceback.print_exc()
+
+# ============================================================================
+# SHADOW MEWTWO ENCOUNTER SYSTEM
+# ============================================================================
+
+def _has_shadow_synergy_stone():
+    """Check if player has Shadow Synergy Stone in their bag"""
+    try:
+        with open(itembag_path, 'r') as json_file:
+            itembag_list = json.load(json_file)
+            return "shadow-synergy-stone" in itembag_list
+    except (FileNotFoundError, json.JSONDecodeError):
+        return False
+    except Exception as e:
+        _ankimon_log("ERROR", "ShadowMewtwo", f"Error checking for Shadow Synergy Stone: {e}")
+        return False
+
+def _consume_shadow_synergy_stone():
+    """Remove Shadow Synergy Stone from player's bag"""
+    try:
+        with open(itembag_path, 'r') as json_file:
+            itembag_list = json.load(json_file)
+
+        if "shadow-synergy-stone" in itembag_list:
+            itembag_list.remove("shadow-synergy-stone")
+            with open(itembag_path, 'w') as json_file:
+                json.dump(itembag_list, json_file, indent=2)
+            _ankimon_log("INFO", "ShadowMewtwo", "Shadow Synergy Stone consumed")
+            return True
+        return False
+    except Exception as e:
+        _ankimon_log("ERROR", "ShadowMewtwo", f"Error consuming Shadow Synergy Stone: {e}")
+        return False
+
+def _check_shadow_mewtwo_captured():
+    """Check if Shadow Mewtwo has already been captured"""
+    try:
+        if not mypokemon_path.is_file():
+            return False
+
+        with open(mypokemon_path, 'r') as json_file:
+            pokemon_list = json.load(json_file)
+            for pokemon in pokemon_list:
+                if pokemon.get("id") == 150 and pokemon.get("variant") == "shadow":
+                    return True
+        return False
+    except Exception as e:
+        _ankimon_log("ERROR", "ShadowMewtwo", f"Error checking Shadow Mewtwo capture status: {e}")
+        return False
+
+class ShadowMewtwoPopup(QDialog):
+    """Popup dialog for Shadow Mewtwo encounter approval"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Shadow Encounter")
+        self.setModal(True)
+        self.result_accepted = False
+
+        # Set fixed size
+        self.setFixedSize(500, 600)
+
+        # Main layout
+        layout = QVBoxLayout()
+        layout.setSpacing(20)
+
+        # Title
+        title_label = QLabel("A Shadow presence approaches…")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setFont(QFont("Arial", 20, QFont.Weight.Bold))
+        title_label.setStyleSheet("color: #8B008B; padding: 10px;")
+        layout.addWidget(title_label)
+
+        # Shadow Mewtwo popup image
+        try:
+            popup_image_path = addon_dir / "user_files" / "sprites" / "shadow_mewtwo_project" / "shadow_mewtwo_popup.png"
+            if popup_image_path.exists():
+                pixmap = QPixmap(str(popup_image_path))
+                # Scale to fit dialog
+                scaled_pixmap = pixmap.scaled(400, 300, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                image_label = QLabel()
+                image_label.setPixmap(scaled_pixmap)
+                image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                layout.addWidget(image_label)
+            else:
+                _ankimon_log("WARN", "ShadowMewtwo", f"Popup image not found: {popup_image_path}")
+        except Exception as e:
+            _ankimon_log("ERROR", "ShadowMewtwo", f"Error loading popup image: {e}")
+
+        # Description text
+        desc_label = QLabel("Use Shadow Synergy Stone to challenge Shadow Mewtwo?")
+        desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        desc_label.setFont(QFont("Arial", 14))
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("padding: 15px;")
+        layout.addWidget(desc_label)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(20)
+
+        # Start Battle button
+        start_button = QPushButton("Start Battle")
+        start_button.setFixedSize(150, 50)
+        start_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        start_button.setStyleSheet("""
+            QPushButton {
+                background-color: #8B008B;
+                color: white;
+                border-radius: 8px;
+                padding: 10px;
+            }
+            QPushButton:hover {
+                background-color: #9932CC;
+            }
+        """)
+        qconnect(start_button.clicked, self.accept_battle)
+        button_layout.addWidget(start_button)
+
+        # Cancel button
+        cancel_button = QPushButton("Cancel")
+        cancel_button.setFixedSize(150, 50)
+        cancel_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        cancel_button.setStyleSheet("""
+            QPushButton {
+                background-color: #808080;
+                color: white;
+                border-radius: 8px;
+                padding: 10px;
+            }
+            QPushButton:hover {
+                background-color: #696969;
+            }
+        """)
+        qconnect(cancel_button.clicked, self.reject)
+        button_layout.addWidget(cancel_button)
+
+        layout.addLayout(button_layout)
+
+        self.setLayout(layout)
+        self.setStyleSheet("background-color: #F0F0F0;")
+
+    def accept_battle(self):
+        """User accepted the battle"""
+        self.result_accepted = True
+        self.accept()
+
+def _trigger_shadow_mewtwo_encounter():
+    """Trigger Shadow Mewtwo special encounter with popup approval"""
+    global test_window, pkmn_window
+
+    try:
+        _ankimon_log("INFO", "ShadowMewtwo", "Shadow Mewtwo encounter triggered")
+
+        # Check if already captured
+        if _check_shadow_mewtwo_captured():
+            tooltipWithColour("Shadow Mewtwo has already been captured!", "#FFA500")
+            _ankimon_log("INFO", "ShadowMewtwo", "Shadow Mewtwo already captured, encounter cancelled")
+            return False
+
+        # Check if player has the stone
+        if not _has_shadow_synergy_stone():
+            tooltipWithColour("You need the Shadow Synergy Stone to trigger this encounter!", "#FF0000")
+            _ankimon_log("WARN", "ShadowMewtwo", "Player missing Shadow Synergy Stone")
+            return False
+
+        # Show popup approval dialog
+        popup = ShadowMewtwoPopup(mw)
+        popup.exec()
+
+        if not popup.result_accepted:
+            _ankimon_log("INFO", "ShadowMewtwo", "Player cancelled Shadow Mewtwo encounter")
+            tooltipWithColour("Shadow Mewtwo encounter cancelled", "#888888")
+            return False
+
+        # Player accepted - consume the stone and start battle
+        _ankimon_log("INFO", "ShadowMewtwo", "Player accepted Shadow Mewtwo encounter, consuming stone")
+        _consume_shadow_synergy_stone()
+
+        # Set battle state to wild (Shadow Mewtwo is catchable)
+        _ankimon_set_battle_state("wild")
+
+        # Set up Shadow Mewtwo battle
+        _spawn_shadow_mewtwo()
+
+        tooltipWithColour("Shadow Mewtwo battle begins!", "#8B008B")
+        return True
+
+    except Exception as e:
+        _ankimon_log("ERROR", "ShadowMewtwo", f"Error triggering Shadow Mewtwo encounter: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def _spawn_shadow_mewtwo():
+    """Spawn Shadow Mewtwo for battle"""
+    global name, id, level, hp, max_hp, ability, type, enemy_attacks, base_experience, stats, ev, iv, gender, battle_status, growth_rate, pokemon_species
+    global test_window, pkmn_window, battlescene_file, current_wild_variant
+
+    try:
+        _ankimon_log("INFO", "ShadowMewtwo", "Spawning Shadow Mewtwo for battle")
+
+        # Set Pokemon data
+        name = "Shadow Mewtwo"
+        id = 150  # Mewtwo ID
+        level = 70
+        pokemon_species = "Legendary"
+
+        # Mark as shadow variant globally
+        current_wild_variant = "shadow"
+
+        # Get Pokemon data from pokedex (using base Mewtwo)
+        ability = search_pokedex("mewtwo", "abilities")
+        if ability and isinstance(ability, dict):
+            ability = list(ability.values())[0] if ability else "Unknown"
+        type = search_pokedex("mewtwo", "types")
+        base_experience = search_pokedex("mewtwo", "baseExp")
+        stats = search_pokedex("mewtwo", "baseStats")
+        growth_rate = search_pokedex("mewtwo", "growth_rate")
+
+        # Generate high-level stats
+        ev = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+        iv = {
+            "hp": random.randint(25, 31),
+            "atk": random.randint(25, 31),
+            "def": random.randint(25, 31),
+            "spa": random.randint(25, 31),
+            "spd": random.randint(25, 31),
+            "spe": random.randint(25, 31)
+        }
+
+        max_hp = calculate_hp(stats["hp"], level, ev, iv)
+        hp = max_hp
+
+        # Generate powerful moveset
+        enemy_attacks = generate_attacks(id, level)
+
+        # Set gender and battle status
+        gender = "genderless"
+        battle_status = None
+
+        # Select battle scene
+        battlescene_file = random_battle_scene("Psychic")
+
+        _ankimon_log("INFO", "ShadowMewtwo", f"Shadow Mewtwo spawned: hp={hp}/{max_hp}, level={level}")
+
+        # Clear stale sprites
+        _ankimon_clear_stale_enemy_sprites()
+
+        # Update battle window if active
+        if pkmn_window is True and test_window is not None:
+            test_window.display_first_encounter()
+
+        return True
+
+    except Exception as e:
+        _ankimon_log("ERROR", "ShadowMewtwo", f"Error spawning Shadow Mewtwo: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+# Global variable to track current wild Pokemon variant
+current_wild_variant = None
 
 def _get_mega_capable_pokemon_ids():
     """Return list of Pokemon IDs that can mega evolve"""
@@ -15133,6 +15512,90 @@ if database_complete != False:
         print(f"[DevMenu] ERROR: Could not add fresh restart: {e}")
         import traceback
         traceback.print_exc()
+
+    # Add separator before Shadow Mewtwo controls
+    developer_menu.addSeparator()
+
+    # Developer Mode: Give Shadow Synergy Stone
+    def dev_give_shadow_stone():
+        """Give Shadow Synergy Stone to player"""
+        try:
+            with open(itembag_path, 'r') as json_file:
+                itembag_list = json.load(json_file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            itembag_list = []
+
+        if "shadow-synergy-stone" not in itembag_list:
+            itembag_list.append("shadow-synergy-stone")
+            with open(itembag_path, 'w') as json_file:
+                json.dump(itembag_list, json_file, indent=2)
+            tooltipWithColour("Shadow Synergy Stone added to bag!", "#8B008B")
+            _ankimon_log("INFO", "ShadowMewtwo", "Dev mode: Shadow Synergy Stone given")
+        else:
+            tooltipWithColour("You already have the Shadow Synergy Stone!", "#FFA500")
+
+    give_shadow_stone_action = QAction("🌑 Give Shadow Synergy Stone", mw)
+    qconnect(give_shadow_stone_action.triggered, dev_give_shadow_stone)
+    developer_menu.addAction(give_shadow_stone_action)
+
+    # Developer Mode: Trigger Shadow Mewtwo Encounter
+    def dev_trigger_shadow_mewtwo():
+        """Directly trigger Shadow Mewtwo encounter"""
+        global test_window, pkmn_window
+        try:
+            if not _has_shadow_synergy_stone():
+                tooltipWithColour("You need Shadow Synergy Stone! Giving you one...", "#FFA500")
+                dev_give_shadow_stone()
+
+            # Open battle window if not open
+            if not pkmn_window:
+                test_window.show()
+
+            # Trigger encounter
+            _trigger_shadow_mewtwo_encounter()
+        except Exception as e:
+            _ankimon_log("ERROR", "ShadowMewtwo", f"Dev mode trigger error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    trigger_shadow_mewtwo_action = QAction("👻 Trigger Shadow Mewtwo Encounter", mw)
+    qconnect(trigger_shadow_mewtwo_action.triggered, dev_trigger_shadow_mewtwo)
+    developer_menu.addAction(trigger_shadow_mewtwo_action)
+
+    # Developer Mode: Reset Shadow Mewtwo (remove from captured)
+    def dev_reset_shadow_mewtwo():
+        """Remove Shadow Mewtwo from captured Pokemon"""
+        try:
+            if not mypokemon_path.is_file():
+                tooltipWithColour("No captured Pokemon to reset!", "#888888")
+                return
+
+            with open(mypokemon_path, 'r') as json_file:
+                pokemon_list = json.load(json_file)
+
+            original_count = len(pokemon_list)
+            pokemon_list = [p for p in pokemon_list if not (p.get("id") == 150 and p.get("variant") == "shadow")]
+            removed_count = original_count - len(pokemon_list)
+
+            if removed_count > 0:
+                with open(mypokemon_path, 'w') as json_file:
+                    json.dump(pokemon_list, json_file, indent=2)
+                tooltipWithColour(f"Shadow Mewtwo removed from captured Pokemon! ({removed_count} removed)", "#8B008B")
+                _ankimon_log("INFO", "ShadowMewtwo", f"Dev mode: Shadow Mewtwo reset ({removed_count} removed)")
+            else:
+                tooltipWithColour("Shadow Mewtwo not found in captured Pokemon!", "#888888")
+
+        except Exception as e:
+            _ankimon_log("ERROR", "ShadowMewtwo", f"Dev mode reset error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    reset_shadow_mewtwo_action = QAction("🔄 Reset Shadow Mewtwo Capture", mw)
+    qconnect(reset_shadow_mewtwo_action.triggered, dev_reset_shadow_mewtwo)
+    developer_menu.addAction(reset_shadow_mewtwo_action)
+
+    # Add separator before Mega controls
+    developer_menu.addSeparator()
 
     # Developer Mode: Toggle Mega for Active Pokemon
     try:
