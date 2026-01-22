@@ -2207,8 +2207,8 @@ if item_sprites != False:
 caught_pokemon = {} #pokemon not caught
 
 def check_min_generate_level(pkmn_name):
-    # Handle special variants (Shadow Mewtwo, etc.) - use base Pokemon for lookups
-    lookup_name = "mewtwo" if name == "Shadow Mewtwo" else name.lower()
+    # Handle special variants (Shadow Mewtwo, etc.) - use proper lookup name
+    lookup_name = "shadowmewtwo" if name == "Shadow Mewtwo" else name.lower()
 
     evoType = search_pokedex(lookup_name, "evoType")
     evoLevel = search_pokedex(lookup_name, "evoLevel")
@@ -2930,7 +2930,7 @@ def save_caught_pokemon(nickname):
                 test_window.display_badge(10)
 
     # Handle special variants (Shadow Mewtwo, etc.) - use base Pokemon for lookups
-    lookup_name = "mewtwo" if name == "Shadow Mewtwo" else name.lower()
+    lookup_name = "shadowmewtwo" if name == "Shadow Mewtwo" else name.lower()
 
     stats = search_pokedex(lookup_name,"baseStats")
     stats["xp"] = 0
@@ -3049,7 +3049,7 @@ def save_main_pokemon_progress(mainpokemon_path, mainpokemon_level, mainpokemon_
         name = f"{mainpokemon_name}"
 
         # Handle special variants (Shadow Mewtwo, etc.) - use base Pokemon for lookups
-        lookup_name = "mewtwo" if name == "Shadow Mewtwo" else name.lower()
+        lookup_name = "shadowmewtwo" if name == "Shadow Mewtwo" else name.lower()
 
         # Update mainpokemon_evolution and handle evolution logic
         mainpokemon_evolution = search_pokedex(lookup_name, "evos")
@@ -5808,9 +5808,9 @@ class PokemonCollectionDialog(QDialog):
                                 # Fallback to normal if mega sprite doesn't exist
                                 if not os.path.exists(pkmn_image_path):
                                     pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
-                            elif pokemon_variant == "shadow" and pokemon_id == 150:
+                            elif pokemon_id == 9999:
                                 # Shadow Mewtwo variant
-                                pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}_shadow_front.gif")
+                                pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
                                 _ankimon_log("INFO", "ShadowMewtwo", f"Collection list using Shadow Mewtwo GIF: {pkmn_image_path}")
                             elif is_shiny:
                                 # Try shiny sprite
@@ -5825,9 +5825,9 @@ class PokemonCollectionDialog(QDialog):
                         else:
                             # PNG mode - check for shadow > shiny > normal
                             is_shiny = pokemon.get('is_shiny', False)
-                            if pokemon_variant == "shadow" and pokemon_id == 150:
+                            if pokemon_id == 9999:
                                 # Shadow Mewtwo variant (PNG)
-                                pkmn_image_path = str(user_path_sprites / "front_default" / f"{pokemon_id}_shadow_front.png")
+                                pkmn_image_path = str(user_path_sprites / "front_default" / f"{pokemon_id}.png")
                                 _ankimon_log("INFO", "ShadowMewtwo", f"Collection list using Shadow Mewtwo PNG: {pkmn_image_path}")
                             elif is_shiny:
                                 # Try shiny PNG (if exists)
@@ -6103,17 +6103,17 @@ class PokemonCollectionDialog(QDialog):
                                     # Fallback to normal if mega sprite doesn't exist
                                     if not os.path.exists(pkmn_image_path):
                                         pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
-                                elif pokemon_variant == "shadow" and pokemon_id == 150:
+                                elif pokemon_id == 9999:
                                     # Shadow Mewtwo variant
-                                    pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}_shadow_front.gif")
+                                    pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
                                     _ankimon_log("INFO", "ShadowMewtwo", f"Filtered collection using Shadow Mewtwo GIF: {pkmn_image_path}")
                                 else:
                                     pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
                                 splash_label = MovieSplashLabel(pkmn_image_path)
                             else:
                                 # PNG mode - check for shadow variant
-                                if pokemon_variant == "shadow" and pokemon_id == 150:
-                                    pkmn_image_path = str(user_path_sprites / "front_default" / f"{pokemon_id}_shadow_front.png")
+                                if pokemon_id == 9999:
+                                    pkmn_image_path = str(user_path_sprites / "front_default" / f"{pokemon_id}.png")
                                     _ankimon_log("INFO", "ShadowMewtwo", f"Filtered collection using Shadow Mewtwo PNG: {pkmn_image_path}")
                                 else:
                                     pkmn_image_path = str(frontdefault / f"{pokemon_id}.png")
@@ -6330,7 +6330,7 @@ def PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attac
         lang_name = get_pokemon_diff_lang_name(int(id)).capitalize()
 
         # Custom description for Shadow Mewtwo
-        if variant == "shadow" and id == 150:
+        if id == 9999:
             description = "In the past, Anne was almost possessed by a Shadow Synergy Stone but was saved by Mewtwo, whom the Shadow Synergy Stone took control of and merged with instead."
         else:
             lang_desc = get_pokemon_descriptions(int(id))
@@ -6354,16 +6354,16 @@ def PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attac
         pkmnpixmap = QPixmap()
         if gif_in_collection is True:
             # Check for shadow variant
-            if variant == "shadow" and id == 150:
-                pkmnimage_path = str(user_path_sprites / "front_default_gif" / f"{int(id)}_shadow_front.gif")
+            if id == 9999:
+                pkmnimage_path = str(user_path_sprites / "front_default_gif" / f"{int(id)}.gif")
                 _ankimon_log("INFO", "ShadowMewtwo", f"Collection Details using Shadow Mewtwo GIF: {pkmnimage_path}")
             else:
                 pkmnimage_path = str(user_path_sprites / "front_default_gif" / f"{int(id)}.gif")
             pkmnimage_label = MovieSplashLabel(pkmnimage_path)
         else:
             # Check for shadow variant (PNG)
-            if variant == "shadow" and id == 150:
-                pkmnimage_path = str(user_path_sprites / "front_default" / f"{int(id)}_shadow_front.png")
+            if id == 9999:
+                pkmnimage_path = str(user_path_sprites / "front_default" / f"{int(id)}.png")
                 _ankimon_log("INFO", "ShadowMewtwo", f"Collection Details using Shadow Mewtwo PNG: {pkmnimage_path}")
             else:
                 pkmnimage_path = str(frontdefault / f"{int(id)}.png")
@@ -6549,7 +6549,7 @@ def PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attac
         remember_attacks_details_button = QPushButton("Remember Attacks") #add Details to Moves
 
         # Handle Shadow Mewtwo specially for attack learning
-        lookup_name = "mewtwo" if name == "Shadow Mewtwo" else name
+        lookup_name = "shadowmewtwo" if name == "Shadow Mewtwo" else name
         all_attacks = get_all_pokemon_moves(lookup_name, level)
         qconnect(remember_attacks_details_button.clicked, lambda: remember_attack_details_window(id, attacks, all_attacks))
         
@@ -7779,7 +7779,7 @@ if database_complete != False and mainpokemon_empty is False:
         experience_for_next_lvl = find_experience_for_level(mainpokemon_growth_rate, mainpokemon_level)
 
         # Handle special variants (Shadow Mewtwo, etc.) - use base Pokemon for lookups
-        lookup_name = "mewtwo" if name == "Shadow Mewtwo" else name.lower()
+        lookup_name = "shadowmewtwo" if name == "Shadow Mewtwo" else name.lower()
 
         if reviewer_image_gif == False:
             # For Shadow Mewtwo, use the id directly since it's already set
@@ -7794,8 +7794,8 @@ if database_complete != False and mainpokemon_empty is False:
         else:
             # Check for shadow variant
             global current_wild_variant
-            if current_wild_variant == "shadow" and id == 150:
-                pokemon_imagefile = f'{id}_shadow_front.gif'
+            if id == 9999:
+                pokemon_imagefile = f'{id}.gif'
                 _ankimon_log("INFO", "ShadowMewtwo", f"Using Shadow Mewtwo sprite: {pokemon_imagefile}")
             else:
                 pokemon_imagefile = f'{search_pokedex(lookup_name, "num")}.gif'
@@ -8220,7 +8220,7 @@ if database_complete != False and mainpokemon_empty is False:
         global mainpokemon_level, icon_path, empty_icon_path, seconds, myseconds, view_main_front, pokeball
 
         # Handle special variants (Shadow Mewtwo, etc.) - use base Pokemon for lookups
-        lookup_name = "mewtwo" if name == "Shadow Mewtwo" else name.lower()
+        lookup_name = "shadowmewtwo" if name == "Shadow Mewtwo" else name.lower()
 
         # Validate enemy ID before building sprite paths
         enemy_num = search_pokedex(lookup_name, "num")
@@ -8240,8 +8240,8 @@ if database_complete != False and mainpokemon_empty is False:
             # Enemy Pokémon sprite (wild encounter)
             # Check for shadow variant first
             global current_wild_is_shiny, shiny_front_default, current_wild_variant
-            if current_wild_variant == "shadow" and enemy_num == 150:
-                pokemon_imagefile = f'{enemy_num}_shadow_front.gif'
+            if enemy_num == 9999:
+                pokemon_imagefile = f'{enemy_num}.gif'
                 pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
                 _ankimon_log("INFO", "ShadowMewtwo", f"Reviewer overlay using Shadow Mewtwo sprite: {pokemon_imagefile}")
             else:
@@ -9917,8 +9917,8 @@ class TestWindow(QWidget):
         if not sprite_loaded:
             # Check for shadow variant
             global current_wild_variant
-            if current_wild_variant == "shadow" and id == 150:
-                wild_gif_path = frontdefault_gif / f"{id}_shadow_front.gif"
+            if id == 9999:
+                wild_gif_path = frontdefault_gif / f"{id}.gif"
                 _ankimon_log("INFO", "ShadowMewtwo", f"Loading Shadow Mewtwo sprite: {wild_gif_path}")
             else:
                 wild_gif_path = frontdefault_gif / f"{id}.gif"
@@ -9931,8 +9931,8 @@ class TestWindow(QWidget):
                 _ankimon_log("INFO", "SpriteLoad", f"Loaded GIF sprite: {wild_gif_path}")
             else:
                 # Fallback to PNG
-                if current_wild_variant == "shadow" and id == 150:
-                    wild_pixmap_path = frontdefault / f"{id}_shadow_front.png"
+                if id == 9999:
+                    wild_pixmap_path = frontdefault / f"{id}.png"
                     _ankimon_log("INFO", "ShadowMewtwo", f"GIF not found, using PNG: {wild_pixmap_path}")
                 else:
                     wild_pixmap_path = frontdefault / f"{id}.png"
@@ -9994,7 +9994,7 @@ class TestWindow(QWidget):
                 party_index = slots[active_slot]
                 if 0 <= party_index < len(my_list):
                     active_pokemon = my_list[party_index]
-                    if active_pokemon.get("id") == 150 and active_pokemon.get("variant") == "shadow":
+                    if active_pokemon.get("id") == 9999:
                         player_is_shadow_variant = True
                         _ankimon_log("INFO", "ShadowMewtwo", "Player's active Pokemon is Shadow Mewtwo")
         except Exception as e:
@@ -10009,13 +10009,9 @@ class TestWindow(QWidget):
             print(f"[Sprite] player id={mainpokemon_id} shiny={player_is_shiny} mega=True -> {player_gif_path.name}")
         # Use shadow sprite if Pokemon is Shadow variant
         elif player_is_shadow_variant:
-            player_gif_path = backdefault_gif / f"{mainpokemon_id}_shadow_back.gif"
-            if not player_gif_path.exists():
-                player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
-                print(f"[Sprite] player id={mainpokemon_id} shadow=True -> back_default_gif (shadow sprite not found)")
-            else:
-                print(f"[Sprite] player id={mainpokemon_id} shadow=True -> shadow_back_default_gif")
-                _ankimon_log("INFO", "ShadowMewtwo", f"Using Shadow Mewtwo back sprite: {player_gif_path}")
+            player_gif_path = backdefault_gif / f"{mainpokemon_id}.gif"
+            print(f"[Sprite] player id={mainpokemon_id} shadow=True -> back_default_gif")
+            _ankimon_log("INFO", "ShadowMewtwo", f"Using Shadow Mewtwo back sprite: {player_gif_path}")
         # Use shiny sprite if Pokemon is shiny (and not mega or shadow)
         elif player_is_shiny:
             global shiny_back_default_gif
@@ -10445,7 +10441,7 @@ class TestWindow(QWidget):
         window_title = (f"Would you want let the  wild {lang_name} free or catch the wild {lang_name} ?")
 
         # Handle special variants (Shadow Mewtwo, etc.) - use base Pokemon for lookups
-        lookup_name = "mewtwo" if name == "Shadow Mewtwo" else name.lower()
+        lookup_name = "shadowmewtwo" if name == "Shadow Mewtwo" else name.lower()
 
         # Display the Pokémon image
         pkmnimage_file = f"{int(search_pokedex(lookup_name,'num'))}.png"
@@ -10620,7 +10616,7 @@ class TestWindow(QWidget):
             legendary_names = ['Groudon-Primal', 'Kyogre-Primal', 'Rayquaza-Mega']
 
             # Check for Shadow Mewtwo
-            if name == "Shadow Mewtwo" or (current_wild_variant == "shadow" and id == 150):
+            if id == 9999:
                 _ankimon_log("INFO", "ShadowMewtwo", "Shadow Mewtwo defeated, auto-capturing")
 
                 # Auto-capture Shadow Mewtwo using save_caught_pokemon directly
@@ -13861,7 +13857,7 @@ def _check_shadow_mewtwo_captured():
         with open(mypokemon_path, 'r') as json_file:
             pokemon_list = json.load(json_file)
             for pokemon in pokemon_list:
-                if pokemon.get("id") == 150 and pokemon.get("variant") == "shadow":
+                if pokemon.get("id") == 9999:
                     return True
         return False
     except Exception as e:
@@ -14030,21 +14026,21 @@ def _spawn_shadow_mewtwo():
 
         # Set Pokemon data
         name = "Shadow Mewtwo"
-        id = 150  # Mewtwo ID
+        id = 9999  # Shadow Mewtwo ID
         level = 70
         pokemon_species = "Legendary"
 
         # Mark as shadow variant globally
-        current_wild_variant = "shadow"
+        current_wild_variant = None
 
-        # Get Pokemon data from pokedex (using base Mewtwo)
-        ability = search_pokedex("mewtwo", "abilities")
+        # Get Pokemon data from pokedex
+        ability = search_pokedex("shadowmewtwo", "abilities")
         if ability and isinstance(ability, dict):
             ability = list(ability.values())[0] if ability else "Unknown"
-        type = search_pokedex("mewtwo", "types")
-        base_experience = search_pokedex("mewtwo", "baseExp")
-        stats = search_pokedex("mewtwo", "baseStats")
-        growth_rate = search_pokedex("mewtwo", "growth_rate")
+        type = search_pokedex("shadowmewtwo", "types")
+        base_experience = search_pokedex("shadowmewtwo", "baseExp")
+        stats = search_pokedex("shadowmewtwo", "baseStats")
+        growth_rate = search_pokedex("shadowmewtwo", "growth_rate")
 
         # Generate high-level stats
         ev = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
@@ -15699,7 +15695,7 @@ if database_complete != False:
                 pokemon_list = json.load(json_file)
 
             original_count = len(pokemon_list)
-            pokemon_list = [p for p in pokemon_list if not (p.get("id") == 150 and p.get("variant") == "shadow")]
+            pokemon_list = [p for p in pokemon_list if not p.get("id") == 9999]
             removed_count = original_count - len(pokemon_list)
 
             if removed_count > 0:
