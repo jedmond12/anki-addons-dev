@@ -1309,7 +1309,9 @@ if database_complete == True:
         try:
             with open(filename, 'r') as file:
                 data = json.load(file)
-                ids = [character['id'] for character in data]
+                # Only count Pokemon without variants (or with variant=None) in Pokedex
+                # This excludes Shadow Mewtwo from counting as regular Mewtwo
+                ids = [character['id'] for character in data if not character.get('variant')]
                 owned_pokemon_ids = ids
         except FileNotFoundError:
             # First-time setup - mypokemon.json doesn't exist yet
@@ -6326,8 +6328,14 @@ def PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attac
     # Create the dialog
     try:
         lang_name = get_pokemon_diff_lang_name(int(id)).capitalize()
-        lang_desc = get_pokemon_descriptions(int(id))
-        description = lang_desc
+
+        # Custom description for Shadow Mewtwo
+        if variant == "shadow" and id == 150:
+            description = "In the past, Anne was almost possessed by a Shadow Synergy Stone but was saved by Mewtwo, whom the Shadow Synergy Stone took control of and merged with instead."
+        else:
+            lang_desc = get_pokemon_descriptions(int(id))
+            description = lang_desc
+
         wpkmn_details = QDialog(mw)
         if nickname is None:
             wpkmn_details.setWindowTitle(f"Infos to : {lang_name} ")
@@ -6539,7 +6547,10 @@ def PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attac
         attacks_details_button = QPushButton("Attack Details") #add Details to Moves
         qconnect(attacks_details_button.clicked, lambda: attack_details_window(attacks))
         remember_attacks_details_button = QPushButton("Remember Attacks") #add Details to Moves
-        all_attacks = get_all_pokemon_moves(name, level)
+
+        # Handle Shadow Mewtwo specially for attack learning
+        lookup_name = "mewtwo" if name == "Shadow Mewtwo" else name
+        all_attacks = get_all_pokemon_moves(lookup_name, level)
         qconnect(remember_attacks_details_button.clicked, lambda: remember_attack_details_window(id, attacks, all_attacks))
         
         #free_pokemon_button = QPushButton("Release Pokemon") #add Details to Moves unneeded button
@@ -14049,13 +14060,9 @@ def _spawn_shadow_mewtwo():
         max_hp = calculate_hp(stats["hp"], level, ev, iv)
         hp = max_hp
 
-        # Generate powerful moveset
-        enemy_attacks_list = get_all_pokemon_moves("mewtwo", level)
-        enemy_attacks = []
-        if len(enemy_attacks_list) <= 4:
-            enemy_attacks = enemy_attacks_list
-        else:
-            enemy_attacks = random.sample(enemy_attacks_list, 4)
+        # Shadow Mewtwo custom moveset
+        enemy_attacks = ["psywave", "psystrike", "flamethrower", "shadowball"]
+        _ankimon_log("INFO", "ShadowMewtwo", f"Shadow Mewtwo moveset: {enemy_attacks}")
 
         # Set gender and battle status
         gender = "genderless"
