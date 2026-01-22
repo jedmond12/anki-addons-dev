@@ -14602,6 +14602,25 @@ def _load_mypokemon_list():
         if not isinstance(data, list):
             print(f"[Pokemon List] WARNING: Data is not a list, returning empty list")
             return []
+
+        # Migrate old Shadow Mewtwo (id=150, variant="shadow") to new format (id=9999)
+        needs_save = False
+        for pokemon in data:
+            if pokemon.get("id") == 150 and pokemon.get("variant") == "shadow":
+                _ankimon_log("INFO", "Migration", "Migrating Shadow Mewtwo from id=150 to id=9999")
+                pokemon["id"] = 9999
+                pokemon["variant"] = None
+                needs_save = True
+
+        # Save migrated data
+        if needs_save:
+            try:
+                with open(str(mypokemon_path), "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                _ankimon_log("INFO", "Migration", "Shadow Mewtwo migration saved successfully")
+            except Exception as e:
+                _ankimon_log("ERROR", "Migration", f"Failed to save migrated Shadow Mewtwo: {e}")
+
         return data
     except FileNotFoundError:
         print(f"[Pokemon List] WARNING: File not found: {mypokemon_path}")
