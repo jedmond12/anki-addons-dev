@@ -46383,34 +46383,5 @@
     "gen": 5,
     "tier": "Illegal",
     "isNonstandard": "Custom"
-  },
-  "shadowmewtwo": {
-    "num": 9999,
-    "name": "Shadow Mewtwo",
-    "types": [
-      "Psychic",
-      "Dark"
-    ],
-    "gender": "N",
-    "baseStats": {
-      "hp": 106,
-      "atk": 110,
-      "def": 90,
-      "spa": 154,
-      "spd": 90,
-      "spe": 130
-    },
-    "abilities": {
-      "0": "Pressure",
-      "H": "Unnerve"
-    },
-    "heightm": 2,
-    "weightkg": 122,
-    "color": "Purple",
-    "eggGroups": [
-      "Undiscovered"
-    ],
-    "gen": 1,
-    "tier": "Uber"
   }
 }
