@@ -8226,21 +8226,21 @@ if database_complete != False and mainpokemon_empty is False:
 
             # Check if this is a shiny encounter
             if current_wild_is_shiny:
-                    # Try shiny sprite first
-                    shiny_sprite_path = shiny_front_default / pokemon_imagefile
-                    if shiny_sprite_path.exists():
-                        pokemon_image_file = str(shiny_sprite_path)
-                        # Debug log
-                        try:
-                            if developer_menu and developer_menu.menuAction().isVisible():
-                                print(f"[Shiny] Reviewer enemy sprite: id={search_pokedex(lookup_name, 'num')} is_shiny=True path={pokemon_image_file}")
-                        except:
-                            pass
-                    else:
-                        # Fallback to normal sprite
-                        pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
+                # Try shiny sprite first
+                shiny_sprite_path = shiny_front_default / pokemon_imagefile
+                if shiny_sprite_path.exists():
+                    pokemon_image_file = str(shiny_sprite_path)
+                    # Debug log
+                    try:
+                        if developer_menu and developer_menu.menuAction().isVisible():
+                            print(f"[Shiny] Reviewer enemy sprite: id={search_pokedex(lookup_name, 'num')} is_shiny=True path={pokemon_image_file}")
+                    except:
+                        pass
                 else:
+                    # Fallback to normal sprite
                     pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
+            else:
+                pokemon_image_file = os.path.join((user_path_sprites / "front_default_gif"), pokemon_imagefile)
 
             if show_mainpkmn_in_reviewer > 0:
                 main_pkmn_imagefile = f'{mainpokemon_id}.gif'
