@@ -3107,11 +3107,11 @@ def save_main_pokemon_progress(mainpokemon_path, mainpokemon_level, mainpokemon_
                                                 attacks[index_to_replace] = new_attack
                                                 showInfo(
                                                     f"Replaced '{selected_attack}' with '{new_attack}'")
+                                            else:
+                                                showInfo(f"'{selected_attack}' not found in the list")
                                         else:
-                                            showInfo(f"'{selected_attack}' not found in the list")
-                                    else:
-                                        # Handle the case where the user cancels the dialog
-                                        showInfo(f"{new_attack} will be discarded.")
+                                            # Handle the case where the user cancels the dialog
+                                            showInfo(f"{new_attack} will be discarded.")
                             mainpkmndata["attacks"] = attacks
                             break
         else:
