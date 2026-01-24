@@ -11853,7 +11853,12 @@ class CompletePokedex(QWidget):
 
     def start_lazy_display(self, pokemon_list):
         """Start lazy loading display of pokemon"""
-        _ankimon_log("INFO", "PokedexRender", f"Starting lazy display for {len(pokemon_list)} pokemon (dev mode: {config.get('developer_mode_enabled', False)})")
+        try:
+            global developer_menu
+            dev_mode_active = developer_menu and developer_menu.menuAction().isVisible()
+        except:
+            dev_mode_active = False
+        _ankimon_log("INFO", "PokedexRender", f"Starting lazy display for {len(pokemon_list)} pokemon (dev mode: {dev_mode_active})")
         # Stop any existing timer
         if self.render_timer.isActive():
             self.render_timer.stop()
@@ -12005,23 +12010,27 @@ class CompletePokedex(QWidget):
                 card_layout.addLayout(type_container)
 
             # Add force encounter button (Developer Mode feature)
-            if config and config.get("developer_mode_enabled", False):
-                force_button = QPushButton("Force Encounter")
-                force_button.setStyleSheet("""
-                    QPushButton {
-                        background-color: #5a9fd4;
-                        color: white;
-                        border-radius: 5px;
-                        padding: 5px;
-                        font-size: 11px;
-                    }
-                    QPushButton:hover {
-                        background-color: #4a8fc4;
-                    }
-                """)
-                force_button.clicked.connect(lambda checked, pid=pkmn_id, pname=pkmn_name: self.force_encounter(pid, pname))
-                card_layout.addWidget(force_button)
-                _ankimon_log("DEBUG", "PokedexRender", f"Added Force Encounter button for {pkmn_name} (#{pkmn_id})")
+            try:
+                global developer_menu
+                if developer_menu and developer_menu.menuAction().isVisible():
+                    force_button = QPushButton("Force Encounter")
+                    force_button.setStyleSheet("""
+                        QPushButton {
+                            background-color: #5a9fd4;
+                            color: white;
+                            border-radius: 5px;
+                            padding: 5px;
+                            font-size: 11px;
+                        }
+                        QPushButton:hover {
+                            background-color: #4a8fc4;
+                        }
+                    """)
+                    force_button.clicked.connect(lambda checked, pid=pkmn_id, pname=pkmn_name: self.force_encounter(pid, pname))
+                    card_layout.addWidget(force_button)
+                    _ankimon_log("DEBUG", "PokedexRender", f"Added Force Encounter button for {pkmn_name} (#{pkmn_id})")
+            except Exception as e:
+                _ankimon_log("DEBUG", "PokedexRender", f"Developer menu check failed: {e}")
 
             card_widget.setLayout(card_layout)
             return card_widget
