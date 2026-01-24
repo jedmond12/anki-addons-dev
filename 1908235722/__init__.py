@@ -2209,7 +2209,7 @@ if item_sprites != False:
 caught_pokemon = {} #pokemon not caught
 
 def check_min_generate_level(pkmn_name):
-    lookup_name = name.lower()
+    lookup_name = pkmn_name.lower()  # Fixed: use parameter, not global name
 
     evoType = search_pokedex(lookup_name, "evoType")
     evoLevel = search_pokedex(lookup_name, "evoLevel")
@@ -2348,6 +2348,7 @@ if database_complete != False:
         #generation_file = ("pokeapi_db.json")
         # Initialize id with a default value to prevent UnboundLocalError
         id = None
+        is_forced_encounter = False  # Track if this is a forced encounter
         try:
             # Check for forced encounter from Pokédex
             global forced_next_pokemon_id, forced_next_pokemon_shiny, current_wild_is_shiny
@@ -2356,6 +2357,7 @@ if database_complete != False:
                 id = forced_next_pokemon_id
                 forced_next_pokemon_id = None
                 pokemon_species = None
+                is_forced_encounter = True  # Mark this as a forced encounter
                 # Apply forced shiny status
                 current_wild_is_shiny = forced_next_pokemon_shiny
                 forced_next_pokemon_shiny = False
@@ -2445,10 +2447,11 @@ if database_complete != False:
             if name is list:
                 name = name[0]
 
-            # CRITICAL FIX: For gym/Elite Four/Champion pokemon, skip min_level check (it causes RecursionError for some pokemon like Steelix)
+            # CRITICAL FIX: For gym/Elite Four/Champion/Force Encounter pokemon, skip min_level check (it causes RecursionError for some pokemon like Steelix)
             is_special_battle = _ankimon_is_gym_active() or _ankimon_is_elite_four_active() or _ankimon_is_champion_active()
-            if is_special_battle:
-                # Special battle pokemon: skip min_level check, always generate at appropriate level
+
+            if is_special_battle or is_forced_encounter:
+                # Special battle pokemon or forced encounters: skip min_level check, always generate at appropriate level
                 min_level = 0  # Bypass evolution level requirements
             else:
                 # Wild pokemon: do normal min_level check
