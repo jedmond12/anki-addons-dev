@@ -2037,6 +2037,9 @@ if database_complete != False:
        # else:
             #return f"{pokemon_name} does not learn any new moves at level {level} or lower."
             return eligible_moves
+        else:
+            # Return empty list if no moves found (prevents None return)
+            return []
 
 def split_string_by_length(input_string, max_length):
     current_length = 0
@@ -3080,30 +3083,30 @@ def save_main_pokemon_progress(mainpokemon_path, mainpokemon_level, mainpokemon_
                             if new_attacks:
                                 msg = ""
                                 msg += f"Your {mainpokemon_name.capitalize()} can learn a new attack !"
-                            for new_attack in new_attacks:
-                                if len(attacks) < 4:
-                                    attacks.append(new_attack)
-                                    msg += f"\n Your {mainpokemon_name.capitalize()} has learned {new_attack} !"
-                                    color = "#6A4DAC"
-                                    tooltipWithColour(msg, color)
-                                    if pop_up_dialog_message_on_defeat is True:
-                                        showInfo(f"{msg}")
-                                else:
-                                    dialog = AttackDialog(attacks, new_attack)
-                                    if dialog.exec() == QDialog.DialogCode.Accepted:
-                                        selected_attack = dialog.selected_attack
-                                        index_to_replace = None
-                                        for index, attack in enumerate(attacks):
-                                            if attack == selected_attack:
-                                                index_to_replace = index
-                                                pass
-                                            else:
-                                                pass
-                                        # If the attack is found, replace it with 'new_attack'
-                                        if index_to_replace is not None:
-                                            attacks[index_to_replace] = new_attack
-                                            showInfo(
-                                                f"Replaced '{selected_attack}' with '{new_attack}'")
+                                for new_attack in new_attacks:
+                                    if len(attacks) < 4:
+                                        attacks.append(new_attack)
+                                        msg += f"\n Your {mainpokemon_name.capitalize()} has learned {new_attack} !"
+                                        color = "#6A4DAC"
+                                        tooltipWithColour(msg, color)
+                                        if pop_up_dialog_message_on_defeat is True:
+                                            showInfo(f"{msg}")
+                                    else:
+                                        dialog = AttackDialog(attacks, new_attack)
+                                        if dialog.exec() == QDialog.DialogCode.Accepted:
+                                            selected_attack = dialog.selected_attack
+                                            index_to_replace = None
+                                            for index, attack in enumerate(attacks):
+                                                if attack == selected_attack:
+                                                    index_to_replace = index
+                                                    pass
+                                                else:
+                                                    pass
+                                            # If the attack is found, replace it with 'new_attack'
+                                            if index_to_replace is not None:
+                                                attacks[index_to_replace] = new_attack
+                                                showInfo(
+                                                    f"Replaced '{selected_attack}' with '{new_attack}'")
                                         else:
                                             showInfo(f"'{selected_attack}' not found in the list")
                                     else:
@@ -3118,30 +3121,30 @@ def save_main_pokemon_progress(mainpokemon_path, mainpokemon_level, mainpokemon_
                     new_attacks = get_levelup_move_for_pokemon(mainpokemon_name.lower(), int(mainpokemon_level))
                     if new_attacks:
                         showInfo(f"Your {mainpokemon_name.capitalize()} can now learn a new attack !")
-                    for new_attack in new_attacks:
-                        if len(attacks) < 4:
-                            attacks.append(new_attack)
-                        else:
-                            dialog = AttackDialog(attacks, new_attack)
-                            if dialog.exec() == QDialog.DialogCode.Accepted:
-                                selected_attack = dialog.selected_attack
-                                index_to_replace = None
-                                for index, attack in enumerate(attacks):
-                                    if attack == selected_attack:
-                                        index_to_replace = index
-                                        pass
-                                    else:
-                                        pass
-                                # If the attack is found, replace it with 'new_attack'
-                                if index_to_replace is not None:
-                                    attacks[index_to_replace] = new_attack
-                                    showInfo(
-                                        f"Replaced '{selected_attack}' with '{new_attack}'")
-                                else:
-                                    showInfo(f"'{selected_attack}' not found in the list")
+                        for new_attack in new_attacks:
+                            if len(attacks) < 4:
+                                attacks.append(new_attack)
                             else:
-                                # Handle the case where the user cancels the dialog
-                                showInfo("No attack selected")
+                                dialog = AttackDialog(attacks, new_attack)
+                                if dialog.exec() == QDialog.DialogCode.Accepted:
+                                    selected_attack = dialog.selected_attack
+                                    index_to_replace = None
+                                    for index, attack in enumerate(attacks):
+                                        if attack == selected_attack:
+                                            index_to_replace = index
+                                            pass
+                                        else:
+                                            pass
+                                    # If the attack is found, replace it with 'new_attack'
+                                    if index_to_replace is not None:
+                                        attacks[index_to_replace] = new_attack
+                                        showInfo(
+                                            f"Replaced '{selected_attack}' with '{new_attack}'")
+                                    else:
+                                        showInfo(f"'{selected_attack}' not found in the list")
+                                else:
+                                    # Handle the case where the user cancels the dialog
+                                    showInfo("No attack selected")
                     mainpkmndata["attacks"] = attacks
                     break
     else:
