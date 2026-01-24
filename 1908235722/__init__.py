@@ -11823,9 +11823,9 @@ class CompletePokedex(QWidget):
             with open(pokedex_path, 'r') as file:
                 pokedex_dict = json.load(file)
             # Convert dict to list of pokemon objects
-            # Filter to unique Pokemon IDs only (no duplicate forms)
+            # Prefer base forms over alternate forms (mega, gmax, etc.)
             self.all_pokemon = []
-            seen_ids = set()
+            id_to_pokemon = {}  # Map ID to best pokemon entry
             for pkmn_name, pkmn_data in pokedex_dict.items():
                 if isinstance(pkmn_data, dict):
                     # Ensure num and name are in the data
@@ -11834,11 +11834,25 @@ class CompletePokedex(QWidget):
                     if 'name' not in pkmn_data:
                         pkmn_data['name'] = pkmn_name
 
-                    # Only add if we haven't seen this Pokemon ID before
                     pkmn_id = pkmn_data['num']
-                    if pkmn_id not in seen_ids and pkmn_id > 0:
-                        seen_ids.add(pkmn_id)
-                        self.all_pokemon.append(pkmn_data)
+                    if pkmn_id > 0:
+                        # Check if this is a base form (no special suffixes)
+                        is_base_form = not any(suffix in pkmn_name.lower() for suffix in
+                            ['mega', 'gmax', 'alola', 'galar', 'hisui', 'paldea', 'totem', 'starter', 'primal', 'origin', 'therian', 'black', 'white'])
+
+                        # If we haven't seen this ID, or this is a base form replacing an alternate form, use it
+                        if pkmn_id not in id_to_pokemon:
+                            id_to_pokemon[pkmn_id] = pkmn_data
+                        elif is_base_form:
+                            # Replace alternate form with base form
+                            existing_name = id_to_pokemon[pkmn_id].get('name', '')
+                            existing_is_base = not any(suffix in existing_name.lower() for suffix in
+                                ['mega', 'gmax', 'alola', 'galar', 'hisui', 'paldea', 'totem', 'starter', 'primal', 'origin', 'therian', 'black', 'white'])
+                            if not existing_is_base:
+                                id_to_pokemon[pkmn_id] = pkmn_data
+
+            # Convert map to list
+            self.all_pokemon = list(id_to_pokemon.values())
             # Sort by pokemon number
             self.all_pokemon.sort(key=lambda x: x.get('num', 0))
 
@@ -15342,6 +15356,48 @@ if database_complete != False:
         developer_menu.addAction(configure_action)
     except Exception as e:
         print(f"Could not add config menu item: {e}")
+
+    # Add separator before item tools
+    developer_menu.addSeparator()
+
+    # Developer Mode: Give Rare Candy
+    def dev_give_rare_candy():
+        """Give the player a rare candy item"""
+        try:
+            global itembag_path
+            # Load current item bag
+            try:
+                with open(itembag_path, 'r') as json_file:
+                    itembag_list = json.load(json_file)
+            except (FileNotFoundError, json.JSONDecodeError):
+                itembag_list = []
+
+            # Add rare candy
+            itembag_list.append("rare-candy")
+            with open(itembag_path, 'w') as json_file:
+                json.dump(itembag_list, json_file, indent=2)
+
+            # Refresh item window if open
+            try:
+                global items_window
+                if items_window and items_window.isVisible():
+                    items_window.renewWidgets()
+            except:
+                pass
+
+            tooltipWithColour("Rare Candy added to your bag!", "#FFD700")
+            _ankimon_log("INFO", "DevMode", "Rare Candy given via dev menu")
+        except Exception as e:
+            showWarning(f"Failed to give Rare Candy: {e}")
+            _ankimon_log("ERROR", "DevMode", f"Failed to give Rare Candy: {e}")
+
+    try:
+        give_rare_candy_action = QAction("🍬 Give Rare Candy", mw)
+        qconnect(give_rare_candy_action.triggered, dev_give_rare_candy)
+        developer_menu.addAction(give_rare_candy_action)
+        print("[DevMenu] Added: Give Rare Candy")
+    except Exception as e:
+        print(f"[DevMenu] ERROR: Could not add give rare candy: {e}")
 
     # Add separator before mega evolution tools
     developer_menu.addSeparator()
