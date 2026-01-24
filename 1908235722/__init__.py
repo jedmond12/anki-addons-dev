@@ -11859,8 +11859,20 @@ class CompletePokedex(QWidget):
             # Sort by pokemon number
             self.all_pokemon.sort(key=lambda x: x.get('num', 0))
 
-            # Start lazy loading instead of rendering all at once
+            # Debug logging: show what Pokemon were loaded
             _ankimon_log("INFO", "AnkimonPokedex", f"Loaded {len(self.all_pokemon)} pokemon, starting lazy render...")
+
+            # Log some examples of evolved Pokemon
+            evolved_examples = []
+            for p in self.all_pokemon:
+                if p.get('num') in [5, 6, 38, 212, 865]:  # Charmeleon, Charizard, Ninetales, Scizor, Sirfetch'd
+                    evolved_examples.append(f"#{p.get('num')}: {p.get('name')}")
+            if evolved_examples:
+                _ankimon_log("INFO", "AnkimonPokedex", f"Evolved Pokemon loaded: {', '.join(evolved_examples)}")
+            else:
+                _ankimon_log("WARNING", "AnkimonPokedex", "No evolved Pokemon examples found in loaded list!")
+
+            # Start lazy loading instead of rendering all at once
             self.start_lazy_display(self.all_pokemon)
         except Exception as e:
             error_label = QLabel(f"Error loading Pokédex: {str(e)}")
