@@ -16,6 +16,7 @@
   "battle_sounds": false,
   "show_mainpkmn_in_reviewer": 0,
   "show_external_ankimon_window": true,
+  "show_ankimon_on_reviewer": true,
   "reviewer_text_message_box": true,
   "reviewer_text_message_box_time": 3,
   "pop_up_dialog_message_on_defeat": false,
