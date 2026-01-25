@@ -1396,6 +1396,7 @@ battle_sounds = config["battle_sounds"]
 language = config["language"]
 ankimon_key = config["key_for_opening_closing_ankimon"]
 show_mainpkmn_in_reviewer = config["show_mainpkmn_in_reviewer"] #0 is off, 1 normal, 2 battle mode
+show_external_ankimon_window = config.get("show_external_ankimon_window", True)  # Default to True for backwards compatibility
 xp_bar_config = config["xp_bar_config"]
 review_hp_bar_thickness = config["review_hp_bar_thickness"] #2 = 8px, 3# 12px, 4# 16px, 5# 20px
 hp_bar_thickness = review_hp_bar_thickness * 4
@@ -9688,6 +9689,13 @@ class TestWindow(QWidget):
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.Window)
         # Display the Pokémon image
 
+    def show(self):
+        """Override show() to check config before showing window"""
+        global show_external_ankimon_window
+        if show_external_ankimon_window:
+            super().show()
+        # If config is False, window stays hidden
+
     def open_dynamic_window(self):
         # Create and show the dynamic window
         try:
@@ -9705,11 +9713,15 @@ class TestWindow(QWidget):
             from aqt import mw
             # Get the geometry of the main screen
             main_screen_geometry = mw.geometry()
-            # Calculate the position to center the ItemWindow on the main screen
-            x = main_screen_geometry.center().x() - self.width() / 2
-            y = main_screen_geometry.center().y() - self.height() / 2
-            self.setGeometry(x, y, 256, 256 )
-            self.move(x,y)
+            # Calculate the position to center the window on the main screen
+            # Set initial size to 556x400 but allow user to resize
+            initial_width = 556
+            initial_height = 400
+            x = main_screen_geometry.center().x() - initial_width / 2
+            y = main_screen_geometry.center().y() - initial_height / 2
+            # Set position and size, but window remains resizable
+            self.move(int(x), int(y))
+            self.resize(initial_width, initial_height)
             self.show()
             first_start = True
         global pkmn_window
