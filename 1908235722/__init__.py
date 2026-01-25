@@ -1397,6 +1397,7 @@ language = config["language"]
 ankimon_key = config["key_for_opening_closing_ankimon"]
 show_mainpkmn_in_reviewer = config["show_mainpkmn_in_reviewer"] #0 is off, 1 normal, 2 battle mode
 show_external_ankimon_window = config.get("show_external_ankimon_window", True)  # Default to True for backwards compatibility
+show_ankimon_on_reviewer = config.get("show_ankimon_on_reviewer", True)  # Default to True for backwards compatibility
 xp_bar_config = config["xp_bar_config"]
 review_hp_bar_thickness = config["review_hp_bar_thickness"] #2 = 8px, 3# 12px, 4# 16px, 5# 20px
 hp_bar_thickness = review_hp_bar_thickness * 4
@@ -7774,6 +7775,11 @@ if database_complete != False and mainpokemon_empty is False:
         global life_bar_injected
         life_bar_injected = False
     def inject_life_bar(web_content, context):
+        # Check if Ankimon should be shown on reviewer screen
+        global show_ankimon_on_reviewer
+        if not show_ankimon_on_reviewer:
+            return  # Skip all Ankimon overlay on reviewer if disabled
+
         global life_bar_injected, hp, name, level, id, battle_status, show_mainpkmn_in_reviewer, mainpokemon_xp, icon_path
         global frontdefault, backdefault, addon_dir, user_path_sprites, mainpokemon_id, mainpokemon_name, mainpokemon_level, mainpokemon_hp, mainpokemon_stats, mainpokemon_ev, mainpokemon_iv, mainpokemon_growth_rate
         global hp_bar_thickness, xp_bar_config, xp_bar_location, hp_bar_config, xp_bar_spacer, hp_only_spacer, wild_hp_spacer, seconds, myseconds, view_main_front
@@ -8207,6 +8213,11 @@ if database_complete != False and mainpokemon_empty is False:
         return web_content
 
     def update_life_bar(reviewer, card, ease):
+        # Check if Ankimon should be shown on reviewer screen
+        global show_ankimon_on_reviewer
+        if not show_ankimon_on_reviewer:
+            return  # Skip all Ankimon updates on reviewer if disabled
+
         global hp, name, id, frontdefault, battle_status, user_path_sprites, show_mainpkmn_in_reviewer, mainpokemon_hp, mainpokemon_id, mainpokemon_name, mainpokemon_level, mainpokemon_stats, mainpokemon_ev, mainpokemon_iv, mainpokemon_xp, xp_bar_config
         global mainpokemon_level, icon_path, empty_icon_path, seconds, myseconds, view_main_front, pokeball
 
