@@ -2086,13 +2086,55 @@ def resize_pixmap_img(pixmap, max_width):
     return pixmap2
 
 def random_battle_scene(pokemon_type=None):
-    """Select battle scene based on Pokemon type, or random if no type specified"""
+    """Select battle scene based on battle state and Pokemon type.
+
+    Priority:
+    1. Champion battle -> champion scene
+    2. Elite Four battle -> elite four scene
+    3. Gym battle -> gym-specific scene based on gym leader type
+    4. Wild/Trainer battle -> scene based on opponent's Pokemon type
+    """
     global battlescene_path_without_dialog
 
-    # Type to battle scene mapping
+    # Check for special battle states first (Champion > Elite Four > Gym)
+    battle_state = _ankimon_get_battle_state()
+
+    # Champion battle - always use champion scene
+    if battle_state == "champion":
+        return "champion_pkmnbattlescene.png"
+
+    # Elite Four battle - always use elite four scene
+    if battle_state == "elite4":
+        return "elitefour_pkmnbattlescene.png"
+
+    # Gym battle - use gym-specific scene based on gym leader's type
+    if battle_state == "gym":
+        gym_scene_map = {
+            "Rock": "rockgym_pkmnbattlescene.png",        # Roark
+            "Grass": "grassgym_pkmnbattlescene.png",      # Gardenia
+            "Fighting": "fightinggym_pkmnbattlescene.png", # Maylene
+            "Water": "watergym_pkmnbattlescene.png",      # Crasher Wake
+            "Ghost": "ghostgym_pkmnbattlescene.png",      # Fantina
+            "Steel": "steelgym_pkmnbattlescene.png",      # Byron
+            "Ice": "icegym_pkmnbattlescene.png",          # Candice
+            "Electric": "electricgym_pkmnbattlescene.png", # Volkner
+        }
+        # Get gym leader type from config
+        try:
+            conf = getattr(mw, "col", None) and getattr(mw.col, "conf", None)
+            if conf:
+                gym_leader_type = conf.get("ankimon_gym_leader_type")
+                if gym_leader_type and gym_leader_type in gym_scene_map:
+                    return gym_scene_map[gym_leader_type]
+        except Exception:
+            pass
+        # Fallback to default if gym type not found
+        return "pkmnbattlescene.png"
+
+    # Wild/Trainer battle - use type-based scene mapping
     type_scene_map = {
         "Water": ["ocean_pkmnbattlescene.png", "beach_pkmnbattlescene.png"],
-        "Fire": ["desert_pkmnbattlescene.png"],
+        "Fire": ["fire_pkmnbattlescene.png"],
         "Grass": ["grass_pkmnbattlescene.png"],
         "Bug": ["grass_pkmnbattlescene.png"],
         "Ice": ["ice_pkmnbattlescene.png"],
@@ -2100,10 +2142,10 @@ def random_battle_scene(pokemon_type=None):
         "Rock": ["rock_pkmnbattlescene.png", "ground_pkmnbattlescene.png"],
         "Poison": ["toxic_pkmnbattlescene.png"],
         "Psychic": ["psychic_pkmnbattlescene.png"],
-        "Steel": ["metal_city_pkmnbattlescene.png", "rock_pkmnbattlescene.png"],  # metal_city when added
-        "Dragon": ["rock_pkmnbattlescene.png"],
-        "Dark": ["psychic_pkmnbattlescene.png"],
-        "Ghost": ["psychic_pkmnbattlescene.png"],
+        "Steel": ["metalcity_pkmnbattlescene.png", "rock_pkmnbattlescene.png"],
+        "Dragon": ["dragon_pkmnbattlescene.png"],
+        "Dark": ["dark_pkmnbattlescene.png"],
+        "Ghost": ["dark_pkmnbattlescene.png"],
         "Fighting": ["ground_pkmnbattlescene.png"],
         "Normal": ["grass_pkmnbattlescene.png"],
         "Flying": ["grass_pkmnbattlescene.png"],
