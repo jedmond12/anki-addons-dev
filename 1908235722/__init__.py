@@ -8965,9 +8965,30 @@ class PokemonPlacementTool(QDialog):
         sprite_layout = QVBoxLayout()
         sprite_tab.setLayout(sprite_layout)
 
-        info_label = QLabel("Drag sprites to position them. Use +/- to adjust size.\nCoordinates shown below are for copying.")
+        info_label = QLabel("Drag sprites to position them. Use sliders to adjust size.")
         info_label.setWordWrap(True)
         sprite_layout.addWidget(info_label)
+
+        # Current pokemon display with refresh button
+        pokemon_info_row = QHBoxLayout()
+        self.player_pokemon_label = QLabel(f"Player: #{self.player_pokemon_id}")
+        self.player_pokemon_label.setStyleSheet("font-weight: bold; color: blue;")
+        pokemon_info_row.addWidget(self.player_pokemon_label)
+
+        pokemon_info_row.addStretch()
+
+        refresh_btn = QPushButton("🔄 Refresh Pokemon")
+        refresh_btn.setToolTip("Update to show current battle pokemon")
+        refresh_btn.clicked.connect(self.refresh_pokemon)
+        pokemon_info_row.addWidget(refresh_btn)
+
+        pokemon_info_row.addStretch()
+
+        self.enemy_pokemon_label = QLabel(f"Enemy: #{self.enemy_pokemon_id}")
+        self.enemy_pokemon_label.setStyleSheet("font-weight: bold; color: red;")
+        pokemon_info_row.addWidget(self.enemy_pokemon_label)
+
+        sprite_layout.addLayout(pokemon_info_row)
 
         # Battle scene display
         self.scene_label = QLabel()
@@ -9145,6 +9166,66 @@ class PokemonPlacementTool(QDialog):
             mw.col.setMod()
         except Exception as e:
             showInfo(f"Error saving pokemon size: {e}")
+
+    def refresh_pokemon(self):
+        """Refresh to show current battle pokemon"""
+        try:
+            # Get current player Pokemon
+            old_player_id = self.player_pokemon_id
+            old_enemy_id = self.enemy_pokemon_id
+
+            try:
+                self.player_pokemon_id = mw.col.get_config("mainpokemon")
+                if not self.player_pokemon_id:
+                    self.player_pokemon_id = 6
+            except:
+                self.player_pokemon_id = 6
+
+            # Get current enemy Pokemon from global battle state
+            try:
+                global id
+                if id and id > 0:
+                    self.enemy_pokemon_id = id
+                else:
+                    self.enemy_pokemon_id = 25
+            except:
+                self.enemy_pokemon_id = 25
+
+            # Update labels
+            self.player_pokemon_label.setText(f"Player: #{self.player_pokemon_id}")
+            self.enemy_pokemon_label.setText(f"Enemy: #{self.enemy_pokemon_id}")
+
+            # Load saved custom sizes for new pokemon (or reset to default)
+            conf = _ankimon_get_col_conf()
+            custom_sizes = conf.get("ankimon_custom_pokemon_sizes", {}) if conf else {}
+
+            # Reset to default sizes first
+            self.player_size = 80
+            self.enemy_size = 80
+
+            # Then load custom sizes if they exist
+            if isinstance(custom_sizes, dict):
+                player_id_str = str(self.player_pokemon_id)
+                enemy_id_str = str(self.enemy_pokemon_id)
+                if player_id_str in custom_sizes and "back" in custom_sizes[player_id_str]:
+                    self.player_size = custom_sizes[player_id_str]["back"]
+                if enemy_id_str in custom_sizes and "front" in custom_sizes[enemy_id_str]:
+                    self.enemy_size = custom_sizes[enemy_id_str]["front"]
+
+            # Update sliders
+            self.player_slider.setValue(self.player_size)
+            self.enemy_slider.setValue(self.enemy_size)
+            self.player_size_label.setText(f"{self.player_size}px")
+            self.enemy_size_label.setText(f"{self.enemy_size}px")
+
+            # Redraw scene
+            self.update_scene()
+
+            # Show feedback if pokemon changed
+            if old_player_id != self.player_pokemon_id or old_enemy_id != self.enemy_pokemon_id:
+                showInfo(f"Updated to Player: #{self.player_pokemon_id}, Enemy: #{self.enemy_pokemon_id}")
+        except Exception as e:
+            showInfo(f"Error refreshing pokemon: {e}")
 
     def mouse_press(self, event):
         """Handle mouse press to start dragging"""
