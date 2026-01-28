@@ -5848,6 +5848,7 @@ class PokemonCollectionDialog(QDialog):
                         pokemon_ev = pokemon['ev']
                         pokemon_iv = pokemon['iv']
                         pokemon_variant = pokemon.get('variant', None)  # Get variant field
+                        pokemon_is_shiny = pokemon.get('is_shiny', False)  # Get shiny status
                         pokemon_description = search_pokeapi_db_by_id(pokemon_id, "description")
                         if gif_in_collection is True:
                             # Check if Pokemon is in Mega form (with hard Key Stone gate)
@@ -5999,16 +6000,41 @@ class PokemonCollectionDialog(QDialog):
                         pokemon_button = QPushButton("Show me Details")
                         pokemon_button.setIconSize(pixmap.size())
                         if len(pokemon_type) > 1:
-                            pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0], pokemon_type[1]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname, variant=pokemon_variant: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant))
+                            pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0], pokemon_type[1]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname, variant=pokemon_variant, is_shiny=pokemon_is_shiny: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant, is_shiny))
                         else:
-                            pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname, variant=pokemon_variant: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant))
+                            pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname, variant=pokemon_variant, is_shiny=pokemon_is_shiny: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant, is_shiny))
 
                         slot_combo = QComboBox()
                         slot_combo.addItem("Assign to Slot...", -1)
-                        slot_combo.addItem("Assign to Slot 1 (Active)", 0)
-                        slot_combo.addItem("Assign to Slot 2", 1)
-                        slot_combo.addItem("Assign to Slot 3", 2)
-                        slot_combo.addItem("Assign to Slot 4", 3)
+                        # Load current party assignments to show in dropdown
+                        try:
+                            party = _load_party()
+                            slots = party.get("slots", [0, 1, 2, 3])
+                            my_list = _load_mypokemon_list()
+                            for i in range(4):
+                                try:
+                                    idx = int(slots[i])
+                                    if 0 <= idx < len(my_list):
+                                        pkmn = my_list[idx]
+                                        pkmn_name = pkmn.get("name", "Empty")
+                                        nickname = pkmn.get("nickname", "")
+                                        if nickname:
+                                            label = f"Slot {i+1}: {nickname.capitalize()}"
+                                        else:
+                                            label = f"Slot {i+1}: {pkmn_name.capitalize()}"
+                                    else:
+                                        label = f"Slot {i+1}: (Empty)"
+                                except Exception:
+                                    label = f"Slot {i+1}: (Empty)"
+                                if i == 0:
+                                    label += " (Active)"
+                                slot_combo.addItem(label, i)
+                        except Exception:
+                            # Fallback to basic labels if party loading fails
+                            slot_combo.addItem("Slot 1 (Active)", 0)
+                            slot_combo.addItem("Slot 2", 1)
+                            slot_combo.addItem("Slot 3", 2)
+                            slot_combo.addItem("Slot 4", 3)
                         slot_combo.setFixedWidth(180)
                         def _on_party_choice(_idx, *, _poke_index=pokemon_idx, _combo=slot_combo, _poke_name=pokemon_name, _poke_nickname=pokemon_nickname):
                             data = _combo.currentData()
@@ -6156,6 +6182,7 @@ class PokemonCollectionDialog(QDialog):
                             pokemon_ev = pokemon['ev']
                             pokemon_iv = pokemon['iv']
                             pokemon_variant = pokemon.get('variant', None)  # Get variant field
+                            pokemon_is_shiny = pokemon.get('is_shiny', False)  # Get shiny status
                             pokemon_description = search_pokeapi_db_by_id(pokemon_id, "description")
                             if gif_in_collection is True:
                                 # Check if Pokemon is in Mega form (with hard Key Stone gate)
@@ -6165,18 +6192,37 @@ class PokemonCollectionDialog(QDialog):
                                 except (NameError, Exception):
                                     is_mega_unlocked = False  # Default to locked if function not yet defined
 
-                                # Priority: Mega > Shadow > Normal
+                                # Check if Pokemon is shiny
+                                is_shiny = pokemon.get('is_shiny', False)
+
+                                # Priority: Mega > Shiny > Normal
                                 if is_mega_unlocked and pokemon.get('is_mega', False):
                                     pkmn_image_path = str(user_path_sprites / "front_mega_pokemon_gif" / f"{pokemon_id}.gif")
                                     # Fallback to normal if mega sprite doesn't exist
+                                    if not os.path.exists(pkmn_image_path):
+                                        pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
+                                elif is_shiny:
+                                    # Try shiny sprite
+                                    global shiny_front_default
+                                    pkmn_image_path = str(shiny_front_default / f"{pokemon_id}.gif")
+                                    # Fallback to normal if shiny sprite doesn't exist
                                     if not os.path.exists(pkmn_image_path):
                                         pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
                                 else:
                                     pkmn_image_path = str(user_path_sprites / "front_default_gif" / f"{pokemon_id}.gif")
                                 splash_label = MovieSplashLabel(pkmn_image_path)
                             else:
-                                # PNG mode
-                                pkmn_image_path = str(frontdefault / f"{pokemon_id}.png")
+                                # PNG mode - check for shiny > normal
+                                is_shiny = pokemon.get('is_shiny', False)
+                                if is_shiny:
+                                    # Try shiny PNG (if exists)
+                                    shiny_png_path = str(user_path_sprites / "shiny_front_default" / f"{pokemon_id}.png")
+                                    if os.path.exists(shiny_png_path):
+                                        pkmn_image_path = shiny_png_path
+                                    else:
+                                        pkmn_image_path = str(frontdefault / f"{pokemon_id}.png")
+                                else:
+                                    pkmn_image_path = str(frontdefault / f"{pokemon_id}.png")
                             pixmap.load(pkmn_image_path)
 
                             # Calculate the new dimensions to maintain the aspect ratio
@@ -6266,16 +6312,41 @@ class PokemonCollectionDialog(QDialog):
                             pokemon_button = QPushButton("Show me Details")
                             pokemon_button.setIconSize(pixmap.size())
                             if len(pokemon_type) > 1:
-                                pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0], pokemon_type[1]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname, variant=pokemon_variant: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant))
+                                pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0], pokemon_type[1]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname, variant=pokemon_variant, is_shiny=pokemon_is_shiny: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant, is_shiny))
                             else:
-                                pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname, variant=pokemon_variant: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant))
+                                pokemon_button.clicked.connect(lambda state, name=pokemon_name, level=pokemon_level, id=pokemon_id, ability=pokemon_ability, type=[pokemon_type[0]], detail_stats=pokemon_stats, attacks=pokemon_attacks, base_experience=pokemon_base_experience, growth_rate=pokemon_growth_rate, description=pokemon_description, gender=pokemon_gender, nickname=pokemon_nickname, variant=pokemon_variant, is_shiny=pokemon_is_shiny: PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant, is_shiny))
 
                             slot_combo = QComboBox()
                             slot_combo.addItem("Assign to Slot...", -1)
-                            slot_combo.addItem("Assign to Slot 1 (Active)", 0)
-                            slot_combo.addItem("Assign to Slot 2", 1)
-                            slot_combo.addItem("Assign to Slot 3", 2)
-                            slot_combo.addItem("Assign to Slot 4", 3)
+                            # Load current party assignments to show in dropdown
+                            try:
+                                party = _load_party()
+                                slots = party.get("slots", [0, 1, 2, 3])
+                                my_list = _load_mypokemon_list()
+                                for i in range(4):
+                                    try:
+                                        idx = int(slots[i])
+                                        if 0 <= idx < len(my_list):
+                                            pkmn = my_list[idx]
+                                            pkmn_name = pkmn.get("name", "Empty")
+                                            nickname = pkmn.get("nickname", "")
+                                            if nickname:
+                                                label = f"Slot {i+1}: {nickname.capitalize()}"
+                                            else:
+                                                label = f"Slot {i+1}: {pkmn_name.capitalize()}"
+                                        else:
+                                            label = f"Slot {i+1}: (Empty)"
+                                    except Exception:
+                                        label = f"Slot {i+1}: (Empty)"
+                                    if i == 0:
+                                        label += " (Active)"
+                                    slot_combo.addItem(label, i)
+                            except Exception:
+                                # Fallback to basic labels if party loading fails
+                                slot_combo.addItem("Slot 1 (Active)", 0)
+                                slot_combo.addItem("Slot 2", 1)
+                                slot_combo.addItem("Slot 3", 2)
+                                slot_combo.addItem("Slot 4", 3)
                             slot_combo.setFixedWidth(180)
                             def _on_party_choice(_idx, *, _poke_index=pokemon_idx, _combo=slot_combo, _poke_name=pokemon_name, _poke_nickname=pokemon_nickname):
                                 data = _combo.currentData()
@@ -6383,8 +6454,8 @@ def rename_pkmn(nickname, pkmn_name):
     except Exception as e:
         showWarning(f"An error occured: {e}")
 
-def PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant=None):
-    global frontdefault, type_style_file, language, icon_path, gif_in_collection
+def PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attacks, base_experience, growth_rate, description, gender, nickname, variant=None, is_shiny=False):
+    global frontdefault, type_style_file, language, icon_path, gif_in_collection, shiny_front_default
     # Create the dialog
     try:
         lang_name = get_pokemon_diff_lang_name(int(id)).capitalize()
@@ -6409,10 +6480,24 @@ def PokemonCollectionDetails(name, level, id, ability, type, detail_stats, attac
         pkmnimage_label = QLabel()
         pkmnpixmap = QPixmap()
         if gif_in_collection is True:
-            pkmnimage_path = str(user_path_sprites / "front_default_gif" / f"{int(id)}.gif")
+            # Check for shiny sprite first
+            if is_shiny:
+                pkmnimage_path = str(shiny_front_default / f"{int(id)}.gif")
+                if not os.path.exists(pkmnimage_path):
+                    pkmnimage_path = str(user_path_sprites / "front_default_gif" / f"{int(id)}.gif")
+            else:
+                pkmnimage_path = str(user_path_sprites / "front_default_gif" / f"{int(id)}.gif")
             pkmnimage_label = MovieSplashLabel(pkmnimage_path)
         else:
-            pkmnimage_path = str(frontdefault / f"{int(id)}.png")
+            # PNG mode - check for shiny sprite
+            if is_shiny:
+                shiny_png_path = str(user_path_sprites / "shiny_front_default" / f"{int(id)}.png")
+                if os.path.exists(shiny_png_path):
+                    pkmnimage_path = shiny_png_path
+                else:
+                    pkmnimage_path = str(frontdefault / f"{int(id)}.png")
+            else:
+                pkmnimage_path = str(frontdefault / f"{int(id)}.png")
             pkmnpixmap.load(str(pkmnimage_path))
             # Calculate the new dimensions to maintain the aspect ratio
             max_width = 150
@@ -8846,7 +8931,26 @@ class PokemonPlacementTool(QDialog):
                 self.player_pokemon_id = 6  # Charizard as fallback
         except:
             self.player_pokemon_id = 6  # Charizard as fallback
-        self.enemy_pokemon_id = 25  # Pikachu as default example
+
+        # Get current enemy Pokemon if in battle
+        try:
+            global id
+            if id and id > 0:
+                self.enemy_pokemon_id = id
+            else:
+                self.enemy_pokemon_id = 25  # Pikachu as default example
+        except:
+            self.enemy_pokemon_id = 25  # Pikachu as default example
+
+        # Load saved custom sizes for these pokemon
+        custom_sizes = conf.get("ankimon_custom_pokemon_sizes", {}) if conf else {}
+        if isinstance(custom_sizes, dict):
+            player_id_str = str(self.player_pokemon_id)
+            enemy_id_str = str(self.enemy_pokemon_id)
+            if player_id_str in custom_sizes and "back" in custom_sizes[player_id_str]:
+                self.player_size = custom_sizes[player_id_str]["back"]
+            if enemy_id_str in custom_sizes and "front" in custom_sizes[enemy_id_str]:
+                self.enemy_size = custom_sizes[enemy_id_str]["front"]
 
         self.init_ui()
 
@@ -8874,34 +8978,52 @@ class PokemonPlacementTool(QDialog):
         self.scene_label.mouseReleaseEvent = self.mouse_release
         sprite_layout.addWidget(self.scene_label)
 
-        # Control buttons
-        controls_layout = QHBoxLayout()
+        # Control layout with sliders
+        controls_layout = QVBoxLayout()
 
-        # Player controls
-        player_group = QLabel("PLAYER:")
-        controls_layout.addWidget(player_group)
+        # Player controls row
+        player_row = QHBoxLayout()
+        player_group = QLabel("PLAYER (Back):")
+        player_row.addWidget(player_group)
 
-        player_minus_btn = QPushButton("-")
-        player_minus_btn.clicked.connect(lambda: self.adjust_size("player", -10))
-        controls_layout.addWidget(player_minus_btn)
+        self.player_slider = QSlider(Qt.Orientation.Horizontal)
+        self.player_slider.setMinimum(20)
+        self.player_slider.setMaximum(200)
+        self.player_slider.setValue(self.player_size)
+        self.player_slider.valueChanged.connect(lambda val: self.set_size("player", val))
+        player_row.addWidget(self.player_slider)
 
-        player_plus_btn = QPushButton("+")
-        player_plus_btn.clicked.connect(lambda: self.adjust_size("player", 10))
-        controls_layout.addWidget(player_plus_btn)
+        self.player_size_label = QLabel(f"{self.player_size}px")
+        self.player_size_label.setFixedWidth(50)
+        player_row.addWidget(self.player_size_label)
 
-        controls_layout.addStretch()
+        save_player_btn = QPushButton("Save for this Pokemon")
+        save_player_btn.clicked.connect(lambda: self.save_pokemon_size("player"))
+        player_row.addWidget(save_player_btn)
 
-        # Enemy controls
-        enemy_group = QLabel("ENEMY:")
-        controls_layout.addWidget(enemy_group)
+        controls_layout.addLayout(player_row)
 
-        enemy_minus_btn = QPushButton("-")
-        enemy_minus_btn.clicked.connect(lambda: self.adjust_size("enemy", -10))
-        controls_layout.addWidget(enemy_minus_btn)
+        # Enemy controls row
+        enemy_row = QHBoxLayout()
+        enemy_group = QLabel("ENEMY (Front):")
+        enemy_row.addWidget(enemy_group)
 
-        enemy_plus_btn = QPushButton("+")
-        enemy_plus_btn.clicked.connect(lambda: self.adjust_size("enemy", 10))
-        controls_layout.addWidget(enemy_plus_btn)
+        self.enemy_slider = QSlider(Qt.Orientation.Horizontal)
+        self.enemy_slider.setMinimum(20)
+        self.enemy_slider.setMaximum(200)
+        self.enemy_slider.setValue(self.enemy_size)
+        self.enemy_slider.valueChanged.connect(lambda val: self.set_size("enemy", val))
+        enemy_row.addWidget(self.enemy_slider)
+
+        self.enemy_size_label = QLabel(f"{self.enemy_size}px")
+        self.enemy_size_label.setFixedWidth(50)
+        enemy_row.addWidget(self.enemy_size_label)
+
+        save_enemy_btn = QPushButton("Save for this Pokemon")
+        save_enemy_btn.clicked.connect(lambda: self.save_pokemon_size("enemy"))
+        enemy_row.addWidget(save_enemy_btn)
+
+        controls_layout.addLayout(enemy_row)
 
         sprite_layout.addLayout(controls_layout)
 
@@ -8978,6 +9100,51 @@ class PokemonPlacementTool(QDialog):
         else:
             self.enemy_size = max(20, min(200, self.enemy_size + delta))
         self.update_scene()
+
+    def set_size(self, sprite_type, value):
+        """Set sprite size from slider"""
+        if sprite_type == "player":
+            self.player_size = value
+            self.player_size_label.setText(f"{value}px")
+        else:
+            self.enemy_size = value
+            self.enemy_size_label.setText(f"{value}px")
+        self.update_scene()
+
+    def save_pokemon_size(self, sprite_type):
+        """Save custom size for the current pokemon species"""
+        try:
+            conf = _ankimon_get_col_conf()
+            if not conf:
+                showInfo("Could not access configuration.")
+                return
+
+            # Initialize custom sizes dict if it doesn't exist
+            custom_sizes = conf.get("ankimon_custom_pokemon_sizes", {})
+            if not isinstance(custom_sizes, dict):
+                custom_sizes = {}
+
+            if sprite_type == "player":
+                pokemon_id = str(self.player_pokemon_id)
+                size = self.player_size
+                # Save as back sprite size (player view)
+                if pokemon_id not in custom_sizes:
+                    custom_sizes[pokemon_id] = {}
+                custom_sizes[pokemon_id]["back"] = size
+                showInfo(f"Saved back sprite size ({size}px) for Pokemon #{pokemon_id}")
+            else:
+                pokemon_id = str(self.enemy_pokemon_id)
+                size = self.enemy_size
+                # Save as front sprite size (enemy view)
+                if pokemon_id not in custom_sizes:
+                    custom_sizes[pokemon_id] = {}
+                custom_sizes[pokemon_id]["front"] = size
+                showInfo(f"Saved front sprite size ({size}px) for Pokemon #{pokemon_id}")
+
+            conf["ankimon_custom_pokemon_sizes"] = custom_sizes
+            mw.col.setMod()
+        except Exception as e:
+            showInfo(f"Error saving pokemon size: {e}")
 
     def mouse_press(self, event):
         """Handle mouse press to start dragging"""
@@ -9548,7 +9715,7 @@ class TestWindow(QWidget):
         # Load icons from icons/ folder
         try:
             icons_path_dir = addon_dir / "addon_sprites" / "icons"
-            pokedex_icon = QIcon(str(icons_path_dir / "pokedex.gif"))  # Changed from "smaller pokedex.gif" to larger version
+            pokedex_icon = QIcon(str(icons_path_dir / "pokedex.png"))
             pokeball_icon = QIcon(str(icons_path_dir / "poke.png"))
         except Exception as e:
             print(f"Could not load button icons: {e}")
@@ -9672,7 +9839,7 @@ class TestWindow(QWidget):
 
         # Set icon for the button
         try:
-            icon_path = str(addon_dir / "addon_sprites" / "icons" / "poke.png")
+            icon_path = str(addon_dir / "addon_sprites" / "icons" / "travel-trunk.png")
             itembag_btn.setIcon(QIcon(icon_path))
         except Exception as e:
             print(f"[UI] Failed to load itembag icon: {e}")
@@ -9903,9 +10070,24 @@ class TestWindow(QWidget):
         background_label.setPixmap(merged_bg)
 
         # Get Pokemon sizes from pokedex for proper scaling
-        def get_pokemon_size(pkmn_id):
-            """Get Pokemon height in meters from pokedex, return scale factor"""
+        def get_pokemon_size(pkmn_id, sprite_type="front"):
+            """Get Pokemon size - checks custom sizes first, then falls back to height-based calculation
+
+            Args:
+                pkmn_id: Pokemon ID
+                sprite_type: "front" for enemy/wild, "back" for player
+            """
             try:
+                # First check for custom saved size
+                conf = _ankimon_get_col_conf()
+                if conf:
+                    custom_sizes = conf.get("ankimon_custom_pokemon_sizes", {})
+                    if isinstance(custom_sizes, dict):
+                        pkmn_id_str = str(pkmn_id)
+                        if pkmn_id_str in custom_sizes and sprite_type in custom_sizes[pkmn_id_str]:
+                            return custom_sizes[pkmn_id_str][sprite_type]
+
+                # Fall back to height-based calculation
                 # First get pokemon name from ID
                 pkmn_name = search_pokedex_by_id(pkmn_id)
                 if pkmn_name and pkmn_name != 'Pokémon not found':
@@ -9921,8 +10103,8 @@ class TestWindow(QWidget):
             except Exception:
                 return 80  # Default size
 
-        wild_size = get_pokemon_size(id)
-        player_size = get_pokemon_size(mainpokemon_id)
+        wild_size = get_pokemon_size(id, "front")
+        player_size = get_pokemon_size(mainpokemon_id, "back")
 
         # Ground baseline coordinates for bottom-anchored positioning
         # These coordinates represent where Pokemon "feet" touch the ground
@@ -15333,7 +15515,7 @@ if database_complete != False:
     try:
         icons_path_dir = addon_dir / "addon_sprites" / "icons"
         gameboy_icon = QIcon(str(icons_path_dir / "game-boy.png"))
-        pokedex_icon = QIcon(str(icons_path_dir / "pokedex.gif"))  # Changed from "smaller pokedex.gif" to larger version
+        pokedex_icon = QIcon(str(icons_path_dir / "pokedex.png"))
         pokeball_icon = QIcon(str(icons_path_dir / "poke.png"))
     except Exception as e:
         print(f"Could not load menu icons: {e}")
