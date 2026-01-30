@@ -1220,7 +1220,7 @@ starters_path = addon_dir / "addon_files" / "starters.json"
 eff_chart_html_path = addon_dir / "addon_files" / "eff_chart_html.html"
 effectiveness_chart_file_path = addon_dir / "addon_files" / "eff_chart.json"
 table_gen_id_html_path = addon_dir / "addon_files" / "table_gen_id.html"
-icon_path = addon_dir / "addon_sprites" / "icons" / "poke.png"
+icon_path = addon_dir / "addon_files" / "pokeball.png"
 sound_list_path = addon_dir / "addon_files" / "sound_list.json"
 badges_list_path = addon_dir / "addon_files" / "badges.json"
 items_list_path = addon_dir / "addon_files" / "items.json"
@@ -8658,200 +8658,13 @@ def save_outside_pokemon(pokemon_name, pokemon_id):
     with open(str(mypokemon_path), "w") as json_file:
         json.dump(caught_pokemon_data, json_file, indent=2)
 
-def export_to_pkmn_showdown():
-    global mainpokemon_level, mainpokemon_type, mainpokemon_name, mainpokemon_stats, mainpokemon_attacks, mainpokemon_ability, mainpokemon_iv, mainpokemon_ev, mainpokemon_gender
-    # Create a main window
-    window = QDialog(mw)
-    window.setWindowTitle("Export Pokemon to Pkmn Showdown")
-    for stat, value in mainpokemon_ev.items():
-        if value == 0:
-            mainpokemon_ev[stat] += 1
-    # Format the Pokemon info
-    #pokemon_info = f"{mainpokemon_name}\nAbility: {mainpokemon_ability}\nLevel: {mainpokemon_level}\nType: {mainpokemon_type}\nEVs: {mainpokemon_stats['hp']} HP / {mainpokemon_stats['attack']} Atk / {mainpokemon_stats['defense']} Def / {mainpokemon_stats['special-attack']} SpA / {mainpokemon_stats['special-defense']} SpD / {mainpokemon_stats['speed']} Spe\n IVs: {mainpokemon_iv["hp"]} HP / {mainpokemon_iv["attack"]} Atk / {mainpokemon_iv["defense"]} Def / {mainpokemon_iv["special-attack"]} SpA / {mainpokemon_iv["special-defense"]} SpD / {mainpokemon_iv["speed"]} Spe \n- {mainpokemon_attacks[0]}\n- {mainpokemon_attacks[1]}\n- {mainpokemon_attacks[2]}\n- {mainpokemon_attacks[3]}"
-    pokemon_info = "{} ({})\nAbility: {}\nLevel: {}\nType: {}\nEVs: {} HP / {} Atk / {} Def / {} SpA / {} SpD / {} Spe\n IVs: {} HP / {} Atk / {} Def / {} SpA / {} SpD / {} Spe ".format(
-        mainpokemon_name,
-        mainpokemon_gender,
-        mainpokemon_ability,
-        mainpokemon_level,
-        mainpokemon_type,
-        mainpokemon_ev["hp"],
-        mainpokemon_ev["atk"],
-        mainpokemon_ev["def"],
-        mainpokemon_ev["spa"],
-        mainpokemon_ev["spd"],
-        mainpokemon_ev["spe"],
-        mainpokemon_iv["hp"],
-        mainpokemon_iv["atk"],
-        mainpokemon_iv["def"],
-        mainpokemon_iv["spa"],
-        mainpokemon_iv["spd"],
-        mainpokemon_iv["spe"]
-    )
-    for attack in mainpokemon_attacks:
-        pokemon_info += f"\n- {attack}"
-    # Information label
-    info = "Pokemon Infos have been Copied to your Clipboard! \nNow simply paste this text into Teambuilder in PokemonShowdown. \nNote: Fight in the [Gen 9] Anything Goes - Battle Mode"
-    info += f"\n Your Pokemon is considered Tier: {search_pokedex(mainpokemon_name.lower(), 'tier')} in PokemonShowdown"
-    # Create labels to display the text
-    label = QLabel(pokemon_info)
-    info_label = QLabel(info)
-
-    # Align labels
-    label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Align center
-    info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Align center
-
-    # Create a layout and add the labels
-    layout = QVBoxLayout()
-    layout.addWidget(info_label)
-    layout.addWidget(label)
-
-    # Set the layout for the main window
-    window.setLayout(layout)
-
-    # Copy text to clipboard in Anki
-    mw.app.clipboard().setText(pokemon_info)
-
-    # Show the window
-    window.show()
-
-def save_error_code(error_code):
-    error_fix_msg = ""
-    try:
-        # Find the position of the phrase "can't be transferred from Gen"
-        index = error_code.find("can't be transferred from Gen")
-
-        # Extract the substring starting from this position
-        relevant_text = error_code[index:]
-
-        # Find the first number in the extracted text (assuming it's the generation number)
-        generation_number = int(''.join(filter(str.isdigit, relevant_text)))
-
-        # Show the generation number
-        error_fix_msg += (f"\n Please use Gen {str(generation_number)[0]} or lower")
-
-        index = error_code.find("can't be transferred from Gen")
-
-        # Extract the substring starting from this position
-        relevant_text = error_code[index:]
-
-        # Find the first number in the extracted text (assuming it's the generation number)
-        generation_number = int(''.join(filter(str.isdigit, relevant_text)))
-
-        error_fix_msg += (f"\n Please use Gen {str(generation_number)[0]} or lower")
-
-    except Exception as e:
-        showInfo(f"An error occurred: {e}")
-
-    showInfo(f"{error_fix_msg}")
-
-def export_all_pkmn_showdown():
-    # Create a main window
-    export_window = QDialog()
-    #export_window.setWindowTitle("Export Pokemon to Pkmn Showdown")
-
-    # Information label
-    info = "Pokemon Infos have been Copied to your Clipboard! \nNow simply paste this text into Teambuilder in PokemonShowdown. \nNote: Fight in the [Gen 7] Anything Goes - Battle Mode"
-    info_label = QLabel(info)
-
-    # Get all pokemon data
-    global mypokemon_path
-    pokemon_info_complete_text = ""
-    try:
-        with (open(mypokemon_path, "r") as json_file):
-            captured_pokemon_data = json.load(json_file)
-
-            # Check if there are any captured Pokémon
-            if captured_pokemon_data:
-                # Counter for tracking the column position
-                column = 0
-                row = 0
-                for pokemon in captured_pokemon_data:
-                    pokemon_name = pokemon['name']
-                    pokemon_level = pokemon['level']
-                    pokemon_ability = pokemon['ability']
-                    pokemon_type = pokemon['type']
-                    pokemon_type_text = pokemon_type[0].capitalize()
-                    if len(pokemon_type) > 1:
-                        pokemon_type_text = ""
-                        pokemon_type_text += f"{pokemon_type[0].capitalize()}"
-                        pokemon_type_text += f" {pokemon_type[1].capitalize()}"
-                    pokemon_stats = pokemon['stats']
-                    pokemon_hp = pokemon_stats["hp"]
-                    pokemon_attacks = pokemon['attacks']
-                    pokemon_ev = pokemon['ev']
-                    pokemon_iv = pokemon['iv']
-
-                    pokemon_info = "\n{} \nAbility: {}\nLevel: {}\nType: {}\nEVs: {} HP / {} Atk / {} Def / {} SpA / {} SpD / {} Spe\n IVs: {} HP / {} Atk / {} Def / {} SpA / {} SpD / {} Spe \n".format(
-                        pokemon_name,
-                        pokemon_ability.capitalize(),
-                        pokemon_level,
-                        pokemon_type_text,
-                        pokemon_stats["hp"],
-                        pokemon_stats["atk"],
-                        pokemon_stats["def"],
-                        pokemon_stats["spa"],
-                        pokemon_stats["spd"],
-                        pokemon_stats["spe"],
-                        pokemon_iv["hp"],
-                        pokemon_iv["atk"],
-                        pokemon_iv["def"],
-                        pokemon_iv["spa"],
-                        pokemon_iv["spd"],
-                        pokemon_iv["spe"]
-                    )
-                    for attack in pokemon_attacks:
-                        pokemon_info += f"- {attack}\n"
-                    pokemon_info_complete_text += pokemon_info
-
-                    # Create labels to display the text
-                    #label = QLabel(pokemon_info_complete_text)
-                    # Align labels
-                    #label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Align center
-                    info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Align center
-
-                    # Create an input field for error code
-                    error_code_input = QLineEdit()
-                    error_code_input.setPlaceholderText("Enter Error Code")
-
-                    # Create a button to save the input
-                    save_button = QPushButton("Fix Pokemon Export Code")
-
-                    # Create a layout and add the labels, input field, and button
-                    layout = QVBoxLayout()
-                    layout.addWidget(info_label)
-                    #layout.addWidget(label)
-                    layout.addWidget(error_code_input)
-                    layout.addWidget(save_button)
-
-                    # Copy text to clipboard in Anki
-                    mw.app.clipboard().setText(pokemon_info_complete_text)
-
-        save_button.clicked.connect(lambda: save_error_code(error_code_input.text()))
-
-        # Set the layout for the main window
-        export_window.setLayout(layout)
-
-        export_window.exec()
-    except Exception as e:
-        showInfo(f"An error occurred: {e}")
-
 def calc_exp_gain(base_experience, w_pkmn_level):
     exp = int((base_experience * w_pkmn_level) / 7)
     return exp
 
-# Define the function to open the Pokémon Showdown Team Builder
-def open_team_builder():
-    # Specify the URL of the Pokémon Showdown Team Builder
-    team_builder_url = "https://play.pokemonshowdown.com/teambuilder"
-
-    # Open the Team Builder in the default web browser
-    QDesktopServices.openUrl(QUrl(team_builder_url))
-
 def rate_addon_url():
-    # Specify the URL of the Pokémon Showdown Team Builder
+    """Open the addon rating page in the default browser"""
     rating_url = "https://ankiweb.net/shared/review/1908235722"
-
-    # Open the Team Builder in the default web browser
     QDesktopServices.openUrl(QUrl(rating_url))
 
 #def no_hp():
@@ -8893,13 +8706,15 @@ class PokemonPlacementTool(QDialog):
         self.setWindowTitle("Pokémon Placement Tool")
         self.setFixedSize(800, 600)
 
-        # Sprite positioning data
+        # Sprite positioning data (size = height, width = width)
         self.player_x = 96
         self.player_y = 184
-        self.player_size = 80
+        self.player_size = 80  # height
+        self.player_width = 80  # width
         self.enemy_x = 420
         self.enemy_y = 112
-        self.enemy_size = 80
+        self.enemy_size = 80  # height
+        self.enemy_width = 80  # width
 
         # Fainted text positioning data (load from config)
         conf = _ankimon_get_col_conf()
@@ -8947,10 +8762,16 @@ class PokemonPlacementTool(QDialog):
         if isinstance(custom_sizes, dict):
             player_id_str = str(self.player_pokemon_id)
             enemy_id_str = str(self.enemy_pokemon_id)
-            if player_id_str in custom_sizes and "back" in custom_sizes[player_id_str]:
-                self.player_size = custom_sizes[player_id_str]["back"]
-            if enemy_id_str in custom_sizes and "front" in custom_sizes[enemy_id_str]:
-                self.enemy_size = custom_sizes[enemy_id_str]["front"]
+            if player_id_str in custom_sizes:
+                if "back" in custom_sizes[player_id_str]:
+                    self.player_size = custom_sizes[player_id_str]["back"]
+                if "back_width" in custom_sizes[player_id_str]:
+                    self.player_width = custom_sizes[player_id_str]["back_width"]
+            if enemy_id_str in custom_sizes:
+                if "front" in custom_sizes[enemy_id_str]:
+                    self.enemy_size = custom_sizes[enemy_id_str]["front"]
+                if "front_width" in custom_sizes[enemy_id_str]:
+                    self.enemy_width = custom_sizes[enemy_id_str]["front_width"]
 
         self.init_ui()
 
@@ -9002,49 +8823,73 @@ class PokemonPlacementTool(QDialog):
         # Control layout with sliders
         controls_layout = QVBoxLayout()
 
-        # Player controls row
-        player_row = QHBoxLayout()
-        player_group = QLabel("PLAYER (Back):")
-        player_row.addWidget(player_group)
+        # Player controls
+        player_header = QLabel("PLAYER (Back Sprite):")
+        player_header.setStyleSheet("font-weight: bold;")
+        controls_layout.addWidget(player_header)
 
+        player_row1 = QHBoxLayout()
+        player_row1.addWidget(QLabel("Height:"))
         self.player_slider = QSlider(Qt.Orientation.Horizontal)
         self.player_slider.setMinimum(20)
         self.player_slider.setMaximum(200)
         self.player_slider.setValue(self.player_size)
         self.player_slider.valueChanged.connect(lambda val: self.set_size("player", val))
-        player_row.addWidget(self.player_slider)
-
+        player_row1.addWidget(self.player_slider)
         self.player_size_label = QLabel(f"{self.player_size}px")
         self.player_size_label.setFixedWidth(50)
-        player_row.addWidget(self.player_size_label)
+        player_row1.addWidget(self.player_size_label)
+        controls_layout.addLayout(player_row1)
 
-        save_player_btn = QPushButton("Save for this Pokemon")
+        player_row2 = QHBoxLayout()
+        player_row2.addWidget(QLabel("Width:"))
+        self.player_width_slider = QSlider(Qt.Orientation.Horizontal)
+        self.player_width_slider.setMinimum(20)
+        self.player_width_slider.setMaximum(200)
+        self.player_width_slider.setValue(self.player_width)
+        self.player_width_slider.valueChanged.connect(lambda val: self.set_width("player", val))
+        player_row2.addWidget(self.player_width_slider)
+        self.player_width_label = QLabel(f"{self.player_width}px")
+        self.player_width_label.setFixedWidth(50)
+        player_row2.addWidget(self.player_width_label)
+        save_player_btn = QPushButton("Save")
         save_player_btn.clicked.connect(lambda: self.save_pokemon_size("player"))
-        player_row.addWidget(save_player_btn)
+        player_row2.addWidget(save_player_btn)
+        controls_layout.addLayout(player_row2)
 
-        controls_layout.addLayout(player_row)
+        # Enemy controls
+        enemy_header = QLabel("ENEMY (Front Sprite):")
+        enemy_header.setStyleSheet("font-weight: bold;")
+        controls_layout.addWidget(enemy_header)
 
-        # Enemy controls row
-        enemy_row = QHBoxLayout()
-        enemy_group = QLabel("ENEMY (Front):")
-        enemy_row.addWidget(enemy_group)
-
+        enemy_row1 = QHBoxLayout()
+        enemy_row1.addWidget(QLabel("Height:"))
         self.enemy_slider = QSlider(Qt.Orientation.Horizontal)
         self.enemy_slider.setMinimum(20)
         self.enemy_slider.setMaximum(200)
         self.enemy_slider.setValue(self.enemy_size)
         self.enemy_slider.valueChanged.connect(lambda val: self.set_size("enemy", val))
-        enemy_row.addWidget(self.enemy_slider)
-
+        enemy_row1.addWidget(self.enemy_slider)
         self.enemy_size_label = QLabel(f"{self.enemy_size}px")
         self.enemy_size_label.setFixedWidth(50)
-        enemy_row.addWidget(self.enemy_size_label)
+        enemy_row1.addWidget(self.enemy_size_label)
+        controls_layout.addLayout(enemy_row1)
 
-        save_enemy_btn = QPushButton("Save for this Pokemon")
+        enemy_row2 = QHBoxLayout()
+        enemy_row2.addWidget(QLabel("Width:"))
+        self.enemy_width_slider = QSlider(Qt.Orientation.Horizontal)
+        self.enemy_width_slider.setMinimum(20)
+        self.enemy_width_slider.setMaximum(200)
+        self.enemy_width_slider.setValue(self.enemy_width)
+        self.enemy_width_slider.valueChanged.connect(lambda val: self.set_width("enemy", val))
+        enemy_row2.addWidget(self.enemy_width_slider)
+        self.enemy_width_label = QLabel(f"{self.enemy_width}px")
+        self.enemy_width_label.setFixedWidth(50)
+        enemy_row2.addWidget(self.enemy_width_label)
+        save_enemy_btn = QPushButton("Save")
         save_enemy_btn.clicked.connect(lambda: self.save_pokemon_size("enemy"))
-        enemy_row.addWidget(save_enemy_btn)
-
-        controls_layout.addLayout(enemy_row)
+        enemy_row2.addWidget(save_enemy_btn)
+        controls_layout.addLayout(enemy_row2)
 
         sprite_layout.addLayout(controls_layout)
 
@@ -9132,8 +8977,18 @@ class PokemonPlacementTool(QDialog):
             self.enemy_size_label.setText(f"{value}px")
         self.update_scene()
 
+    def set_width(self, sprite_type, value):
+        """Set sprite width from slider"""
+        if sprite_type == "player":
+            self.player_width = value
+            self.player_width_label.setText(f"{value}px")
+        else:
+            self.enemy_width = value
+            self.enemy_width_label.setText(f"{value}px")
+        self.update_scene()
+
     def save_pokemon_size(self, sprite_type):
-        """Save custom size for the current pokemon species"""
+        """Save custom size (height and width) for the current pokemon species"""
         try:
             conf = _ankimon_get_col_conf()
             if not conf:
@@ -9147,20 +9002,24 @@ class PokemonPlacementTool(QDialog):
 
             if sprite_type == "player":
                 pokemon_id = str(self.player_pokemon_id)
-                size = self.player_size
+                height = self.player_size
+                width = self.player_width
                 # Save as back sprite size (player view)
                 if pokemon_id not in custom_sizes:
                     custom_sizes[pokemon_id] = {}
-                custom_sizes[pokemon_id]["back"] = size
-                showInfo(f"Saved back sprite size ({size}px) for Pokemon #{pokemon_id}")
+                custom_sizes[pokemon_id]["back"] = height
+                custom_sizes[pokemon_id]["back_width"] = width
+                showInfo(f"Saved back sprite (H:{height}px W:{width}px) for Pokemon #{pokemon_id}")
             else:
                 pokemon_id = str(self.enemy_pokemon_id)
-                size = self.enemy_size
+                height = self.enemy_size
+                width = self.enemy_width
                 # Save as front sprite size (enemy view)
                 if pokemon_id not in custom_sizes:
                     custom_sizes[pokemon_id] = {}
-                custom_sizes[pokemon_id]["front"] = size
-                showInfo(f"Saved front sprite size ({size}px) for Pokemon #{pokemon_id}")
+                custom_sizes[pokemon_id]["front"] = height
+                custom_sizes[pokemon_id]["front_width"] = width
+                showInfo(f"Saved front sprite (H:{height}px W:{width}px) for Pokemon #{pokemon_id}")
 
             conf["ankimon_custom_pokemon_sizes"] = custom_sizes
             mw.col.setMod()
@@ -9174,10 +9033,14 @@ class PokemonPlacementTool(QDialog):
             old_player_id = self.player_pokemon_id
             old_enemy_id = self.enemy_pokemon_id
 
+            # Use global mainpokemon_id which is updated when pokemon is switched
             try:
-                self.player_pokemon_id = mw.col.get_config("mainpokemon")
-                if not self.player_pokemon_id:
-                    self.player_pokemon_id = 6
+                global mainpokemon_id
+                if mainpokemon_id and mainpokemon_id > 0:
+                    self.player_pokemon_id = mainpokemon_id
+                else:
+                    # Fallback to config
+                    self.player_pokemon_id = mw.col.get_config("mainpokemon") or 6
             except:
                 self.player_pokemon_id = 6
 
@@ -9201,22 +9064,34 @@ class PokemonPlacementTool(QDialog):
 
             # Reset to default sizes first
             self.player_size = 80
+            self.player_width = 80
             self.enemy_size = 80
+            self.enemy_width = 80
 
             # Then load custom sizes if they exist
             if isinstance(custom_sizes, dict):
                 player_id_str = str(self.player_pokemon_id)
                 enemy_id_str = str(self.enemy_pokemon_id)
-                if player_id_str in custom_sizes and "back" in custom_sizes[player_id_str]:
-                    self.player_size = custom_sizes[player_id_str]["back"]
-                if enemy_id_str in custom_sizes and "front" in custom_sizes[enemy_id_str]:
-                    self.enemy_size = custom_sizes[enemy_id_str]["front"]
+                if player_id_str in custom_sizes:
+                    if "back" in custom_sizes[player_id_str]:
+                        self.player_size = custom_sizes[player_id_str]["back"]
+                    if "back_width" in custom_sizes[player_id_str]:
+                        self.player_width = custom_sizes[player_id_str]["back_width"]
+                if enemy_id_str in custom_sizes:
+                    if "front" in custom_sizes[enemy_id_str]:
+                        self.enemy_size = custom_sizes[enemy_id_str]["front"]
+                    if "front_width" in custom_sizes[enemy_id_str]:
+                        self.enemy_width = custom_sizes[enemy_id_str]["front_width"]
 
             # Update sliders
             self.player_slider.setValue(self.player_size)
+            self.player_width_slider.setValue(self.player_width)
             self.enemy_slider.setValue(self.enemy_size)
+            self.enemy_width_slider.setValue(self.enemy_width)
             self.player_size_label.setText(f"{self.player_size}px")
+            self.player_width_label.setText(f"{self.player_width}px")
             self.enemy_size_label.setText(f"{self.enemy_size}px")
+            self.enemy_width_label.setText(f"{self.enemy_width}px")
 
             # Redraw scene
             self.update_scene()
@@ -9307,9 +9182,10 @@ class PokemonPlacementTool(QDialog):
         enemy_path = frontdefault / f"{self.enemy_pokemon_id}.png"
         if enemy_path.exists():
             enemy_pixmap = QPixmap(str(enemy_path))
+            # Use separate width and height (IgnoreAspectRatio allows stretching)
             enemy_pixmap = enemy_pixmap.scaled(
-                self.enemy_size, self.enemy_size,
-                Qt.AspectRatioMode.KeepAspectRatio,
+                self.enemy_width, self.enemy_size,
+                Qt.AspectRatioMode.IgnoreAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
             enemy_draw_x = self.enemy_x - enemy_pixmap.width() // 2
@@ -9325,9 +9201,10 @@ class PokemonPlacementTool(QDialog):
         player_path = backdefault / f"{self.player_pokemon_id}.png"
         if player_path.exists():
             player_pixmap = QPixmap(str(player_path))
+            # Use separate width and height (IgnoreAspectRatio allows stretching)
             player_pixmap = player_pixmap.scaled(
-                self.player_size, self.player_size,
-                Qt.AspectRatioMode.KeepAspectRatio,
+                self.player_width, self.player_size,
+                Qt.AspectRatioMode.IgnoreAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
             player_draw_x = self.player_x - player_pixmap.width() // 2
@@ -9347,11 +9224,11 @@ class PokemonPlacementTool(QDialog):
 
 PLAYER Pokemon (blue crosshair):
   Ground Point: ({self.player_x}, {self.player_y})
-  Size: {self.player_size}px
+  Height: {self.player_size}px, Width: {self.player_width}px
 
 ENEMY Pokemon (red crosshair):
   Ground Point: ({self.enemy_x}, {self.enemy_y})
-  Size: {self.enemy_size}px
+  Height: {self.enemy_size}px, Width: {self.enemy_width}px
 
 CODE TO USE:
   # Player ground point
@@ -15658,72 +15535,109 @@ if database_complete != False:
     mw.pokemenu.addMenu(developer_menu)
     developer_menu.menuAction().setVisible(False)  # Hidden by default
 
-    # Developer Mode: Validate Rosters
-    validate_rosters_action = QAction("🔍 Validate Rosters", mw)
-    qconnect(validate_rosters_action.triggered, _ankimon_validate_rosters)
-    developer_menu.addAction(validate_rosters_action)
+    # ═══════════════════════════════════════════════════════════════
+    # TOOLS & SETTINGS
+    # ═══════════════════════════════════════════════════════════════
+    tools_menu = QMenu("⚙️ Tools & Settings", mw)
+    developer_menu.addMenu(tools_menu)
 
-    # Developer Mode: Export Debug Bundle
-    export_debug_action = QAction("📦 Export Debug Bundle", mw)
-    qconnect(export_debug_action.triggered, _ankimon_export_debug_bundle)
-    developer_menu.addAction(export_debug_action)
-
-    # Developer Mode: Reset Battle
-    reset_battle_action = QAction("🔄 Reset Battle", mw)
-    qconnect(reset_battle_action.triggered, reset_battle)
-    developer_menu.addAction(reset_battle_action)
-
-    # Developer Mode: Pokémon Placement Tool
-    placement_tool_action = QAction("Pokémon Placement Tool", mw)
-    qconnect(placement_tool_action.triggered, show_placement_tool)
-    developer_menu.addAction(placement_tool_action)
-
-    # Developer Mode: Reset Progression
-    reset_progression_action = QAction("🔄 Reset Progression", mw)
-    qconnect(reset_progression_action.triggered, _reset_progression)
-    developer_menu.addAction(reset_progression_action)
-
-    # Developer Mode: Ankimon Configure Menu
+    # Ankimon Configure Menu
     try:
-        configure_action = QAction("Ankimon Configure Menu", mw)
+        configure_action = QAction("⚙️ Open Settings", mw)
         def open_config():
             try:
-                # Try modern Anki 24.11 API
                 mw.addonManager.showConfigWindow("1908235722")
             except AttributeError:
                 try:
-                    # Fallback: open addons dialog
                     from aqt.addons import AddonsDialog
                     dialog = AddonsDialog(mw.addonManager)
                     dialog.exec()
                 except Exception as e2:
                     showInfo(f"Please open config via: Tools → Add-ons → Ankimon → Config\n(Error: {e2})")
         qconnect(configure_action.triggered, open_config)
-        developer_menu.addAction(configure_action)
+        tools_menu.addAction(configure_action)
     except Exception as e:
         print(f"Could not add config menu item: {e}")
 
-    # Add separator before item tools
-    developer_menu.addSeparator()
+    # Pokémon Placement Tool
+    placement_tool_action = QAction("🎯 Sprite Placement Tool", mw)
+    qconnect(placement_tool_action.triggered, show_placement_tool)
+    tools_menu.addAction(placement_tool_action)
 
-    # Developer Mode: Give Rare Candy
+    # ═══════════════════════════════════════════════════════════════
+    # BATTLE CONTROLS
+    # ═══════════════════════════════════════════════════════════════
+    battle_menu = QMenu("⚔️ Battle Controls", mw)
+    developer_menu.addMenu(battle_menu)
+
+    # Reset Battle
+    reset_battle_action = QAction("🔄 Reset Current Battle", mw)
+    qconnect(reset_battle_action.triggered, reset_battle)
+    battle_menu.addAction(reset_battle_action)
+
+    # Fast Battle Testing Toggle
+    try:
+        def toggle_fast_battle_testing():
+            """Toggle fast battle testing (10-card intervals instead of 100/150/200)"""
+            conf = _ankimon_get_col_conf()
+            if not conf:
+                tooltipWithColour("Failed to load configuration", "#FF0000")
+                return
+
+            current = conf.get("ankimon_fast_battle_testing", False)
+            new_value = not current
+            conf["ankimon_fast_battle_testing"] = new_value
+            mw.col.setMod()
+
+            fast_testing_action.setChecked(new_value)
+
+            if new_value:
+                tooltipWithColour("Fast Battle Testing: ON (10-card intervals)", "#00FF00")
+                print("[DevMode] Fast battle testing enabled: gym/elite/champion every 10 cards")
+            else:
+                tooltipWithColour("Fast Battle Testing: OFF (normal intervals)", "#888888")
+                print("[DevMode] Fast battle testing disabled: normal intervals restored")
+
+            global test_window
+            if test_window is not None and hasattr(test_window, 'update_progress_label'):
+                try:
+                    test_window.update_progress_label()
+                except:
+                    pass
+
+        fast_testing_action = QAction("⚡ Fast Battle Testing (10-card)", mw)
+        fast_testing_action.setCheckable(True)
+
+        conf = _ankimon_get_col_conf()
+        if conf and conf.get("ankimon_fast_battle_testing", False):
+            fast_testing_action.setChecked(True)
+
+        qconnect(fast_testing_action.triggered, toggle_fast_battle_testing)
+        battle_menu.addAction(fast_testing_action)
+        print("[DevMenu] Added: Fast Battle Testing (10-card)")
+    except Exception as e:
+        print(f"[DevMenu] ERROR: Could not add fast battle testing toggle: {e}")
+
+    # ═══════════════════════════════════════════════════════════════
+    # ITEMS
+    # ═══════════════════════════════════════════════════════════════
+    items_menu = QMenu("🎒 Items", mw)
+    developer_menu.addMenu(items_menu)
+
     def dev_give_rare_candy():
         """Give the player a rare candy item"""
         try:
             global itembag_path
-            # Load current item bag
             try:
                 with open(itembag_path, 'r') as json_file:
                     itembag_list = json.load(json_file)
             except (FileNotFoundError, json.JSONDecodeError):
                 itembag_list = []
 
-            # Add rare candy
             itembag_list.append("rare-candy")
             with open(itembag_path, 'w') as json_file:
                 json.dump(itembag_list, json_file, indent=2)
 
-            # Refresh item window if open
             try:
                 global items_window
                 if items_window and items_window.isVisible():
@@ -15740,123 +15654,86 @@ if database_complete != False:
     try:
         give_rare_candy_action = QAction("🍬 Give Rare Candy", mw)
         qconnect(give_rare_candy_action.triggered, dev_give_rare_candy)
-        developer_menu.addAction(give_rare_candy_action)
+        items_menu.addAction(give_rare_candy_action)
         print("[DevMenu] Added: Give Rare Candy")
     except Exception as e:
         print(f"[DevMenu] ERROR: Could not add give rare candy: {e}")
 
-    # Add separator before mega evolution tools
-    developer_menu.addSeparator()
+    # ═══════════════════════════════════════════════════════════════
+    # MEGA EVOLUTION
+    # ═══════════════════════════════════════════════════════════════
+    mega_menu = QMenu("💎 Mega Evolution", mw)
+    developer_menu.addMenu(mega_menu)
 
-    # Developer Mode: Fresh Mega Restart
-    try:
-        fresh_restart_action = QAction("🔥 Fresh Mega Restart", mw)
-        qconnect(fresh_restart_action.triggered, _fresh_mega_restart)
-        developer_menu.addAction(fresh_restart_action)
-        print("[DevMenu] Added: Fresh Mega Restart")
-    except Exception as e:
-        print(f"[DevMenu] ERROR: Could not add fresh restart: {e}")
-        import traceback
-        traceback.print_exc()
-
-    # Add separator before Mega controls
-    developer_menu.addSeparator()
-
-    # Developer Mode: Toggle Mega for Active Pokemon
     try:
         toggle_mega_action = QAction("⚡ Toggle Mega for Active Pokémon", mw)
         qconnect(toggle_mega_action.triggered, _dev_toggle_mega_for_active)
-        developer_menu.addAction(toggle_mega_action)
+        mega_menu.addAction(toggle_mega_action)
         print("[DevMenu] Added: Toggle Mega for Active Pokémon")
     except Exception as e:
         print(f"[DevMenu] ERROR: Could not add developer mega toggle: {e}")
-        import traceback
-        traceback.print_exc()
 
-    # Developer Mode: Purge All Mega Stones
-    try:
-        purge_stones_action = QAction("🧹 Purge All Mega Stones", mw)
-        qconnect(purge_stones_action.triggered, _purge_all_mega_stones)
-        developer_menu.addAction(purge_stones_action)
-        print("[DevMenu] Added: Purge All Mega Stones")
-    except Exception as e:
-        print(f"[DevMenu] ERROR: Could not add purge stones action: {e}")
-        import traceback
-        traceback.print_exc()
+    mega_menu.addSeparator()
 
-    # Developer Mode: Seed 3 Specific Mega Stones
     try:
-        seed_stones_action = QAction("🌱 Seed 3 Test Mega Stones", mw)
+        seed_stones_action = QAction("🌱 Give 3 Test Mega Stones", mw)
         qconnect(seed_stones_action.triggered, _seed_specific_mega_stones)
-        developer_menu.addAction(seed_stones_action)
+        mega_menu.addAction(seed_stones_action)
         print("[DevMenu] Added: Seed 3 Test Mega Stones")
     except Exception as e:
         print(f"[DevMenu] ERROR: Could not add seed stones action: {e}")
-        import traceback
-        traceback.print_exc()
 
-    # Developer Mode: Run Mega System Self-Test
+    try:
+        purge_stones_action = QAction("🧹 Remove All Mega Stones", mw)
+        qconnect(purge_stones_action.triggered, _purge_all_mega_stones)
+        mega_menu.addAction(purge_stones_action)
+        print("[DevMenu] Added: Purge All Mega Stones")
+    except Exception as e:
+        print(f"[DevMenu] ERROR: Could not add purge stones action: {e}")
+
+    mega_menu.addSeparator()
+
+    try:
+        fresh_restart_action = QAction("🔥 Reset Mega System", mw)
+        qconnect(fresh_restart_action.triggered, _fresh_mega_restart)
+        mega_menu.addAction(fresh_restart_action)
+        print("[DevMenu] Added: Fresh Mega Restart")
+    except Exception as e:
+        print(f"[DevMenu] ERROR: Could not add fresh restart: {e}")
+
+    # ═══════════════════════════════════════════════════════════════
+    # RESETS
+    # ═══════════════════════════════════════════════════════════════
+    resets_menu = QMenu("🔄 Resets", mw)
+    developer_menu.addMenu(resets_menu)
+
+    reset_progression_action = QAction("🔄 Reset All Progression", mw)
+    qconnect(reset_progression_action.triggered, _reset_progression)
+    resets_menu.addAction(reset_progression_action)
+
+    # ═══════════════════════════════════════════════════════════════
+    # DEBUG & DIAGNOSTICS
+    # ═══════════════════════════════════════════════════════════════
+    debug_menu = QMenu("🔍 Debug & Diagnostics", mw)
+    developer_menu.addMenu(debug_menu)
+
+    validate_rosters_action = QAction("🔍 Validate Rosters", mw)
+    qconnect(validate_rosters_action.triggered, _ankimon_validate_rosters)
+    debug_menu.addAction(validate_rosters_action)
+
+    export_debug_action = QAction("📦 Export Debug Bundle", mw)
+    qconnect(export_debug_action.triggered, _ankimon_export_debug_bundle)
+    debug_menu.addAction(export_debug_action)
+
     try:
         self_test_action = QAction("🔬 Run Mega System Self-Test", mw)
         qconnect(self_test_action.triggered, _mega_system_self_test)
-        developer_menu.addAction(self_test_action)
+        debug_menu.addAction(self_test_action)
         print("[DevMenu] Added: Run Mega System Self-Test")
     except Exception as e:
         print(f"[DevMenu] ERROR: Could not add self-test action: {e}")
-        import traceback
-        traceback.print_exc()
 
-    # Confirmation log
-    print("[DevMenu] Developer Mode actions added: purge/seed/self-test")
-
-    # Developer Mode: Fast Battle Testing Toggle
-    developer_menu.addSeparator()
-    try:
-        def toggle_fast_battle_testing():
-            """Toggle fast battle testing (10-card intervals instead of 100/150/200)"""
-            conf = _ankimon_get_col_conf()
-            if not conf:
-                tooltipWithColour("Failed to load configuration", "#FF0000")
-                return
-
-            current = conf.get("ankimon_fast_battle_testing", False)
-            new_value = not current
-            conf["ankimon_fast_battle_testing"] = new_value
-            mw.col.setMod()  # Save config changes
-
-            # Update checkbox state
-            fast_testing_action.setChecked(new_value)
-
-            if new_value:
-                tooltipWithColour("Fast Battle Testing: ON (10-card intervals)", "#00FF00")
-                print("[DevMode] Fast battle testing enabled: gym/elite/champion every 10 cards")
-            else:
-                tooltipWithColour("Fast Battle Testing: OFF (normal intervals)", "#888888")
-                print("[DevMode] Fast battle testing disabled: normal intervals restored")
-
-            # Refresh battle window if open
-            global test_window
-            if test_window is not None and hasattr(test_window, 'update_progress_label'):
-                try:
-                    test_window.update_progress_label()
-                except:
-                    pass
-
-        fast_testing_action = QAction("⚡ Fast Battle Testing (10-card)", mw)
-        fast_testing_action.setCheckable(True)
-
-        # Set initial state from config
-        conf = _ankimon_get_col_conf()
-        if conf and conf.get("ankimon_fast_battle_testing", False):
-            fast_testing_action.setChecked(True)
-
-        qconnect(fast_testing_action.triggered, toggle_fast_battle_testing)
-        developer_menu.addAction(fast_testing_action)
-        print("[DevMenu] Added: Fast Battle Testing (10-card)")
-    except Exception as e:
-        print(f"[DevMenu] ERROR: Could not add fast battle testing toggle: {e}")
-        import traceback
-        traceback.print_exc()
+    print("[DevMenu] Developer Mode menu organized into categories")
 
     # Add keyboard shortcut to toggle Developer Mode visibility
     from PyQt6.QtGui import QKeySequence, QShortcut
@@ -15886,18 +15763,6 @@ if database_complete != False:
     achievement_bag_action = QAction("Achievements", mw)
     achievement_bag_action.triggered.connect(achievement_bag.show_window)
     mw.pokemenu.addAction(achievement_bag_action)
-
-    test_action8 = QAction("Open Pokemon Showdown Teambuilder", mw)
-    qconnect(test_action8.triggered, open_team_builder)
-    mw.pokemenu.addAction(test_action8)
-
-    test_action6 = QAction("Export Main Pokemon to PkmnShowdown", mw)
-    qconnect(test_action6.triggered, export_to_pkmn_showdown)
-    mw.pokemenu.addAction(test_action6)
-
-    test_action7 = QAction("Export All Pokemon to PkmnShowdown", mw)
-    qconnect(test_action7.triggered, export_all_pkmn_showdown)
-    mw.pokemenu.addAction(test_action7)
 
 test_action11 = QAction("Check Effectiveness Chart", mw)
 test_action11.triggered.connect(eff_chart.show_eff_chart)
