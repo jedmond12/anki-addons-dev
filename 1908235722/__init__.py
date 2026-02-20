@@ -1474,8 +1474,11 @@ if ssh != False:
 
     # Function to check if the file exists on GitHub and read its content
     def read_github_file(url):
-        response = requests.get(url)
-            
+        try:
+            response = requests.get(url, timeout=10)
+        except Exception:
+            return None, None
+
         if response.status_code == 200:
             # File exists, parse the Markdown content
             content = response.text
